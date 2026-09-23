@@ -111,10 +111,14 @@ export class Board3D {
   private controls: OrbitControls;
   private target = new THREE.Vector3(0, 0.2, 0);
   private portrait: boolean | null = null;
+  private viewer: Player = 0;
   private lastFrame = performance.now();
   /** Player 1 sows with fire, player 2 with ice. */
   private trails: Record<Player, ParticleSystem> = { 0: new ParticleSystem(fireStyle()), 1: new ParticleSystem(iceStyle()) };
   private stoneGeometry = new THREE.SphereGeometry(STONE_R, 20, 14);
+  /** Animation hooks, e.g. for sound: a stone settled in a container / a pit was emptied into the hand. */
+  onStoneLanded: ((container: number, element: Player) => void) | null = null;
+  onLift: (() => void) | null = null;
   private stoneMaterials = STONE_COLORS.map(
     (color) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.15 }),
   );
@@ -126,7 +130,7 @@ export class Board3D {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     host.appendChild(this.renderer.domElement);
 
@@ -315,7 +319,17 @@ export class Board3D {
   }
 
   private defaultDirection(): THREE.Vector3 {
-    return this.portrait ? new THREE.Vector3(-0.35, 1, 0).normalize() : new THREE.Vector3(0, 1, 0.7).normalize();
+    const dir = this.portrait ? new THREE.Vector3(-0.35, 1, 0) : new THREE.Vector3(0, 1, 0.7);
+    // Player 2 views the board from the opposite side, so their own pits are nearest to them.
+    if (this.viewer === 1) dir.set(-dir.x, dir.y, -dir.z);
+    return dir.normalize();
+  }
+
+  /** Which side of the table the local player sits on (online games put player 2 opposite). */
+  setViewer(player: Player) {
+    if (player === this.viewer) return;
+    this.viewer = player;
+    this.resetCamera();
   }
 
   /** Back to the default view that shows the whole board. */
@@ -462,6 +476,7 @@ export class Board3D {
     });
     trail.emit(dest, 14, 0.15, 1.8);
     this.updateLabel(to);
+    this.onStoneLanded?.(to.index, trail === this.trails[0] ? 0 : 1);
   }
 
   /** Animates a move produced by the rules engine. Resolves when all stones have settled. */
@@ -471,6 +486,7 @@ export class Board3D {
     const source = this.containers[pit];
     const hand = source.stones.splice(0);
     this.updateLabel(source);
+    this.onLift?.();
 
     // Lift the handful out of the pit before sowing.
     await Promise.all(

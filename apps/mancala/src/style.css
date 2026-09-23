@@ -153,7 +153,23 @@ body {
 
 @media (max-width: 420px) {
   .player .name {
-    max-width: 3.8em;
+    max-width: 3.4em;
+  }
+  .hud {
+    gap: 4px;
+    padding: 5px 6px;
+  }
+  .player {
+    padding: 3px 6px;
+    gap: 4px;
+  }
+  .tools {
+    gap: 3px;
+  }
+  .icon {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
   }
 }
 
@@ -254,7 +270,7 @@ button {
 
 .card .primary,
 .card .secondary {
-  padding: 12px 28px;
+  padding: 12px 16px;
   border-radius: 12px;
   font-weight: 700;
   font-size: 18px;
@@ -360,4 +376,151 @@ button {
 
 .setup .primary {
   margin-top: 4px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.lead {
+  margin: 0;
+  text-align: center;
+  opacity: 0.85;
+  line-height: 1.5;
+}
+
+.warn {
+  margin: 0;
+  font-size: 13px;
+  color: #ffcf70;
+  line-height: 1.4;
+}
+
+#invite-link {
+  text-align: left;
+  font-size: 14px;
+}
+
+.share-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.share-grid .primary {
+  grid-column: 1 / -1;
+}
+
+.card .secondary.done {
+  background: rgba(120, 220, 140, 0.3);
+}
+
+.waiting {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  opacity: 0.8;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--p1);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.link {
+  background: none;
+  opacity: 0.65;
+  text-decoration: underline;
+  font-size: 15px;
+  padding: 4px;
+}
+
+.banner {
+  position: fixed;
+  top: calc(max(10px, env(safe-area-inset-top)) + 64px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(40, 20, 10, 0.85);
+  color: #ffcf70;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.player .you {
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+
+.icon.muted {
+  opacity: 0.45;
+}
+
+.sound-panel {
+  position: fixed;
+  top: calc(max(10px, env(safe-area-inset-top)) + 64px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 18px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 20, 0.8);
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.switch input {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin: 0;
+}
+
+.switch input::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+
+.switch input:checked {
+  background: var(--p1);
+}
+
+.switch input:checked::after {
+  transform: translateX(-16px);
 }

@@ -1,0 +1,22 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec).
+# One web service runs the Mancala game: static build + multiplayer WebSocket on the same port.
+services:
+  - type: web
+    name: mancala
+    runtime: node
+    plan: free
+    # Build from the monorepo root so npm workspaces resolve.
+    buildCommand: npm ci --include=dev && npm run build -w mancala
+    startCommand: npm run start -w mancala
+    healthCheckPath: /
+    # Only redeploy when the game (or root dependency files) change.
+    buildFilter:
+      paths:
+        - apps/mancala/**
+        - package.json
+        - package-lock.json
+        - render.yaml
+    envVars:
+      # The server runs TypeScript directly via Node's built-in type stripping (Node >= 23.6).
+      - key: NODE_VERSION
+        value: "24"

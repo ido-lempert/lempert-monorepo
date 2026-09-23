@@ -41,9 +41,9 @@ export interface MoveResult {
   sweeps: Sweep[];
 }
 
-export function createGame(stonesPerPit = 4): GameState {
+export function createGame(stonesPerPit = 4, first: Player = 0): GameState {
   const board = Array.from({ length: BOARD_SIZE }, (_, i) => (isStore(i) ? 0 : stonesPerPit));
-  return { board, current: 0, over: false, winner: null };
+  return { board, current: first, over: false, winner: null };
 }
 
 export function isStore(i: number): boolean {

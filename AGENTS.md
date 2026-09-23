@@ -17,6 +17,8 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - dev server: `npx nx run mancala:dev` (http://localhost:5173, also exposed on the LAN for phone testing)
   - tests: `npx nx run mancala:test` (vitest, rules engine)
   - typecheck + production build: `npx nx run mancala:build` (output `apps/mancala/dist`)
+  - production server (static `dist/` + multiplayer WebSocket on one port, `PORT` default 8080): `npx nx run mancala:start` after build
+  - online multiplayer: the server in `apps/mancala/server/` is authoritative (validates moves); in dev it runs inside the Vite server via a plugin, at `/ws`
 
 ## Conventions that differ from defaults
 
