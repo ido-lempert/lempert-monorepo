@@ -78,6 +78,16 @@ body {
   backdrop-filter: blur(8px);
   white-space: nowrap;
   max-width: calc(100vw - 16px);
+  /* Players are ordered to match the board (viewer's store on the left) in every language. */
+  direction: ltr;
+}
+
+.hud .turn {
+  order: 1;
+}
+
+.hud .tools {
+  order: 3;
 }
 
 .player {
@@ -470,7 +480,7 @@ button {
   opacity: 0.45;
 }
 
-.sound-panel {
+.panel {
   position: fixed;
   top: calc(max(10px, env(safe-area-inset-top)) + 64px);
   left: 50%;
@@ -523,4 +533,209 @@ button {
 
 .switch input:checked::after {
   transform: translateX(-16px);
+}
+
+/* --- Menu ------------------------------------------------------------------ */
+
+.menu {
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  min-width: 220px;
+}
+
+.menu button,
+.menu .menu-lang {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: none;
+  font-size: 15px;
+  text-align: start;
+}
+
+.menu button:hover,
+.menu .menu-lang:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.menu button > span:first-child,
+.menu .menu-lang > span:first-child {
+  width: 1.4em;
+  text-align: center;
+}
+
+.menu select {
+  margin-inline-start: auto;
+}
+
+.menu hr {
+  width: 100%;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 4px 0;
+}
+
+.lang-select {
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.lang-select option {
+  color: #1b1e2b;
+}
+
+.card-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -8px;
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.footer-links {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.footer-links button {
+  background: none;
+  font-size: 13px;
+  opacity: 0.6;
+  text-decoration: underline;
+  padding: 2px;
+}
+
+/* --- Content pages ---------------------------------------------------------- */
+
+#page {
+  z-index: 20;
+}
+
+.page {
+  width: min(94vw, 620px);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 0 24px 24px;
+  text-align: start;
+  line-height: 1.6;
+}
+
+.page-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 0 10px;
+  background: rgba(30, 34, 52, 0.98);
+}
+
+.page-head h2 {
+  margin: 0;
+}
+
+.page-body h3 {
+  margin: 18px 0 6px;
+  font-size: 17px;
+}
+
+.page-body ul {
+  padding-inline-start: 1.2em;
+  margin: 6px 0;
+}
+
+.page-body li {
+  margin: 4px 0;
+}
+
+.page-body a {
+  color: var(--p2);
+}
+
+.page-body .updated {
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+/* --- Accessibility ------------------------------------------------------------ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 3px solid #ffe066;
+  outline-offset: 2px;
+}
+
+/* Pit buttons for keyboard play: invisible until focused with Tab. */
+.pit-keys {
+  position: fixed;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(10, 12, 20, 0.85);
+  direction: ltr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pit-keys:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pit-keys button {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 2px solid;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.pit-keys button:disabled {
+  opacity: 0.35;
+}
+
+.confetti {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 30;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

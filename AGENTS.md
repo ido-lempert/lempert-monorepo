@@ -19,6 +19,8 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - typecheck + production build: `npx nx run mancala:build` (output `apps/mancala/dist`)
   - production server (static `dist/` + multiplayer WebSocket on one port, `PORT` default 8080): `npx nx run mancala:start` after build
   - online multiplayer: the server in `apps/mancala/server/` is authoritative (validates moves); in dev it runs inside the Vite server via a plugin, at `/ws`
+  - UI text is translated (he, en, ar, ru, fr, es): add every new string to all dictionaries in `apps/mancala/src/i18n/strings.ts` (the `Dict` type enforces it); long pages live in `src/i18n/pages.ts`
+  - board layout: sowing is clockwise with each player's store on their left; the rules engine is index-based (`src/game/kalah.ts`) and only `containerCenter` in `src/render/board3d.ts` decides placement
 
 ## Conventions that differ from defaults
 
