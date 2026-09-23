@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b1e2b" />
+    <title>מנקלה</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🟤</text></svg>" />
+  </head>
+  <body>
+    <div id="stage"></div>
+    <header class="hud">
+      <div class="player p1" data-player="0">
+        <span class="dot"></span><span class="name">שחקן 1</span><span class="score">0</span>
+      </div>
+      <div class="turn" id="turn"></div>
+      <div class="player p2" data-player="1">
+        <span class="dot"></span><span class="name">שחקן 2</span><span class="score">0</span>
+      </div>
+      <div class="tools">
+        <button class="icon" id="restart" title="משחק חדש" aria-label="משחק חדש">↻</button>
+        <button class="icon" id="camera" title="איפוס מצלמה" aria-label="איפוס מצלמה">⌖</button>
+        <button class="icon" id="settings" title="הגדרות" aria-label="הגדרות">⚙</button>
+        <button class="icon" id="sound" title="צלילים" aria-label="צלילים" aria-expanded="false">🔊</button>
+      </div>
+    </header>
+    <div class="sound-panel hidden" id="sound-panel">
+      <label class="switch"><input type="checkbox" id="toggle-music" /><span>מוזיקת רקע</span></label>
+      <label class="switch"><input type="checkbox" id="toggle-sfx" /><span>צלילי משחק</span></label>
+    </div>
+    <div class="hint" id="hint">גררו לסיבוב המצלמה · גלגלת / צביטה לזום</div>
+    <div class="toast" id="toast"></div>
+
+    <div class="overlay" id="setup">
+      <form class="card setup" id="setup-form">
+        <h1>מנקלה</h1>
+        <div class="field">
+          <span class="field-label">מצב משחק</span>
+          <div class="segmented" data-name="mode">
+            <button type="button" data-value="ai">נגד המחשב</button>
+            <button type="button" data-value="pvp">אותו מכשיר</button>
+            <button type="button" data-value="online">מרחוק</button>
+          </div>
+        </div>
+        <div class="field" id="difficulty-field">
+          <span class="field-label">רמת קושי</span>
+          <div class="segmented" data-name="difficulty">
+            <button type="button" data-value="easy">קל</button>
+            <button type="button" data-value="medium">בינוני</button>
+            <button type="button" data-value="hard">קשה</button>
+          </div>
+        </div>
+        <label class="field">
+          <span class="field-label" id="name0-label"><span class="dot p1-dot"></span> שחקן 1 · אש 🔥</span>
+          <input id="name0" maxlength="14" autocomplete="off" placeholder="שחקן 1" />
+        </label>
+        <label class="field" id="name1-field">
+          <span class="field-label"><span class="dot p2-dot"></span> שחקן 2 · קרח ❄️</span>
+          <input id="name1" maxlength="14" autocomplete="off" placeholder="שחקן 2" />
+        </label>
+        <button type="submit" class="primary" id="start">התחל משחק</button>
+      </form>
+    </div>
+
+    <div class="overlay hidden" id="invite">
+      <div class="card setup">
+        <h1>הזמנת חבר</h1>
+        <p class="lead">שלחו את הקישור לחבר. המשחק יתחיל ברגע שיצטרף.</p>
+        <input id="invite-link" readonly dir="ltr" />
+        <p class="warn hidden" id="invite-warn">
+          שימו לב: הכתובת הזו פתוחה רק ברשת המקומית. כדי שחבר מבחוץ יוכל להצטרף, פתחו את המשחק מכתובת ציבורית.
+        </p>
+        <div class="share-grid">
+          <button class="primary" id="share-native">שיתוף…</button>
+          <button class="secondary" id="share-whatsapp">WhatsApp</button>
+          <button class="secondary" id="share-email">אימייל</button>
+          <button class="secondary" id="share-copy">העתקה</button>
+        </div>
+        <p class="waiting"><span class="spinner"></span> ממתינים לחבר…</p>
+        <button class="link" id="invite-cancel">ביטול</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="join">
+      <form class="card setup" id="join-form">
+        <h1>מנקלה</h1>
+        <p class="lead" id="join-lead"></p>
+        <label class="field" id="join-name-field">
+          <span class="field-label"><span class="dot p2-dot"></span> השם שלך · קרח ❄️</span>
+          <input id="join-name" maxlength="14" autocomplete="off" placeholder="השם שלך" />
+        </label>
+        <button type="submit" class="primary" id="join-submit">הצטרפות למשחק</button>
+        <button type="button" class="link" id="join-leave">למשחק חדש משלי</button>
+      </form>
+    </div>
+
+    <div class="banner hidden" id="banner"></div>
+
+    <div class="overlay hidden" id="gameover">
+      <div class="card">
+        <h1 id="result"></h1>
+        <p id="final"></p>
+        <p class="lead hidden" id="rematch-note"></p>
+        <div class="actions">
+          <button id="again" class="primary">משחק חדש</button>
+          <button id="rematch" class="primary">משחק חוזר</button>
+          <button id="to-settings" class="secondary">הגדרות</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
