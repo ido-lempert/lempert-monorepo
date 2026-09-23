@@ -1,0 +1,10 @@
+# Project exclude paths
+/node_modules/
+/node_modules/@types/esrecurse/LICENSE
+/node_modules/@types/esrecurse/README.md
+/node_modules/@types/estree/LICENSE
+/node_modules/@types/estree/README.md
+/node_modules/@types/json-schema/LICENSE
+/node_modules/@types/json-schema/README.md
+/node_modules/@types/parse-json/LICENSE
+/node_modules/@types/parse-json/README.md
