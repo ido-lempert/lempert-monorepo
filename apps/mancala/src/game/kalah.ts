@@ -1,7 +1,7 @@
 /**
  * Kalah rules (the most common Mancala variant): 6 pits per side, 4 stones per pit.
  *
- * Board indices, counter-clockwise:
+ * Board indices in sowing order (the 3D board lays them out clockwise, each store on its owner's left):
  *   0..5   player 0 pits   6  player 0 store
  *   7..12  player 1 pits   13 player 1 store
  */

@@ -35,12 +35,16 @@ interface Container {
   bowl: THREE.Mesh;
 }
 
-/** Container centre in world space. Player 0 is the near row (+z), sowing left→right, towards store 6 at +x. */
+/**
+ * Container centre in world space. Sowing runs clockwise: each player's store is on their left.
+ * Player 0 is the near row (+z) and sows right→left into store 6 at -x; player 1 sows along the far row
+ * left→right into store 13 at +x. Pit i and pit 12-i face each other.
+ */
 function containerCenter(i: number): THREE.Vector3 {
-  if (i === 6) return new THREE.Vector3(STORE_X, BOWL_Y, 0);
-  if (i === 13) return new THREE.Vector3(-STORE_X, BOWL_Y, 0);
-  if (i < 6) return new THREE.Vector3((i - 2.5) * PIT_SPACING, BOWL_Y, ROW_Z);
-  return new THREE.Vector3((12 - i - 2.5) * PIT_SPACING, BOWL_Y, -ROW_Z);
+  if (i === 6) return new THREE.Vector3(-STORE_X, BOWL_Y, 0);
+  if (i === 13) return new THREE.Vector3(STORE_X, BOWL_Y, 0);
+  if (i < 6) return new THREE.Vector3((2.5 - i) * PIT_SPACING, BOWL_Y, ROW_Z);
+  return new THREE.Vector3((i - 7 - 2.5) * PIT_SPACING, BOWL_Y, -ROW_Z);
 }
 
 function easeInOut(t: number): number {
@@ -441,6 +445,12 @@ export class Board3D {
 
   setActive(player: Player | null, legal: number[] = []) {
     this.active = player === null ? null : { player, legal: new Set(legal) };
+    this.refreshHighlights();
+  }
+
+  /** Highlights a pit as if hovered, e.g. while its keyboard button has focus. */
+  setHover(pit: number | null) {
+    this.hovered = pit;
     this.refreshHighlights();
   }
 

@@ -68,6 +68,61 @@ describe('kalah', () => {
     expect(r.state.winner).toBe(0);
   });
 
+  it('does not capture when the opposite pit is empty', () => {
+    const s: GameState = {
+      board: [1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0],
+      current: 0,
+      over: false,
+      winner: null,
+    };
+    const r = applyMove(s, 0);
+    expect(r.capture).toBeNull();
+    expect(r.state.board[1]).toBe(1);
+    expect(r.state.current).toBe(1);
+  });
+
+  it("does not capture when the last stone lands in an empty pit on the opponent's side", () => {
+    const s: GameState = {
+      board: [1, 0, 0, 0, 0, 3, 0, 1, 0, 1, 1, 1, 1, 0],
+      current: 0,
+      over: false,
+      winner: null,
+    };
+    const r = applyMove(s, 5); // 6, 7, 8 → last in player 1's empty pit 8
+    expect(r.sown).toEqual([6, 7, 8]);
+    expect(r.capture).toBeNull();
+    expect(r.state.board[8]).toBe(1);
+  });
+
+  it('lets player 2 capture and use their own store', () => {
+    const s: GameState = {
+      board: [1, 1, 5, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+      current: 1,
+      over: false,
+      winner: null,
+    };
+    const r = applyMove(s, 10); // lands in 11, empty, opposite is pit 1
+    expect(r.capture).toEqual({ pit: 11, opposite: 1, store: 13, count: 2 });
+    const r2 = applyMove({ ...s, board: [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0] }, 12);
+    expect(r2.sown).toEqual([13]);
+    expect(r2.extraTurn).toBe(false); // player 2's side is now empty: game over
+    expect(r2.state.over).toBe(true);
+  });
+
+  it('captures in the starting pit after a full lap of 13 stones', () => {
+    const s: GameState = {
+      board: [13, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0],
+      current: 0,
+      over: false,
+      winner: null,
+    };
+    const r = applyMove(s, 0);
+    expect(r.sown).toHaveLength(13);
+    expect(r.sown.at(-1)).toBe(0);
+    // Pit 0 was emptied and receives the 13th stone; opposite pit 12 has 1 + 1 sown.
+    expect(r.capture).toEqual({ pit: 0, opposite: 12, store: 6, count: 3 });
+  });
+
   it('conserves stones across a full random game', () => {
     let s = createGame();
     for (let n = 0; n < 500 && !s.over; n++) {

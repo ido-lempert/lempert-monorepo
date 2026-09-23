@@ -4,110 +4,229 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1b1e2b" />
-    <title>מנקלה</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🟤</text></svg>" />
+    <meta name="description" content="Mancala in 3D – play against the computer, on one device, or online with a friend." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Mancala" />
+    <title>Mancala</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <style>
+      /* Critical styles: show the splash immediately and keep the rest hidden until the app is ready. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1b1e2b;
+        color: #f4efe6;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      body:not(.ready) > :not(#splash):not(script) {
+        visibility: hidden;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: radial-gradient(circle at 50% 40%, #2a2f45, #1b1e2b 70%);
+        transition: opacity 0.45s ease;
+      }
+      #splash.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash img {
+        width: min(34vmin, 180px);
+        height: auto;
+        animation: splash-pop 0.6s ease-out both;
+      }
+      #splash .splash-title {
+        font-size: clamp(22px, 5vmin, 34px);
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+      #splash .splash-bar {
+        width: 120px;
+        height: 4px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+      }
+      #splash .splash-bar::after {
+        content: '';
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: 4px;
+        background: linear-gradient(90deg, #f5a524, #3fb8ff);
+        animation: splash-load 1.1s ease-in-out infinite;
+      }
+      @keyframes splash-pop {
+        from {
+          transform: scale(0.8);
+          opacity: 0;
+        }
+      }
+      @keyframes splash-load {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(250%);
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="stage"></div>
+    <div id="splash" role="status" aria-live="polite">
+      <img src="icon.svg" alt="" width="180" height="180" />
+      <div class="splash-title">Mancala · מנקלה</div>
+      <div class="splash-bar" aria-label="Loading"></div>
+    </div>
+
+    <main id="stage" data-i18n-attr="aria-label:boardLabel"></main>
+
     <header class="hud">
       <div class="player p1" data-player="0">
-        <span class="dot"></span><span class="name">שחקן 1</span><span class="score">0</span>
+        <span class="dot" aria-hidden="true"></span><span class="name" dir="auto"></span><span class="score">0</span>
       </div>
-      <div class="turn" id="turn"></div>
+      <div class="turn" id="turn" dir="auto"></div>
       <div class="player p2" data-player="1">
-        <span class="dot"></span><span class="name">שחקן 2</span><span class="score">0</span>
+        <span class="dot" aria-hidden="true"></span><span class="name" dir="auto"></span><span class="score">0</span>
       </div>
       <div class="tools">
-        <button class="icon" id="restart" title="משחק חדש" aria-label="משחק חדש">↻</button>
-        <button class="icon" id="camera" title="איפוס מצלמה" aria-label="איפוס מצלמה">⌖</button>
-        <button class="icon" id="settings" title="הגדרות" aria-label="הגדרות">⚙</button>
-        <button class="icon" id="sound" title="צלילים" aria-label="צלילים" aria-expanded="false">🔊</button>
+        <button class="icon" id="restart" data-i18n-attr="title:newGame;aria-label:newGame">↻</button>
+        <button class="icon" id="sound" aria-expanded="false" data-i18n-attr="title:sound;aria-label:sound">🔊</button>
+        <button class="icon" id="menu-btn" aria-expanded="false" data-i18n-attr="title:menu;aria-label:menu">☰</button>
       </div>
     </header>
-    <div class="sound-panel hidden" id="sound-panel">
-      <label class="switch"><input type="checkbox" id="toggle-music" /><span>מוזיקת רקע</span></label>
-      <label class="switch"><input type="checkbox" id="toggle-sfx" /><span>צלילי משחק</span></label>
+
+    <div class="panel hidden" id="sound-panel">
+      <label class="switch"><input type="checkbox" id="toggle-music" /><span data-i18n="music"></span></label>
+      <label class="switch"><input type="checkbox" id="toggle-sfx" /><span data-i18n="sfx"></span></label>
     </div>
-    <div class="hint" id="hint">גררו לסיבוב המצלמה · גלגלת / צביטה לזום</div>
-    <div class="toast" id="toast"></div>
+
+    <nav class="panel menu hidden" id="menu" data-i18n-attr="aria-label:menu">
+      <button id="m-settings"><span aria-hidden="true">⚙</span> <span data-i18n="settings"></span></button>
+      <button id="m-camera"><span aria-hidden="true">⌖</span> <span data-i18n="resetCamera"></span></button>
+      <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
+      <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
+      <label class="menu-lang"><span aria-hidden="true">🌐</span> <span data-i18n="language"></span><select class="lang-select"></select></label>
+      <hr />
+      <button data-page="rules"><span aria-hidden="true">?</span> <span data-i18n="rules"></span></button>
+      <button data-page="terms"><span aria-hidden="true">§</span> <span data-i18n="terms"></span></button>
+      <button data-page="accessibility"><span aria-hidden="true">♿</span> <span data-i18n="accessibility"></span></button>
+    </nav>
+
+    <div class="hint" id="hint" data-i18n="hint" aria-hidden="true"></div>
+    <div class="toast" id="toast" aria-hidden="true"></div>
+    <div class="banner hidden" id="banner" role="status"></div>
+    <div class="sr-only" id="live" aria-live="polite"></div>
+
+    <!-- Keyboard / screen-reader controls for the 3D board: appear when focused with Tab. -->
+    <div class="pit-keys" id="pit-keys" role="group" data-i18n-attr="aria-label:yourPits"></div>
 
     <div class="overlay" id="setup">
       <form class="card setup" id="setup-form">
-        <h1>מנקלה</h1>
+        <div class="card-top">
+          <select class="lang-select" data-i18n-attr="aria-label:language"></select>
+        </div>
+        <h1 data-i18n="appName"></h1>
         <div class="field">
-          <span class="field-label">מצב משחק</span>
+          <span class="field-label" data-i18n="gameMode"></span>
           <div class="segmented" data-name="mode">
-            <button type="button" data-value="ai">נגד המחשב</button>
-            <button type="button" data-value="pvp">אותו מכשיר</button>
-            <button type="button" data-value="online">מרחוק</button>
+            <button type="button" data-value="ai" data-i18n="modeAi"></button>
+            <button type="button" data-value="pvp" data-i18n="modePvp"></button>
+            <button type="button" data-value="online" data-i18n="modeOnline" id="mode-online"></button>
           </div>
+          <p class="note hidden" id="offline-note" data-i18n="offlineNote"></p>
         </div>
         <div class="field" id="difficulty-field">
-          <span class="field-label">רמת קושי</span>
+          <span class="field-label" data-i18n="difficulty"></span>
           <div class="segmented" data-name="difficulty">
-            <button type="button" data-value="easy">קל</button>
-            <button type="button" data-value="medium">בינוני</button>
-            <button type="button" data-value="hard">קשה</button>
+            <button type="button" data-value="easy" data-i18n="easy"></button>
+            <button type="button" data-value="medium" data-i18n="medium"></button>
+            <button type="button" data-value="hard" data-i18n="hard"></button>
           </div>
         </div>
         <label class="field">
-          <span class="field-label" id="name0-label"><span class="dot p1-dot"></span> שחקן 1 · אש 🔥</span>
-          <input id="name0" maxlength="14" autocomplete="off" placeholder="שחקן 1" />
+          <span class="field-label"><span class="dot p1-dot"></span> <span id="name0-label"></span></span>
+          <input id="name0" maxlength="14" autocomplete="nickname" dir="auto" />
         </label>
         <label class="field" id="name1-field">
-          <span class="field-label"><span class="dot p2-dot"></span> שחקן 2 · קרח ❄️</span>
-          <input id="name1" maxlength="14" autocomplete="off" placeholder="שחקן 2" />
+          <span class="field-label"><span class="dot p2-dot"></span> <span data-i18n="player2Label"></span></span>
+          <input id="name1" maxlength="14" autocomplete="off" dir="auto" />
         </label>
-        <button type="submit" class="primary" id="start">התחל משחק</button>
+        <button type="submit" class="primary" id="start"></button>
+        <nav class="footer-links">
+          <button type="button" data-page="rules" data-i18n="rules"></button>
+          <button type="button" data-page="terms" data-i18n="terms"></button>
+          <button type="button" data-page="accessibility" data-i18n="accessibility"></button>
+        </nav>
       </form>
     </div>
 
     <div class="overlay hidden" id="invite">
       <div class="card setup">
-        <h1>הזמנת חבר</h1>
-        <p class="lead">שלחו את הקישור לחבר. המשחק יתחיל ברגע שיצטרף.</p>
-        <input id="invite-link" readonly dir="ltr" />
-        <p class="warn hidden" id="invite-warn">
-          שימו לב: הכתובת הזו פתוחה רק ברשת המקומית. כדי שחבר מבחוץ יוכל להצטרף, פתחו את המשחק מכתובת ציבורית.
-        </p>
+        <h1 data-i18n="inviteTitle"></h1>
+        <p class="lead" data-i18n="inviteLead"></p>
+        <input id="invite-link" readonly dir="ltr" data-i18n-attr="aria-label:inviteTitle" />
+        <p class="warn hidden" id="invite-warn" data-i18n="inviteLocalWarn"></p>
         <div class="share-grid">
-          <button class="primary" id="share-native">שיתוף…</button>
+          <button class="primary" id="share-native" data-i18n="share"></button>
           <button class="secondary" id="share-whatsapp">WhatsApp</button>
-          <button class="secondary" id="share-email">אימייל</button>
-          <button class="secondary" id="share-copy">העתקה</button>
+          <button class="secondary" id="share-email" data-i18n="email"></button>
+          <button class="secondary" id="share-copy" data-i18n="copy"></button>
         </div>
-        <p class="waiting"><span class="spinner"></span> ממתינים לחבר…</p>
-        <button class="link" id="invite-cancel">ביטול</button>
+        <p class="waiting"><span class="spinner" aria-hidden="true"></span> <span data-i18n="waitingFriend"></span></p>
+        <button class="link" id="invite-cancel" data-i18n="cancel"></button>
       </div>
     </div>
 
     <div class="overlay hidden" id="join">
       <form class="card setup" id="join-form">
-        <h1>מנקלה</h1>
+        <div class="card-top">
+          <select class="lang-select" data-i18n-attr="aria-label:language"></select>
+        </div>
+        <h1 data-i18n="appName"></h1>
         <p class="lead" id="join-lead"></p>
         <label class="field" id="join-name-field">
-          <span class="field-label"><span class="dot p2-dot"></span> השם שלך · קרח ❄️</span>
-          <input id="join-name" maxlength="14" autocomplete="off" placeholder="השם שלך" />
+          <span class="field-label"><span class="dot p2-dot"></span> <span data-i18n="yourNameIce"></span></span>
+          <input id="join-name" maxlength="14" autocomplete="nickname" dir="auto" />
         </label>
-        <button type="submit" class="primary" id="join-submit">הצטרפות למשחק</button>
-        <button type="button" class="link" id="join-leave">למשחק חדש משלי</button>
+        <button type="submit" class="primary" id="join-submit" data-i18n="joinButton"></button>
+        <button type="button" class="link" id="join-leave" data-i18n="joinLeave"></button>
       </form>
     </div>
 
-    <div class="banner hidden" id="banner"></div>
-
     <div class="overlay hidden" id="gameover">
-      <div class="card">
+      <div class="card" role="dialog" aria-labelledby="result">
         <h1 id="result"></h1>
-        <p id="final"></p>
+        <p id="final" dir="ltr"></p>
         <p class="lead hidden" id="rematch-note"></p>
         <div class="actions">
-          <button id="again" class="primary">משחק חדש</button>
-          <button id="rematch" class="primary">משחק חוזר</button>
-          <button id="to-settings" class="secondary">הגדרות</button>
+          <button id="again" class="primary" data-i18n="newGame"></button>
+          <button id="rematch" class="primary" data-i18n="rematch"></button>
+          <button id="to-settings" class="secondary" data-i18n="settings"></button>
         </div>
       </div>
     </div>
+
+    <div class="overlay hidden" id="page">
+      <article class="card page" role="dialog" aria-modal="true" aria-labelledby="page-title">
+        <header class="page-head">
+          <h2 id="page-title"></h2>
+          <button class="icon" id="page-close" data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <div class="page-body" id="page-body"></div>
+      </article>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
