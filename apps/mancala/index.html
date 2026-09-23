@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1b1e2b" />
+    <title>מנקלה</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🟤</text></svg>" />
+  </head>
+  <body>
+    <div id="stage"></div>
+    <header class="hud">
+      <div class="player p1" data-player="0">
+        <span class="dot"></span><span class="name">שחקן 1</span><span class="score">0</span>
+      </div>
+      <div class="turn" id="turn"></div>
+      <div class="player p2" data-player="1">
+        <span class="dot"></span><span class="name">שחקן 2</span><span class="score">0</span>
+      </div>
+      <div class="tools">
+        <button class="icon" id="restart" title="משחק חדש" aria-label="משחק חדש">↻</button>
+        <button class="icon" id="camera" title="איפוס מצלמה" aria-label="איפוס מצלמה">⌖</button>
+        <button class="icon" id="settings" title="הגדרות" aria-label="הגדרות">⚙</button>
+      </div>
+    </header>
+    <div class="hint" id="hint">גררו לסיבוב המצלמה · גלגלת / צביטה לזום</div>
+    <div class="toast" id="toast"></div>
+
+    <div class="overlay" id="setup">
+      <form class="card setup" id="setup-form">
+        <h1>מנקלה</h1>
+        <div class="field">
+          <span class="field-label">מצב משחק</span>
+          <div class="segmented" data-name="mode">
+            <button type="button" data-value="ai">נגד המחשב</button>
+            <button type="button" data-value="pvp">שני שחקנים</button>
+          </div>
+        </div>
+        <div class="field" id="difficulty-field">
+          <span class="field-label">רמת קושי</span>
+          <div class="segmented" data-name="difficulty">
+            <button type="button" data-value="easy">קל</button>
+            <button type="button" data-value="medium">בינוני</button>
+            <button type="button" data-value="hard">קשה</button>
+          </div>
+        </div>
+        <label class="field">
+          <span class="field-label"><span class="dot p1-dot"></span> שחקן 1 · אש 🔥</span>
+          <input id="name0" maxlength="14" autocomplete="off" placeholder="שחקן 1" />
+        </label>
+        <label class="field" id="name1-field">
+          <span class="field-label"><span class="dot p2-dot"></span> שחקן 2 · קרח ❄️</span>
+          <input id="name1" maxlength="14" autocomplete="off" placeholder="שחקן 2" />
+        </label>
+        <button type="submit" class="primary">התחל משחק</button>
+      </form>
+    </div>
+
+    <div class="overlay hidden" id="gameover">
+      <div class="card">
+        <h1 id="result"></h1>
+        <p id="final"></p>
+        <div class="actions">
+          <button id="again" class="primary">משחק חדש</button>
+          <button id="to-settings" class="secondary">הגדרות</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

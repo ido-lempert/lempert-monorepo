@@ -12,7 +12,11 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
 
 ## Running and verifying
 
-- TODO: no apps/libs exist yet and `package.json` has no `scripts`. Once the first project is scaffolded (TypeScript, npm), fill in the real build/test/lint commands here and verify them — don't guess.
+- Apps live in `apps/*` as npm workspaces; Nx infers targets from each app's `package.json` scripts.
+- `mancala` (3D Kalah in the browser, Vite + three.js):
+  - dev server: `npx nx run mancala:dev` (http://localhost:5173, also exposed on the LAN for phone testing)
+  - tests: `npx nx run mancala:test` (vitest, rules engine)
+  - typecheck + production build: `npx nx run mancala:build` (output `apps/mancala/dist`)
 
 ## Conventions that differ from defaults
 
