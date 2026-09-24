@@ -21,7 +21,11 @@ import {
   DECORATIONS,
   type DecorationId,
   decoration,
+  celebrateGrandEvent,
   currentGuest,
+  GRAND_EVENT_REWARD,
+  readyForGrandEvent,
+  REWARD_ONLY,
   findItem,
   GUESTS,
   type GuestId,
@@ -50,7 +54,7 @@ import './style.css';
 import { WalkInput } from './world/input';
 import type { Vec } from './game/hunt';
 import { JUG_SPOTS, type Raft, startRaft, stepRaft } from './game/raft';
-import { ABRAHAM, MOSES, RIDE_END, HUB, huntCandidates, inside, ISAAC, JACOB, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
+import { GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RIDE_END, SHEAF_SPOTS, VILLAGERS, HUB, huntCandidates, inside, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
 import { World } from './world/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -77,7 +81,7 @@ const world = new World($('#stage'));
 const input = new WalkInput(world.canvas);
 applyDocument();
 
-type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft';
+type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune';
 let scene: Scene = 'walk';
 
 function setScene(next: Scene) {
@@ -93,6 +97,7 @@ function setScene(next: Scene) {
   if (next !== 'walk') $('#hint').classList.add('gone');
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
   if (next !== 'huntCard') $('#hunt-card').classList.add('hidden');
+  if (next !== 'tune') $('#tune').classList.add('hidden');
   closeMenu();
   updateAction();
 }
@@ -122,7 +127,25 @@ function refresh() {
       jacob.stage === 'done' || jacob.stage === 'returning' || jacob.found.includes(String(i)) ? 'home' : world.lambStates[i] === 'following' && jacob.stage === 'active' ? 'following' : 'lost',
     ),
   );
-  world.setPet(progress.pets.includes('lamb'));
+  world.setPets(progress.pets);
+  const aaron = progress.quests.aaron;
+  const needed = VILLAGERS.filter((_, i) => !aaron.found.includes(String(i))).map((v) => v.needs);
+  world.setVillagers(
+    aaron.stage !== 'locked',
+    VILLAGERS.map((_, i) => aaron.found.includes(String(i)) || aaron.stage === 'done' || aaron.stage === 'returning'),
+    VILLAGERS.map((v) => NEED_ICON[v.needs]),
+  );
+  world.setHelpItems(Object.fromEntries(HELP_IDS.map((id) => [id, aaron.stage === 'active' && needed.includes(id) && carrying !== id])));
+  if (aaron.stage !== 'active' && carrying) {
+    carrying = null;
+    world.setCarrying(null);
+  }
+  world.setSheaves(progress.quests.joseph.stage === 'active', progress.quests.joseph.found);
+  const allDone = GUESTS.every((g) => progress.quests[g].stage === 'done');
+  if (allDone !== guestsSeated) {
+    guestsSeated = allDone;
+    world.seatGuests(allDone);
+  }
   const moses = progress.quests.moses;
   world.setJugs(JUG_SPOTS.map((_, i) => moses.stage === 'active' && !moses.found.includes(String(i))));
   world.setDecorations(progress.placed, scene === 'build' ? selectedPlaced : -1);
@@ -190,8 +213,7 @@ function say(face: string, name: string, text: string, choices: Choice[]) {
 
 const playerName = () => progress.avatar?.name || t('defaultName');
 
-const GUEST_FACE: Record<GuestId, string> = { abraham: '👴🏻', isaac: '🧔🏻', jacob: '🧔🏽', moses: '👴🏼' };
-const GUEST_SPOT: Record<GuestId, Vec> = { abraham: ABRAHAM, isaac: ISAAC, jacob: JACOB, moses: MOSES };
+const GUEST_FACE: Record<GuestId, string> = { abraham: '👴🏻', isaac: '🧔🏻', jacob: '🧔🏽', moses: '👴🏼', aaron: '👳🏻', joseph: '🧑🏽', david: '🤴🏻' };
 
 /** Everything a guest says, in the order of their quest. */
 const LINES: Record<GuestId, { intro: StringKey; accept: StringKey; waiting: StringKey; thanks: StringKey; done: StringKey }> = {
@@ -199,6 +221,9 @@ const LINES: Record<GuestId, { intro: StringKey; accept: StringKey; waiting: Str
   isaac: { intro: 'isaacIntro', accept: 'isaacAccept', waiting: 'isaacWaiting', thanks: 'isaacThanks', done: 'isaacDone' },
   jacob: { intro: 'jacobIntro', accept: 'jacobAccept', waiting: 'jacobWaiting', thanks: 'jacobThanks', done: 'jacobDone' },
   moses: { intro: 'mosesIntro', accept: 'mosesAccept', waiting: 'mosesWaiting', thanks: 'mosesThanks', done: 'mosesDone' },
+  aaron: { intro: 'aaronIntro', accept: 'aaronAccept', waiting: 'aaronWaiting', thanks: 'aaronThanks', done: 'aaronDone' },
+  joseph: { intro: 'josephIntro', accept: 'josephAccept', waiting: 'josephWaiting', thanks: 'josephThanks', done: 'josephDone' },
+  david: { intro: 'davidIntro', accept: 'davidAccept', waiting: 'davidWaiting', thanks: 'davidThanks', done: 'davidDone' },
 };
 
 function talkTo(guest: GuestId) {
@@ -216,6 +241,7 @@ function talkTo(guest: GuestId) {
           onClick: () => {
             commit(startQuest(progress, guest));
             if (guest === 'moses') startRide();
+            if (guest === 'david') openTune();
           },
         },
         { label: t('abrahamLater') },
@@ -226,7 +252,11 @@ function talkTo(guest: GuestId) {
         face,
         name,
         t(lines.waiting, params),
-        guest === 'moses' ? [{ label: t('rideAgain'), primary: true, onClick: startRide }, { label: t('abrahamLater') }] : [{ label: t('ok'), primary: true }],
+        guest === 'moses'
+          ? [{ label: t('rideAgain'), primary: true, onClick: startRide }, { label: t('abrahamLater') }]
+          : guest === 'david'
+            ? [{ label: t('davidAccept'), primary: true, onClick: openTune }, { label: t('abrahamLater') }]
+            : [{ label: t('ok'), primary: true }],
       );
       break;
     case 'returning':
@@ -237,7 +267,7 @@ function talkTo(guest: GuestId) {
           onClick: () => {
             commit(completeQuest(progress, guest));
             sound.play('fanfare');
-            world.sparkle(GUEST_SPOT[guest], '#ffd166', 2);
+            world.sparkle(world.guestSpot(guest), '#ffd166', 2);
             world.celebrate();
           },
         },
@@ -255,38 +285,76 @@ function talkTo(guest: GuestId) {
 
 // --- Quest tracker -----------------------------------------------------------------------------
 
+const QUEST_ICON: Record<GuestId, string> = { abraham: '🌿', isaac: '🏮', jacob: '🐑', moses: '🏺', aaron: '💛', joseph: '🌾', david: '🎵' };
+const QUEST_TALK: Record<GuestId, StringKey> = {
+  abraham: 'questTalk',
+  isaac: 'questTalkIsaac',
+  jacob: 'questTalkJacob',
+  moses: 'questTalkMoses',
+  aaron: 'questTalkAaron',
+  joseph: 'questTalkJoseph',
+  david: 'questTalkDavid',
+};
+const QUEST_RETURN: Record<GuestId, StringKey> = {
+  abraham: 'questReturn',
+  isaac: 'questReturnIsaac',
+  jacob: 'questReturnJacob',
+  moses: 'questReturnMoses',
+  aaron: 'questReturnAaron',
+  joseph: 'questReturnJoseph',
+  david: 'questReturnDavid',
+};
+
+/** Joseph's hot/cold meter: how close the nearest hidden sheaf is. */
+function sheafTemperature(): string {
+  const found = progress.quests.joseph.found;
+  const p = world.player.pos;
+  const d = Math.min(...SHEAF_SPOTS.filter((_, i) => !found.includes(String(i))).map((s) => Math.hypot(s.x - p.x, s.z - p.z)));
+  return t(d < 5 ? 'tempHot' : d < 11 ? 'tempWarm' : d < 20 ? 'tempMild' : 'tempCold');
+}
+
 function renderQuest() {
   const guest = currentGuest(progress);
-  let icon = '⏳';
-  let text = t('questAllDone');
+  let icon = '🎉';
+  let text = t(readyForGrandEvent(progress) ? 'questGrandEvent' : 'questAllDone');
   if (guest) {
     const q = progress.quests[guest];
-    icon = q.stage === 'returning' ? GUEST_FACE[guest] : { abraham: '🌿', isaac: '🏮', jacob: '🐑', moses: '🏺' }[guest];
-    if (q.stage === 'notStarted') text = t(({ abraham: 'questTalk', isaac: 'questTalkIsaac', jacob: 'questTalkJacob', moses: 'questTalkMoses' } as const)[guest]);
-    else if (q.stage === 'returning')
-      text = t(({ abraham: 'questReturn', isaac: 'questReturnIsaac', jacob: 'questReturnJacob', moses: 'questReturnMoses' } as const)[guest]);
-    else if (guest === 'abraham') text = t('questCollect', { n: q.found.length });
-    else if (guest === 'isaac')
-      text = lanternDeadline ? t('questLanternsTimer', { n: q.found.length, s: Math.ceil(lanternLeft()) }) : t('questLanterns', { n: q.found.length });
-    else if (guest === 'jacob') text = t('questLambs', { n: q.found.length });
-    else text = t('questJugs', { n: q.found.length });
+    const n = q.found.length;
+    icon = q.stage === 'returning' ? GUEST_FACE[guest] : QUEST_ICON[guest];
+    if (q.stage === 'notStarted') text = t(QUEST_TALK[guest]);
+    else if (q.stage === 'returning') text = t(QUEST_RETURN[guest]);
+    else if (guest === 'abraham') text = t('questCollect', { n });
+    else if (guest === 'isaac') text = lanternDeadline ? t('questLanternsTimer', { n, s: Math.ceil(lanternLeft()) }) : t('questLanterns', { n });
+    else if (guest === 'jacob') text = t('questLambs', { n });
+    else if (guest === 'moses') text = t('questJugs', { n });
+    else if (guest === 'aaron') text = t('questHelp', { n });
+    else if (guest === 'joseph') text = t('questSheaves', { n, temp: sheafTemperature() });
+    else text = t('questTunes', { n });
   }
   $('#quest-icon').textContent = icon;
-  $('#quest-text').textContent = text;
+  if ($('#quest-text').textContent !== text) $('#quest-text').textContent = text;
   $('#quest').classList.toggle('urgent', !!lanternDeadline && lanternLeft() < 10);
 }
 
 // --- Contextual action (talk / play / decorate) -----------------------------------------------
 
-type Action = 'talkAbraham' | 'talkIsaac' | 'talkJacob' | 'talkMoses' | 'playHunt' | 'decorate';
-const TALK: Record<GuestId, Action> = { abraham: 'talkAbraham', isaac: 'talkIsaac', jacob: 'talkJacob', moses: 'talkMoses' };
+type Action = 'talkAbraham' | 'talkIsaac' | 'talkJacob' | 'talkMoses' | 'talkAaron' | 'talkJoseph' | 'talkDavid' | 'playHunt' | 'decorate';
+const TALK: Record<GuestId, Action> = {
+  abraham: 'talkAbraham',
+  isaac: 'talkIsaac',
+  jacob: 'talkJacob',
+  moses: 'talkMoses',
+  aaron: 'talkAaron',
+  joseph: 'talkJoseph',
+  david: 'talkDavid',
+};
 let action: Action | null = null;
 
 function nearbyAction(): Action | null {
   if (scene !== 'walk') return null;
   const p = world.player.pos;
   for (const g of GUESTS)
-    if (progress.quests[g].stage !== 'locked' && Math.hypot(p.x - GUEST_SPOT[g].x, p.z - GUEST_SPOT[g].z) < 2.6) return TALK[g];
+    if (progress.quests[g].stage !== 'locked' && Math.hypot(p.x - world.guestSpot(g).x, p.z - world.guestSpot(g).z) < (guestsSeated ? 1.3 : 2.6)) return TALK[g];
   if (Math.hypot(p.x - HUB.x, p.z - HUB.z) < 3) return 'playHunt';
   if (inside(p, MY_SUKKAH, 0.8)) return 'decorate';
   return null;
@@ -333,6 +401,9 @@ const lanternLeft = () => Math.max(0, (lanternDeadline - performance.now()) / 10
 function checkQuestItems() {
   const p = world.player.pos;
   const near = (v: Vec, r: number) => Math.hypot(p.x - v.x, p.z - v.z) <= r;
+  checkAaron(near);
+  checkJoseph(near);
+  checkGrandEvent();
 
   if (progress.quests.abraham.stage === 'active')
     for (const id of SPECIES) {
@@ -391,6 +462,179 @@ function checkQuestItems() {
         }
       }
     });
+}
+
+// --- Aaron: helping the villagers ------------------------------------------------------------------
+
+const HELP_IDS = Object.keys(HELP_ITEMS) as HelpItem[];
+const NEED_ICON: Record<HelpItem, string> = { basket: '🧺', cushion: '💺', lulav: '🌿' };
+const NEED_TEXT: Record<HelpItem, StringKey> = { basket: 'needBasket', cushion: 'needCushion', lulav: 'needLulav' };
+/** What the player is carrying for Aaron (not saved: after a reload, just pick it up again). */
+let carrying: HelpItem | null = null;
+/** Villagers the player is standing next to, so each says their line once per visit. */
+const besideVillager = VILLAGERS.map(() => false);
+let guestsSeated = false;
+
+function checkAaron(near: (v: Vec, r: number) => boolean) {
+  const q = progress.quests.aaron;
+  if (q.stage !== 'active') return;
+  const needed = VILLAGERS.filter((_, i) => !q.found.includes(String(i))).map((v) => v.needs);
+  if (!carrying)
+    for (const id of HELP_IDS)
+      if (needed.includes(id) && near(HELP_ITEMS[id], 1.4)) {
+        carrying = id;
+        world.setCarrying(id);
+        sound.play('pickup');
+        toast(`${NEED_ICON[id]} ${t('pickedUp', { item: t(id) })}`);
+        refresh();
+      }
+  VILLAGERS.forEach((v, i) => {
+    if (q.found.includes(String(i))) return;
+    if (!near(v, 2)) {
+      besideVillager[i] = false;
+      return;
+    }
+    if (carrying === v.needs) {
+      carrying = null;
+      world.setCarrying(null);
+      world.sparkle(v, '#ff8fc7', 1.5);
+      world.celebrate();
+      sound.play('achievement');
+      const next = findItem(progress, 'aaron', String(i));
+      commit(next);
+      toast(`💛 ${t('helped', { n: next.quests.aaron.found.length })}`);
+    } else if (!besideVillager[i]) {
+      besideVillager[i] = true;
+      sound.play('pop');
+      toast(carrying ? t('wrongItem') : `${NEED_ICON[v.needs]} ${t(NEED_TEXT[v.needs])}`);
+    }
+  });
+}
+
+// --- Joseph: the hidden sheaves ---------------------------------------------------------------------
+
+function checkJoseph(near: (v: Vec, r: number) => boolean) {
+  const q = progress.quests.joseph;
+  if (q.stage !== 'active') return;
+  SHEAF_SPOTS.forEach((spot, i) => {
+    if (q.found.includes(String(i)) || !near(spot, 1.4)) return;
+    world.sparkle(spot, '#ffd23f', 1.2);
+    world.celebrate();
+    sound.play('chime');
+    const next = findItem(progress, 'joseph', String(i));
+    commit(next);
+    toast(next.quests.joseph.stage === 'returning' ? `🌾 ${t('allSheaves')}` : `🌾 ${t('sheafFound', { n: next.quests.joseph.found.length })}`);
+  });
+  renderQuest();
+}
+
+// --- David: the musical memory game -------------------------------------------------------------------
+
+const PAD_COLORS = ['#ff5d73', '#ffd23f', '#06d6a0', '#3a86ff'];
+let tuneSeq: number[] = [];
+let tuneAt = 0;
+let tuneListening = false;
+let tuneTimers: number[] = [];
+
+function openTune() {
+  setScene('tune');
+  $('#tune').classList.remove('hidden');
+  $('#tune-pads').replaceChildren(
+    ...PAD_COLORS.map((c, i) => {
+      const b = document.createElement('button');
+      b.className = 'pad';
+      b.style.setProperty('--pad', c);
+      b.setAttribute('aria-label', t('tunePad', { n: i + 1 }));
+      b.textContent = String(i + 1);
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        pressPad(i);
+      });
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          pressPad(i);
+        }
+      });
+      return b;
+    }),
+  );
+  newRound();
+}
+
+function newRound() {
+  const round = progress.quests.david.found.length;
+  tuneSeq = Array.from({ length: 3 + round }, () => Math.floor(Math.random() * 4));
+  $('#tune-round').textContent = t('tuneRound', { n: round + 1 });
+  playTune(900);
+}
+
+function flashPad(i: number) {
+  const pad = $('#tune-pads').children[i] as HTMLElement | undefined;
+  pad?.classList.add('lit');
+  sound.note(i);
+  window.setTimeout(() => pad?.classList.remove('lit'), 380);
+}
+
+function playTune(delay: number) {
+  tuneTimers.forEach(clearTimeout);
+  tuneListening = true;
+  tuneAt = 0;
+  $('#tune-status').textContent = t('tuneListen');
+  tuneTimers = tuneSeq.map((n, k) => window.setTimeout(() => flashPad(n), delay + k * 620));
+  tuneTimers.push(
+    window.setTimeout(() => {
+      tuneListening = false;
+      $('#tune-status').textContent = t('tuneYourTurn');
+    }, delay + tuneSeq.length * 620),
+  );
+}
+
+function pressPad(i: number) {
+  if (tuneListening || scene !== 'tune') return;
+  flashPad(i);
+  if (tuneSeq[tuneAt] !== i) {
+    sound.play('fail');
+    $('#tune-status').textContent = t('tuneWrong');
+    playTune(1100);
+    return;
+  }
+  tuneAt++;
+  if (tuneAt < tuneSeq.length) return;
+  tuneListening = true;
+  const next = findItem(progress, 'david', String(progress.quests.david.found.length));
+  commit(next);
+  sound.play('achievement');
+  $('#tune-status').textContent = t('tuneGood');
+  if (next.quests.david.stage === 'returning')
+    tuneTimers.push(
+      window.setTimeout(() => {
+        setScene('walk');
+        talkTo('david');
+      }, 1300),
+    );
+  else tuneTimers.push(window.setTimeout(newRound, 1300));
+}
+
+$('#tune-close').addEventListener('click', () => {
+  tuneTimers.forEach(clearTimeout);
+  setScene('walk');
+});
+addEventListener('keydown', (e) => {
+  if (scene === 'tune' && ['1', '2', '3', '4'].includes(e.key)) pressPad(Number(e.key) - 1);
+});
+
+// --- The Grand Sukkot Event ---------------------------------------------------------------------------
+
+world.onFirework = () => sound.play('firework');
+
+function checkGrandEvent() {
+  if (!readyForGrandEvent(progress) || !inside(world.player.pos, GRAND_SUKKAH, -0.5)) return;
+  commit(celebrateGrandEvent(progress));
+  world.fireworks(GRAND_SUKKAH, 12);
+  world.celebrate();
+  sound.play('fanfare');
+  say(GUEST_FACE.abraham, t('abraham'), t('grandEventText', { name: playerName(), coins: GRAND_EVENT_REWARD.coins }), [{ label: t('grandEventOk'), primary: true }]);
 }
 
 // --- Moses' raft ride ---------------------------------------------------------------------------
@@ -622,6 +866,7 @@ const HATS: Option<HatId>[] = [
   { value: 'crown', key: 'hatCrown', icon: '👑' },
   { value: 'sukkahHat', key: 'hatSukkah', icon: '🛖' },
   { value: 'hadasWreath', key: 'hatHadas', icon: '🌿' },
+  { value: 'starCrown', key: 'hatStarCrown', icon: '🌟' },
 ];
 const ACCESSORIES: Option<AccessoryId>[] = [
   { value: 'none', key: 'accNone', icon: '🚫' },
@@ -629,6 +874,7 @@ const ACCESSORIES: Option<AccessoryId>[] = [
   { value: 'etrogBag', key: 'accEtrogBag', icon: '🍋' },
   { value: 'lantern', key: 'accLantern', icon: '🏮' },
   { value: 'sukkahBackpack', key: 'accBackpack', icon: '🎒' },
+  { value: 'harp', key: 'accHarp', icon: '🪕' },
 ];
 const HAIR_STYLES: Option<HairStyle>[] = [
   { value: 'short', key: 'hairShort', icon: '💇' },
@@ -652,6 +898,7 @@ const PATTERNS: Option<Pattern>[] = [
   { value: 'plain', key: 'patternPlain', icon: '👕' },
   { value: 'stripes', key: 'patternStripes', icon: '〰️' },
   { value: 'stars', key: 'patternStars', icon: '⭐' },
+  { value: 'rainbow', key: 'patternRainbow', icon: '🌈' },
 ];
 
 type Tab = 'body' | 'face' | 'hair' | 'clothes' | 'hats' | 'extras';
@@ -678,7 +925,7 @@ function pickDraft(change: Partial<Avatar>) {
 const pick = <T,>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
 
 function randomLook() {
-  const owned = <T extends HatId | AccessoryId>(list: Option<T>[]) => list.filter((c) => ownsWear(progress, c.value)).map((c) => c.value);
+  const owned = <T extends HatId | AccessoryId | Pattern>(list: Option<T>[]) => list.filter((c) => ownsWear(progress, c.value)).map((c) => c.value);
   pickDraft({
     skin: pick(SKINS),
     hair: pick(HAIRS),
@@ -686,7 +933,7 @@ function randomLook() {
     eyes: pick(EYES).value,
     mouth: pick(MOUTHS).value,
     shirt: pick(SHIRTS),
-    pattern: pick(PATTERNS).value,
+    pattern: pick(owned(PATTERNS)),
     pants: pick(PANTS),
     shoes: pick(SHOES),
     hat: pick(owned(HATS)),
@@ -732,7 +979,8 @@ function choiceRow<T extends string>(label: StringKey, choices: Option<T>[], key
     b.className = 'choice';
     b.dataset.focusId = `${String(key)}-${c.value}`;
     b.setAttribute('aria-pressed', String(current === c.value));
-    const locked = priced && !ownsWear(progress, c.value as HatId | AccessoryId);
+    const locked = priced && !ownsWear(progress, c.value as HatId | AccessoryId | Pattern);
+    const earned = REWARD_ONLY.includes(c.value as WearId);
     const price = WEAR_PRICES[c.value as WearId];
     b.innerHTML = '<span class="choice-icon" aria-hidden="true"></span><span class="choice-name"></span>';
     b.querySelector('.choice-icon')!.textContent = c.icon;
@@ -741,9 +989,9 @@ function choiceRow<T extends string>(label: StringKey, choices: Option<T>[], key
       b.classList.add('locked');
       const tag = document.createElement('span');
       tag.className = 'choice-price';
-      tag.textContent = `🔒 ${price}`;
+      tag.textContent = earned ? '🎁' : `🔒 ${price}`;
       b.append(tag);
-      b.setAttribute('aria-label', `${t(c.key)}, ${t('lockedPrice', { price: price ?? 0 })}`);
+      b.setAttribute('aria-label', `${t(c.key)}, ${earned ? t('lockedReward') : t('lockedPrice', { price: price ?? 0 })}`);
     }
     b.addEventListener('click', () => pickDraft({ [key]: c.value }));
     row.append(b);
@@ -754,13 +1002,20 @@ function choiceRow<T extends string>(label: StringKey, choices: Option<T>[], key
 /** A bar offering to buy whatever is being tried on but isn't owned yet. */
 function renderTryOn() {
   const bar = $('#try-on');
-  const tryOn = [draft.hat, draft.accessory ?? 'none'].find((id) => !ownsWear(progress, id)) as WearId | undefined;
+  const tryOn = [draft.hat, draft.accessory ?? 'none', draft.pattern ?? 'plain'].find((id) => !ownsWear(progress, id)) as WearId | undefined;
   bar.classList.toggle('hidden', !tryOn);
   if (!tryOn) return;
-  const choice = [...HATS, ...ACCESSORIES].find((c) => c.value === tryOn)!;
+  const choice = [...HATS, ...ACCESSORIES, ...PATTERNS].find((c) => c.value === tryOn)!;
+  const buyBtn = $('#try-on-buy');
+  if (REWARD_ONLY.includes(tryOn)) {
+    // Special things can be tried on, but only the Ushpizin give them.
+    $('#try-on-text').textContent = `${choice.icon} ${t('rewardOnly')}`;
+    buyBtn.classList.add('hidden');
+    return;
+  }
+  buyBtn.classList.remove('hidden');
   const price = WEAR_PRICES[tryOn]!;
   $('#try-on-text').textContent = `${choice.icon} ${t('tryOnText', { item: t(choice.key), price })}`;
-  const buyBtn = $('#try-on-buy');
   buyBtn.textContent = t('buyWear', { price });
   buyBtn.classList.toggle('cant', progress.coins < price);
   buyBtn.onclick = () => {
@@ -805,7 +1060,7 @@ function renderCreator() {
   if (tab === 'clothes')
     parts.push(
       swatchRow('shirt', SHIRTS, 'shirt'),
-      choiceRow('pattern', PATTERNS, 'pattern'),
+      choiceRow('pattern', PATTERNS, 'pattern', true),
       swatchRow('pants', PANTS, 'pants'),
       swatchRow('shoes', SHOES, 'shoes'),
     );
@@ -838,7 +1093,7 @@ $('#creator-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $<HTMLInputElement>('#avatar-name').value.trim().slice(0, 14);
   const first = !progress.avatar;
-  const triedOn = !ownsWear(progress, draft.hat) || !ownsWear(progress, draft.accessory ?? 'none');
+  const triedOn = [draft.hat, draft.accessory ?? 'none', draft.pattern ?? 'plain'].some((id) => !ownsWear(progress, id));
   commit(setAvatar(progress, { ...draft, name }));
   if (triedOn) toast(t('tryOnNotSaved'));
   world.setAvatar(progress.avatar!);
@@ -976,6 +1231,7 @@ if (import.meta.env.DEV)
       walkTo: (x: number, z: number) => {
         world.player.pos = { x, z };
       },
+      tuneSeq: () => [...tuneSeq],
     },
   });
 

@@ -1117,3 +1117,58 @@ button:disabled {
   color: var(--ink-soft);
   text-decoration: line-through;
 }
+
+/* --- David's memory game -------------------------------------------------------------------------------- */
+
+.tune-status {
+  min-height: 1.6em;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--grape);
+}
+
+.pads {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin: 8px auto 18px;
+  max-width: 300px;
+}
+
+.pad {
+  aspect-ratio: 1;
+  border-radius: 28px;
+  background: var(--pad);
+  color: rgba(29, 43, 83, 0.55);
+  font-size: 30px;
+  font-weight: 900;
+  box-shadow:
+    0 6px 0 color-mix(in srgb, var(--pad) 70%, #000),
+    inset 0 3px 0 rgba(255, 255, 255, 0.45);
+  filter: saturate(0.75) brightness(0.92);
+  transition:
+    transform 0.08s,
+    filter 0.08s;
+  touch-action: manipulation;
+}
+
+.pad.lit {
+  filter: saturate(1.2) brightness(1.25);
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 6px #fff,
+    0 0 30px var(--pad);
+}
+
+/* Villagers' wishes float above their heads. */
+.label.need {
+  font-size: 22px;
+  padding: 2px 10px;
+  animation: float 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes float {
+  to {
+    translate: 0 -8px;
+  }
+}

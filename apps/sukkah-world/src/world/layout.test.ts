@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SPECIES } from '../game/progress';
-import { buildMaze, MOSES, RIDE_END, riverPoint, GRAND_SUKKAH, huntCandidates, isFree, ISAAC, JACOB, LAMB_SPOTS, MAZE, MY_SUKKAH, PEN, resolve, SPAWN, SPECIES_SPOTS, WORLD_RADIUS } from './layout';
+import { AARON, DAVID, HELP_ITEMS, JOSEPH, SHEAF_SPOTS, VILLAGERS, buildMaze, MOSES, RIDE_END, riverPoint, GRAND_SUKKAH, huntCandidates, isFree, ISAAC, JACOB, LAMB_SPOTS, MAZE, MY_SUKKAH, PEN, resolve, SPAWN, SPECIES_SPOTS, WORLD_RADIUS } from './layout';
 
 describe('village layout', () => {
   it('spawns the player and places the four species on open ground', () => {
@@ -48,5 +48,14 @@ describe('village layout', () => {
     expect(Math.hypot(p.x - middle.x, p.z - middle.z)).toBeGreaterThan(2);
     expect(isFree(MOSES, 0) || isFree({ x: MOSES.x, z: MOSES.z + 1 }, 0.4)).toBe(true);
     expect(isFree(RIDE_END, 0.4)).toBe(true);
+  });
+
+  it('puts the last three Ushpizin, their villagers, items and sheaves where they can be reached', () => {
+    for (const p of [...Object.values(HELP_ITEMS), ...SHEAF_SPOTS]) expect(isFree(p, 0.4)).toBe(true);
+    for (const p of [AARON, JOSEPH, DAVID, ...VILLAGERS]) {
+      // Characters are obstacles themselves; the spot right in front of them must be open.
+      expect(isFree({ x: p.x, z: p.z + 1.1 }, 0.4) || isFree({ x: p.x + 1.1, z: p.z }, 0.4)).toBe(true);
+    }
+    expect(SHEAF_SPOTS).toHaveLength(5);
   });
 });

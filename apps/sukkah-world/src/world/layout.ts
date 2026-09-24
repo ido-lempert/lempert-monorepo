@@ -236,6 +236,8 @@ export function buildMaze(seed = 5): Maze {
 
 export const MAZE_LAYOUT = buildMaze();
 export const LAMB_SPOTS: Vec[] = MAZE_LAYOUT.deadEnds.slice(0, 3);
+/** A dead end not taken by a lamb, for one of Joseph's sheaves. */
+export const MAZE_SHEAF: Vec = MAZE_LAYOUT.deadEnds[3] ?? MAZE_LAYOUT.deadEnds[0];
 
 // --- Moses' river ----------------------------------------------------------------------------------
 
@@ -253,6 +255,50 @@ const bankPoint = (angle: number, r: number): Vec => ({ x: Math.cos(angle) * r, 
 /** Moses waits on the near bank, behind the Grand Sukkah; the ride ends further down the river. */
 export const MOSES: Vec = bankPoint((270 / 180) * Math.PI, RIVER.r - RIVER.halfWidth - 2.2);
 export const RIDE_END: Vec = bankPoint(RIVER_TO - 0.04, RIVER.r - RIVER.halfWidth - 1.5);
+
+// --- Aaron, Joseph and David ---------------------------------------------------------------------
+
+/** Aaron stands in the plaza, opposite Abraham. */
+export const AARON: Vec = { x: -3.2, z: 3.5 };
+export type HelpItem = 'basket' | 'cushion' | 'lulav';
+export const MARKET: Vec = { x: -7.6, z: 9.6 };
+/** Where each thing Aaron's villagers need can be picked up. */
+export const HELP_ITEMS: Record<HelpItem, Vec> = {
+  basket: { x: -6.2, z: 8.6 },
+  cushion: { x: 4.2, z: -15.2 },
+  lulav: { x: -18, z: 1 },
+};
+
+const inFrontOf = (h: Vec, d: number): Vec => {
+  const len = Math.hypot(h.x, h.z);
+  return { x: h.x - (h.x / len) * d, z: h.z - (h.z / len) * d };
+};
+/** Three villagers outside their houses, each waiting for one thing. */
+export const VILLAGERS: (Vec & { needs: HelpItem })[] = [
+  { ...inFrontOf(HOUSES[1], 3.4), needs: 'cushion' },
+  { ...inFrontOf(HOUSES[2], 3.4), needs: 'basket' },
+  { ...inFrontOf(HOUSES[3], 3.4), needs: 'lulav' },
+];
+
+/** Joseph and David wait on either side of the path to the Game Hub. */
+export const JOSEPH: Vec = { x: -5, z: 16 };
+export const DAVID: Vec = { x: 5, z: 16 };
+
+/** Joseph's golden sheaves, hidden all over the village (one of them deep in Jacob's maze). */
+export const SHEAF_SPOTS: Vec[] = [
+  { x: -13, z: -15.8 },
+  { x: -5, z: -24 },
+  { x: 15, z: 25 },
+  { x: -29.5, z: 15 },
+  MAZE_SHEAF,
+];
+
+/** Seats around the long table in the Grand Sukkah, where the Ushpizin gather for the Grand Sukkot Event. */
+export const GUEST_SEATS: (Vec & { facing: number })[] = Array.from({ length: 7 }, (_, i) => ({
+  x: GRAND_SUKKAH.x - 3 + i,
+  z: GRAND_SUKKAH.z + (i % 2 ? -0.1 : -1.9),
+  facing: i % 2 ? Math.PI : 0,
+}));
 
 export const WALL = 0.3;
 
@@ -282,6 +328,11 @@ export const CIRCLES: Circle[] = [
   { ...ISAAC, r: 0.5 },
   { ...JACOB, r: 0.5 },
   { ...MOSES, r: 0.5 },
+  { ...AARON, r: 0.5 },
+  { ...JOSEPH, r: 0.5 },
+  { ...DAVID, r: 0.5 },
+  { ...MARKET, r: 0.9 },
+  ...VILLAGERS.map((v) => ({ x: v.x, z: v.z, r: 0.45 })),
   ...LANTERNS.map((l) => ({ ...l, r: 0.25 })),
   ...FOREST_TREES.map((p) => ({ ...p, r: 0.7 })),
   // The two pillars of the Game Hub arch.

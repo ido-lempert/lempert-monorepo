@@ -5,6 +5,9 @@ import {
   type GuestId,
   GUESTS,
   QUEST_ITEMS,
+  celebrateGrandEvent,
+  GRAND_EVENT_REWARD,
+  readyForGrandEvent,
   QUEST_REWARDS,
   resetItems,
   available,
@@ -64,6 +67,12 @@ describe('Ushpizin quests', () => {
     expect(currentGuest(p)).toBe('moses');
     p = finish(p, 'moses');
     expect(p.owned.waterJug).toBe(1);
+    for (const g of ['aaron', 'joseph', 'david'] as const) {
+      expect(currentGuest(p)).toBe(g);
+      p = finish(p, g);
+    }
+    expect(p.pets).toEqual(['lamb', 'dove']);
+    expect(p.ownedWear).toEqual(expect.arrayContaining(['rainbow', 'harp']));
     expect(currentGuest(p)).toBeNull();
     expect(p.coins).toBe(GUESTS.reduce((sum, g) => sum + QUEST_REWARDS[g].coins, 0));
   });
@@ -185,5 +194,27 @@ describe('character wearables', () => {
     expect(p.avatar!.accessory).toBe('none');
     p = setAvatar({ ...p, ownedWear: ['crown'] }, { ...avatar, hat: 'crown' });
     expect(p.avatar!.hat).toBe('crown');
+  });
+});
+
+describe('Grand Sukkot Event', () => {
+  it('happens once, after all seven Ushpizin', () => {
+    let p = newProgress();
+    expect(readyForGrandEvent(p)).toBe(false);
+    for (const g of GUESTS) p = { ...p, quests: { ...p.quests, [g]: { stage: 'done', found: [] } } };
+    expect(readyForGrandEvent(p)).toBe(true);
+    p = celebrateGrandEvent(p);
+    expect(p.ownedWear).toContain(GRAND_EVENT_REWARD.wear);
+    expect(p.coins).toBe(GRAND_EVENT_REWARD.coins);
+    expect(celebrateGrandEvent(p).coins).toBe(GRAND_EVENT_REWARD.coins);
+    expect(readyForGrandEvent(p)).toBe(false);
+  });
+
+  it('keeps reward-only wearables out of reach until earned', () => {
+    const avatar = { name: 'נועה', skin: '#f1c7a0', shirt: '#2a9d8f', hat: 'starCrown' as const, pattern: 'rainbow' as const };
+    const p = setAvatar({ ...newProgress(), coins: 1000 }, avatar);
+    expect(p.avatar!.hat).toBe('none');
+    expect(p.avatar!.pattern).toBe('plain');
+    expect(buyWear({ ...newProgress(), coins: 1000 }, 'harp').ownedWear).toEqual([]);
   });
 });

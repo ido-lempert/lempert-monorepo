@@ -13,10 +13,19 @@ import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRe
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Hunt, Vec } from '../game/hunt';
 import { JUG_SPOTS, type Raft, RIVER_LENGTH, ROCKS } from '../game/raft';
-import { type Avatar, decoration, type GuestId, type Placed, SPECIES, type SpeciesId } from '../game/progress';
+import { type Avatar, decoration, type GuestId, type PetId, type Placed, SPECIES, type SpeciesId } from '../game/progress';
 import { type StringKey, t } from '../i18n';
 import {
+  AARON,
   ABRAHAM,
+  DAVID,
+  GUEST_SEATS,
+  HELP_ITEMS,
+  type HelpItem,
+  JOSEPH,
+  MARKET,
+  SHEAF_SPOTS,
+  VILLAGERS,
   FOREST_TREES,
   ISAAC,
   JACOB,
@@ -47,7 +56,15 @@ import {
 } from './layout';
 import { cloud, HORIZON, initialQuality, mat, type Quality, setWindTime, skyDome, sparkleTexture, swayMat, tileTexture, wingTexture } from './look';
 import {
+  aaron,
   abraham,
+  david,
+  dove,
+  helpItem,
+  joseph,
+  marketStall,
+  sheaf,
+  villager,
   hedge,
   isaac,
   jacob,
@@ -141,7 +158,15 @@ export class World {
 
   readonly player: Walker;
   private rival: Walker;
-  private guests = new Map<GuestId, { char: Character; tag: HTMLDivElement; home: Vec; rest: number }>();
+  private guests = new Map<GuestId, { char: Character; tag: HTMLDivElement; home: Vec; rest: number; seat?: (typeof GUEST_SEATS)[number] }>();
+  private villagers: { char: Character; tag: HTMLDivElement; home: Vec; happy: boolean }[] = [];
+  private helpItems = new Map<HelpItem, THREE.Group>();
+  private carried: THREE.Group | null = null;
+  private sheaves: THREE.Group[] = [];
+  private sheafState = { active: false, found: [] as string[] };
+  private dove: { group: THREE.Group; wings: [THREE.Object3D, THREE.Object3D] } | null = null;
+  private fireworksUntil = 0;
+  private nextFirework = 0;
   private lanterns: THREE.Mesh[] = [];
   /** Jacob's lambs: lost in the maze, following the player, or safe in the pen. */
   private lambs: Walker[] = [];
@@ -167,6 +192,7 @@ export class World {
   private hop = 0;
   /** Big things (houses, trees, palms) that turn see-through when they hide the player. */
   private occluders: THREE.Object3D[] = [];
+  private grandRoof: THREE.Object3D | null = null;
   private faded = new Set<THREE.Object3D>();
 
   mode: CameraMode = 'walk';
@@ -229,6 +255,10 @@ export class World {
     this.addGuest('isaac', isaac(), ISAAC, 1.2);
     this.addGuest('jacob', jacob(), JACOB, -1.3);
     this.addGuest('moses', moses(), MOSES, Math.PI);
+    this.addGuest('aaron', aaron(), AARON, 0.6);
+    this.addGuest('joseph', joseph(), JOSEPH, 0.5);
+    this.addGuest('david', david(), DAVID, -0.5);
+    this.buildHelpers();
     this.buildForest();
     this.buildMaze();
     this.buildRiver();
@@ -496,6 +526,9 @@ export class World {
       grand.group.add(lantern);
     }
     this.scene.add(grand.group);
+    // The schach fades when the player is inside, so the table and the guests stay in view.
+    this.occluders.push(grand.roof);
+    this.grandRoof = grand.roof;
     this.label('grandSukkah', GRAND_SUKKAH.x, SUKKAH_HEIGHT + 1.3, GRAND_SUKKAH.z, 'zone');
   }
 
@@ -765,6 +798,139 @@ export class World {
     this.setMode('walk');
   }
 
+  /** Aaron's villagers and market, Joseph's hidden sheaves. */
+  private buildHelpers() {
+    const stall = this.add(marketStall(), MARKET.x, MARKET.z);
+    stall.rotation.y = Math.atan2(-MARKET.x, -MARKET.z);
+    this.label('market', MARKET.x, 2.9, MARKET.z, 'zone');
+    VILLAGERS.forEach((v, i) => {
+      const char = villager(i);
+      char.group.scale.setScalar(0.85);
+      char.group.position.set(v.x, 0, v.z);
+      this.scene.add(char.group);
+      const tag = this.label('villager', 0, 2.3, 0, 'npc', char.group);
+      tag.classList.add('need');
+      char.group.visible = false;
+      this.villagers.push({ char, tag, home: v, happy: false });
+    });
+    for (const id of Object.keys(HELP_ITEMS) as HelpItem[]) {
+      const g = new THREE.Group();
+      const model = helpItem(id);
+      model.position.y = 0.9;
+      g.add(model, marker('#ff8fc7', 0.6, true));
+      this.add(g, HELP_ITEMS[id].x, HELP_ITEMS[id].z);
+      g.visible = false;
+      this.helpItems.set(id, g);
+    }
+    this.sheaves = SHEAF_SPOTS.map((p) => {
+      const g = new THREE.Group();
+      g.add(sheaf(), marker('#ffd23f', 0.6, true));
+      this.add(g, p.x, p.z);
+      g.visible = false;
+      return g;
+    });
+  }
+
+  /** Villagers appear with Aaron; `needs` is the emoji bubble shown above those still waiting. */
+  setVillagers(visible: boolean, happy: boolean[], needs: string[]) {
+    this.villagers.forEach((v, i) => {
+      v.char.group.visible = visible;
+      v.happy = happy[i];
+      v.tag.textContent = happy[i] ? '💛' : needs[i];
+    });
+  }
+
+  setHelpItems(visible: Partial<Record<HelpItem, boolean>>) {
+    for (const [id, g] of this.helpItems) g.visible = !!visible[id];
+  }
+
+  /** What the player is carrying for Aaron, floating above their head. */
+  setCarrying(item: HelpItem | null) {
+    if (this.carried) this.scene.remove(this.carried);
+    this.carried = item ? helpItem(item) : null;
+    if (this.carried) this.scene.add(this.carried);
+  }
+
+  /** Joseph's sheaves only show themselves when the player is close. */
+  setSheaves(active: boolean, found: string[]) {
+    this.sheafState = { active, found };
+  }
+
+  /** Seats the Ushpizin around the Grand Sukkah table (true) or sends them back to their places. */
+  seatGuests(seated: boolean) {
+    [...this.guests.values()].forEach((g, i) => {
+      g.seat = seated ? GUEST_SEATS[i] : undefined;
+      const at = g.seat ?? g.home;
+      g.char.group.position.set(at.x, seated ? FLOOR_Y : 0, at.z);
+    });
+  }
+
+  /** Where a guest can be talked to right now. */
+  guestSpot(id: GuestId): Vec {
+    const g = this.guests.get(id)!;
+    return g.seat ?? g.home;
+  }
+
+  /** Fireworks over a spot for a few seconds. */
+  fireworks(at: Vec, seconds: number) {
+    this.fireworksAt = at;
+    this.fireworksUntil = this.timer.getElapsed() + seconds;
+  }
+  private fireworksAt: Vec = { x: 0, z: 0 };
+
+  private updateHelpers(dt: number, time: number, still: boolean) {
+    for (const v of this.villagers) {
+      if (!v.char.group.visible) continue;
+      const d = Math.hypot(this.player.pos.x - v.home.x, this.player.pos.z - v.home.z);
+      const face = Math.atan2(this.player.pos.x - v.home.x, this.player.pos.z - v.home.z);
+      if (d < 7) v.char.group.rotation.y = turnTowards(v.char.group.rotation.y, face, dt * 4);
+      animateWalk(v.char, 0, 0, still ? 0 : time);
+      // Happy villagers bounce.
+      if (v.happy && !still) v.char.rig.position.y = Math.abs(Math.sin(time * 5)) * 0.15;
+    }
+    for (const g of this.helpItems.values()) if (!still) g.children[0].rotation.y = time * 1.5;
+    if (this.carried) {
+      this.carried.position.set(this.player.pos.x, 2.35 + Math.sin(time * 4) * 0.05, this.player.pos.z);
+      this.carried.rotation.y = time;
+    }
+    this.sheaves.forEach((g, i) => {
+      const p = SHEAF_SPOTS[i];
+      const near = Math.hypot(this.player.pos.x - p.x, this.player.pos.z - p.z) < 7;
+      g.visible = this.sheafState.active && !this.sheafState.found.includes(String(i)) && near;
+      if (g.visible && !still) g.children[0].rotation.y = time * 2;
+    });
+    if (this.dove) {
+      const d = this.dove;
+      // Flutters at the player's right shoulder, a little behind.
+      const h = this.player.heading;
+      const target = new THREE.Vector3(
+        this.player.pos.x + Math.cos(h) * -0.9 - Math.sin(h) * 0.5,
+        2.1 + Math.sin(time * 3) * 0.15,
+        this.player.pos.z - Math.sin(h) * -0.9 - Math.cos(h) * 0.5,
+      );
+      if (d.group.position.distanceTo(target) > 8) d.group.position.copy(target);
+      d.group.position.lerp(target, 1 - Math.exp(-dt * 4));
+      d.group.rotation.y = turnTowards(d.group.rotation.y, h, dt * 5);
+      const flap = still ? 0.3 : Math.sin(time * 16) * 0.7;
+      d.wings[0].rotation.z = flap;
+      d.wings[1].rotation.z = -flap;
+    }
+    const now = this.timer.getElapsed();
+    if (now < this.fireworksUntil && now > this.nextFirework) {
+      this.nextFirework = now + 0.35;
+      const colors = ['#ff5d73', '#ffd23f', '#4dd4ff', '#7cf07c', '#c77dff', '#ff9f1c'];
+      const a = Math.random() * Math.PI * 2;
+      this.sparkle(
+        { x: this.fireworksAt.x + Math.cos(a) * 4, z: this.fireworksAt.z + Math.sin(a) * 3 },
+        colors[Math.floor(Math.random() * colors.length)],
+        6 + Math.random() * 3,
+      );
+      this.onFirework?.();
+    }
+  }
+  /** Called for every firework burst (for the bang sound). */
+  onFirework: (() => void) | null = null;
+
   // --- Quality ----------------------------------------------------------------------------------
 
   private applyQuality() {
@@ -831,7 +997,17 @@ export class World {
   }
 
   /** The player's own pet lamb, trotting after them. */
-  setPet(has: boolean) {
+  /** Shows the player's pets: the lamb trots behind, the dove flutters at their shoulder. */
+  setPets(pets: PetId[]) {
+    this.setLamb(pets.includes('lamb'));
+    if (pets.includes('dove') && !this.dove) {
+      this.dove = dove();
+      this.dove.group.position.set(this.player.pos.x, 2, this.player.pos.z);
+      this.scene.add(this.dove.group);
+    }
+  }
+
+  private setLamb(has: boolean) {
     if (has && !this.pet) {
       const lamb = sheep();
       lamb.group.scale.setScalar(0.55);
@@ -957,6 +1133,13 @@ export class World {
 
     // The guests turn to whoever comes near, and wave.
     for (const g of this.guests.values()) {
+      if (g.seat) {
+        // At the Grand Sukkah table: sitting, smiling, and David plays his harp.
+        g.char.group.rotation.y = g.seat.facing;
+        animateWalk(g.char, 0, 0, still ? 0 : time);
+        g.char.limbs.armL.rotation.z = still ? -0.15 : -0.5 + Math.sin(time * 6 + g.seat.x) * 0.15;
+        continue;
+      }
       const d = Math.hypot(this.player.pos.x - g.home.x, this.player.pos.z - g.home.z);
       const face = d < 6 ? Math.atan2(this.player.pos.x - g.home.x, this.player.pos.z - g.home.z) : g.rest;
       g.char.group.rotation.y = turnTowards(g.char.group.rotation.y, face, dt * 4);
@@ -964,6 +1147,7 @@ export class World {
       g.char.limbs.armL.rotation.z = d < 6 && !still ? -2.3 + Math.sin(time * 8) * 0.35 : -0.15;
     }
     this.updateLambs(dt, time);
+    this.updateHelpers(dt, time, still);
 
     if (!still) {
       setWindTime(time);
@@ -1100,10 +1284,13 @@ export class World {
         if (o) hiding.add(o);
       }
     this.raycaster.far = Infinity;
+    if (this.mode === 'walk' && this.grandRoof && inside(this.player.pos, GRAND_SUKKAH, 0)) hiding.add(this.grandRoof);
     // Also anything tall standing right in front of the camera, which would fill the foreground.
     if (this.mode === 'walk')
-      for (const o of this.occluders)
-        if (o.position.z > this.player.pos.z + 2 && Math.abs(o.position.x - this.player.pos.x) < 7) hiding.add(o);
+      for (const o of this.occluders) {
+        const at = o.getWorldPosition(scratch);
+        if (at.z > this.player.pos.z + 2 && Math.abs(at.x - this.player.pos.x) < 7 && o.parent === this.scene) hiding.add(o);
+      }
     for (const o of hiding) if (!this.faded.has(o)) setFaded(o, true);
     for (const o of this.faded) if (!hiding.has(o)) setFaded(o, false);
     this.faded = hiding;
@@ -1185,6 +1372,7 @@ export class World {
 }
 
 const round = (v: number) => Math.round(v * 4) / 4;
+const scratch = new THREE.Vector3();
 
 const fadedMats = new Map<THREE.Material, THREE.Material>();
 

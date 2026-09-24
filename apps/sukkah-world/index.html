@@ -165,6 +165,18 @@
       </div>
     </div>
 
+    <!-- David's musical memory game -->
+    <div class="overlay hidden" id="tune">
+      <div class="card tune-card" role="dialog" aria-modal="true" aria-labelledby="tune-title">
+        <div class="card-art" aria-hidden="true">🎵</div>
+        <h1 id="tune-title" data-i18n="tuneTitle"></h1>
+        <p class="lead" id="tune-round"></p>
+        <p class="tune-status" id="tune-status" role="status" aria-live="polite"></p>
+        <div class="pads" id="tune-pads"></div>
+        <button class="secondary" id="tune-close" data-i18n="close"></button>
+      </div>
+    </div>
+
     <div class="update hidden" id="update" role="status">
       <span data-i18n="updateAvailable"></span>
       <button class="primary" id="update-now" data-i18n="updateNow"></button>

@@ -28,12 +28,12 @@ export const DECORATIONS: DecorationDef[] = [
 
 export const decoration = (id: DecorationId) => DECORATIONS.find((d) => d.id === id)!;
 
-export type HatId = 'none' | 'kippah' | 'cap' | 'crown' | 'sukkahHat' | 'hadasWreath';
+export type HatId = 'none' | 'kippah' | 'cap' | 'crown' | 'sukkahHat' | 'hadasWreath' | 'starCrown';
 export type HairStyle = 'short' | 'long' | 'curly' | 'ponytail' | 'spiky' | 'buzz';
 export type EyeStyle = 'round' | 'happy' | 'sparkle';
 export type MouthStyle = 'smile' | 'grin' | 'tongue';
-export type Pattern = 'plain' | 'stripes' | 'stars';
-export type AccessoryId = 'none' | 'glasses' | 'etrogBag' | 'lantern' | 'sukkahBackpack';
+export type Pattern = 'plain' | 'stripes' | 'stars' | 'rainbow';
+export type AccessoryId = 'none' | 'glasses' | 'etrogBag' | 'lantern' | 'sukkahBackpack' | 'harp';
 
 export interface Avatar {
   name: string;
@@ -66,8 +66,14 @@ export function fullAvatar(a: Avatar): Required<Avatar> {
   return { ...AVATAR_DEFAULTS, ...a } as Required<Avatar>;
 }
 
-/** Festive wearables bought with coins in the character creator. Anything not listed here is free. */
-export type WearId = Exclude<HatId | AccessoryId, 'none'>;
+/**
+ * Festive wearables: some are bought with coins in the character creator, a few special ones are only
+ * given by the Ushpizin. Anything in neither list is free.
+ */
+export type WearId = Exclude<HatId | AccessoryId | Pattern, 'none'>;
+
+/** Only earned: Joseph's coat of many colours, David's harp and the star crown of the Grand Sukkot Event. */
+export const REWARD_ONLY: WearId[] = ['rainbow', 'harp', 'starCrown'];
 
 export const WEAR_PRICES: Partial<Record<WearId, number>> = {
   crown: 30,
@@ -91,12 +97,16 @@ export interface Placed {
  *   Abraham – collect the four species in the garden;
  *   Isaac   – light every lantern on the forest trail before time runs out;
  *   Jacob   – find his lost lambs in the hedge maze and lead them back to the pen;
- *   Moses   – ride a raft down the river and collect the floating water jugs.
+ *   Moses   – ride a raft down the river and collect the floating water jugs;
+ *   Aaron   – help three villagers by bringing each what they need;
+ *   Joseph  – find the golden sheaves hidden around the village (with a hot/cold meter);
+ *   David   – repeat his harp tunes in a musical memory game.
+ * When all seven are done, everyone gathers for the Grand Sukkot Event.
  * A quest goes locked → notStarted (the guest has arrived) → active → returning (all found) → done,
  * and finishing one brings the next guest.
  */
-export type GuestId = 'abraham' | 'isaac' | 'jacob' | 'moses';
-export const GUESTS: GuestId[] = ['abraham', 'isaac', 'jacob', 'moses'];
+export type GuestId = 'abraham' | 'isaac' | 'jacob' | 'moses' | 'aaron' | 'joseph' | 'david';
+export const GUESTS: GuestId[] = ['abraham', 'isaac', 'jacob', 'moses', 'aaron', 'joseph', 'david'];
 export type QuestStage = 'locked' | 'notStarted' | 'active' | 'returning' | 'done';
 
 export interface Quest {
@@ -108,9 +118,20 @@ export interface Quest {
 export const LANTERN_COUNT = 6;
 export const LAMB_COUNT = 3;
 export const JUG_COUNT = 5;
-export const QUEST_ITEMS: Record<GuestId, number> = { abraham: SPECIES.length, isaac: LANTERN_COUNT, jacob: LAMB_COUNT, moses: JUG_COUNT };
+export const HELP_COUNT = 3;
+export const SHEAF_COUNT = 5;
+export const TUNE_ROUNDS = 3;
+export const QUEST_ITEMS: Record<GuestId, number> = {
+  abraham: SPECIES.length,
+  isaac: LANTERN_COUNT,
+  jacob: LAMB_COUNT,
+  moses: JUG_COUNT,
+  aaron: HELP_COUNT,
+  joseph: SHEAF_COUNT,
+  david: TUNE_ROUNDS,
+};
 
-export type PetId = 'lamb';
+export type PetId = 'lamb' | 'dove';
 
 export interface QuestReward {
   coins: number;
@@ -124,7 +145,12 @@ export const QUEST_REWARDS: Record<GuestId, QuestReward> = {
   isaac: { coins: 60, wear: 'hadasWreath' },
   jacob: { coins: 80, pet: 'lamb' },
   moses: { coins: 70, decoration: 'waterJug' },
+  aaron: { coins: 70, pet: 'dove' },
+  joseph: { coins: 90, wear: 'rainbow' },
+  david: { coins: 100, wear: 'harp' },
 };
+
+export const GRAND_EVENT_REWARD = { coins: 150, wear: 'starCrown' as WearId };
 
 export interface Progress {
   version: 1;
@@ -156,6 +182,9 @@ export function newProgress(): Progress {
       isaac: { stage: 'locked', found: [] },
       jacob: { stage: 'locked', found: [] },
       moses: { stage: 'locked', found: [] },
+      aaron: { stage: 'locked', found: [] },
+      joseph: { stage: 'locked', found: [] },
+      david: { stage: 'locked', found: [] },
     },
     pets: [],
     achievements: [],
@@ -204,8 +233,10 @@ function readQuests(data: Partial<Progress> & { quest?: { stage: string; found: 
 const withAchievement = (p: Progress, id: string): Progress =>
   p.achievements.includes(id) ? p : { ...p, achievements: [...p.achievements, id] };
 
-export function ownsWear(p: Progress, id: HatId | AccessoryId): boolean {
-  return id === 'none' || !(id in WEAR_PRICES) || p.ownedWear.includes(id as WearId);
+export function ownsWear(p: Progress, id: HatId | AccessoryId | Pattern): boolean {
+  if (id === 'none') return true;
+  const special = REWARD_ONLY.includes(id as WearId) || id in WEAR_PRICES;
+  return !special || p.ownedWear.includes(id as WearId);
 }
 
 export function buyWear(p: Progress, id: WearId): Progress {
@@ -221,7 +252,10 @@ export function setAvatar(p: Progress, avatar: Avatar): Progress {
   const acc = avatar.accessory ?? 'none';
   const prevAcc = before?.accessory ?? 'none';
   const accessory = ownsWear(p, acc) ? acc : ownsWear(p, prevAcc) ? prevAcc : 'none';
-  return { ...p, avatar: { ...avatar, hat, accessory } };
+  const pat = avatar.pattern ?? 'plain';
+  const prevPat = before?.pattern ?? 'plain';
+  const pattern = ownsWear(p, pat) ? pat : ownsWear(p, prevPat) ? prevPat : 'plain';
+  return { ...p, avatar: { ...avatar, hat, accessory, pattern } };
 }
 
 const withQuest = (p: Progress, guest: GuestId, q: Partial<Quest>): Progress => ({
@@ -229,8 +263,24 @@ const withQuest = (p: Progress, guest: GuestId, q: Partial<Quest>): Progress => 
   quests: { ...p.quests, [guest]: { ...p.quests[guest], ...q } },
 });
 
-const MET: Record<GuestId, string> = { abraham: 'metAbraham', isaac: 'metIsaac', jacob: 'metJacob', moses: 'metMoses' };
-const FOUND_ALL: Record<GuestId, string> = { abraham: 'fourSpecies', isaac: 'lanternTrail', jacob: 'lambsHome', moses: 'allJugs' };
+const MET: Record<GuestId, string> = {
+  abraham: 'metAbraham',
+  isaac: 'metIsaac',
+  jacob: 'metJacob',
+  moses: 'metMoses',
+  aaron: 'metAaron',
+  joseph: 'metJoseph',
+  david: 'metDavid',
+};
+const FOUND_ALL: Record<GuestId, string> = {
+  abraham: 'fourSpecies',
+  isaac: 'lanternTrail',
+  jacob: 'lambsHome',
+  moses: 'allJugs',
+  aaron: 'helpedAll',
+  joseph: 'allSheaves',
+  david: 'allTunes',
+};
 
 /** The guest whose quest is in progress or waiting to start, if any. */
 export function currentGuest(p: Progress): GuestId | null {
@@ -266,6 +316,17 @@ export function completeQuest(p: Progress, guest: GuestId): Progress {
   const following = GUESTS[GUESTS.indexOf(guest) + 1];
   if (following && next.quests[following].stage === 'locked') next = withQuest(next, following, { stage: 'notStarted' });
   return next;
+}
+
+/** All seven Ushpizin are done and the celebration hasn't happened yet. */
+export function readyForGrandEvent(p: Progress): boolean {
+  return GUESTS.every((g) => p.quests[g].stage === 'done') && !p.achievements.includes('grandEvent');
+}
+
+export function celebrateGrandEvent(p: Progress): Progress {
+  if (!readyForGrandEvent(p)) return p;
+  const { coins, wear } = GRAND_EVENT_REWARD;
+  return withAchievement({ ...p, coins: p.coins + coins, ownedWear: [...p.ownedWear, wear] }, 'grandEvent');
 }
 
 /** How many of an item are still in the bag (owned but not placed). */

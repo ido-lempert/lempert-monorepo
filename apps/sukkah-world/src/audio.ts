@@ -15,7 +15,8 @@ export type Sfx =
   | 'buy'
   | 'pop'
   | 'blip'
-  | 'lose';
+  | 'lose'
+  | 'firework';
 
 const KEY = 'sukkahWorld.sound';
 /** Quiet enough to play under the game without getting in the way. */
@@ -235,6 +236,13 @@ export class Sound {
     }
   }
 
+  /** One of the four notes of David's harp (D, F#, A, D), for the memory game. */
+  note(i: number) {
+    if (!this.ctx || !this.prefs.sfx) return;
+    this.pluck(midi([62, 66, 69, 74][i]), this.ctx.currentTime + 0.01, 0.9, 0.7, this.sfxBus);
+    this.pluck(midi([74, 78, 81, 86][i]), this.ctx.currentTime + 0.01, 0.5, 0.15, this.sfxBus);
+  }
+
   // --- Effects ------------------------------------------------------------------------------------------
 
   play(name: Sfx) {
@@ -279,6 +287,23 @@ export class Sound {
         arp([72, 76, 79, 84], 0.11, 0.3, 0.6);
         [72, 76, 79, 84, 88].forEach((n) => this.pluck(midi(n), t + 0.5, 1.4, 0.32, bus));
         break;
+      case 'firework': {
+        // A soft thump and crackle, never loud.
+        const ctx = this.ctx;
+        const src = ctx.createBufferSource();
+        src.buffer = this.noise;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(1800, t);
+        lp.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0.3, t);
+        env.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+        src.connect(lp).connect(env).connect(bus);
+        src.start(t, Math.random() * 0.3, 0.6);
+        arp([96, 100, 103], 0.04, 0.2, 0.12);
+        break;
+      }
       case 'baa': {
         // A little bleat: a buzzy tone with a fast wobble, through a vowel-like filter.
         const ctx = this.ctx;

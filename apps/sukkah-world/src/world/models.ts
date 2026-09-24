@@ -417,7 +417,13 @@ function shirtMaterial(color: string, pattern: Pattern): THREE.Material {
     const g = c.getContext('2d')!;
     g.fillStyle = color;
     g.fillRect(0, 0, 128, 128);
-    if (pattern === 'stripes') {
+    if (pattern === 'rainbow') {
+      const bands = ['#e63946', '#ff9f1c', '#ffd23f', '#06d6a0', '#3a86ff', '#9b5de5'];
+      bands.forEach((c, i) => {
+        g.fillStyle = c;
+        g.fillRect(0, (i * 128) / bands.length, 128, 128 / bands.length + 1);
+      });
+    } else if (pattern === 'stripes') {
       g.fillStyle = 'rgba(255,255,255,0.85)';
       for (let y = 8; y < 128; y += 32) g.fillRect(0, y, 128, 12);
     } else {
@@ -534,6 +540,12 @@ function accessoryModel(id: AccessoryId, head: THREE.Group, rig: THREE.Group, ha
       handL.add(l);
       return;
     }
+    case 'harp': {
+      const h = harp();
+      h.position.set(0, -0.12, 0.08);
+      handL.add(h);
+      return;
+    }
     case 'sukkahBackpack': {
       const pack = new THREE.Group();
       const tex = fabricTexture(['#fffaf0', '#ff9f1c']);
@@ -629,6 +641,17 @@ export function setHat(hat: THREE.Group, id: HatId) {
       l.rotation.y = i * 0.9;
       hat.add(l);
     }
+  } else if (id === 'starCrown') {
+    const gold = mat('#ffc933', { metal: 0.5, rough: 0.3, emissive: 0.2 });
+    hat.add(mesh(new THREE.TorusGeometry(0.3, 0.04, 8, 28), gold, 0, top + 0.02, 0).rotateX(Math.PI / 2));
+    const star = new THREE.ExtrudeGeometry(starShape(0.1, 0.05), { depth: 0.03, bevelEnabled: false });
+    star.center();
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const st = mesh(star, mat('#ffe066', { emissive: 1.4, metal: 0.3, rough: 0.3 }), Math.sin(a) * 0.3, top + 0.14, Math.cos(a) * 0.3);
+      st.rotation.y = a;
+      hat.add(st);
+    }
   } else if (id === 'hadasWreath') {
     const leaf = leafGeometry(0.16, 0.06);
     const green = mat('#2f7d32', { double: true, rim: 0.4 });
@@ -657,6 +680,12 @@ interface GuestLook {
   cloth: string;
   clothStripe: string;
   staff?: boolean;
+  /** Colours of horizontal bands across the robe (Joseph's coat of many colours). */
+  robeBands?: string[];
+  /** A short, young beard instead of a long one (David). */
+  youngBeard?: boolean;
+  /** Anything special this guest carries or wears. */
+  extra?: (parts: { rig: THREE.Group; head: THREE.Group; armL: THREE.Group; armR: THREE.Group }) => void;
 }
 
 /** One of the Ushpizin: a flowing robe, a fluffy beard, a striped head cloth and a shepherd's staff. */
@@ -672,7 +701,14 @@ export function guest(look: GuestLook): Character {
     [0.18, 1.2],
     [0, 1.22],
   ].map(([x, y]) => new THREE.Vector2(x, y));
-  rig.add(mesh(new THREE.LatheGeometry(robeShape, 24), mat(look.robe)));
+  let robeMat: THREE.Material = mat(look.robe);
+  if (look.robeBands) {
+    const tex = fabricTexture(look.robeBands);
+    tex.rotation = Math.PI / 2;
+    tex.repeat.set(1, 2);
+    robeMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 });
+  }
+  rig.add(mesh(new THREE.LatheGeometry(robeShape, 24), robeMat));
   rig.add(mesh(new THREE.TorusGeometry(0.44, 0.04, 8, 24), mat(look.band), 0, 0.5, 0).rotateX(Math.PI / 2));
   rig.add(mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 24), mat(look.sash), 0, 0.85, 0).rotateX(Math.PI / 2));
   const armL = limb(look.robe, 0.28, 0.1, -0.36, 1.05, ball(0.1, look.skin));
@@ -691,15 +727,21 @@ export function guest(look: GuestLook): Character {
   face(head, HEAD_Y + 0.04, HEAD_R, false);
   // Fluffy beard and eyebrows.
   const beard = mat(look.beard, { rough: 0.9, rim: 0.3 });
-  for (const [x, y, z, r] of [
-    [0, 1.2, 0.3, 0.22],
-    [-0.18, 1.28, 0.3, 0.17],
-    [0.18, 1.28, 0.3, 0.17],
-    [0, 1.06, 0.25, 0.16],
-    [-0.28, 1.4, 0.24, 0.12],
-    [0.28, 1.4, 0.24, 0.12],
-  ])
-    head.add(mesh(new THREE.IcosahedronGeometry(r, 2), beard, x, y, z));
+  const tufts = look.youngBeard
+    ? [
+        [0, 1.24, 0.3, 0.14],
+        [-0.22, 1.32, 0.28, 0.1],
+        [0.22, 1.32, 0.28, 0.1],
+      ]
+    : [
+        [0, 1.2, 0.3, 0.22],
+        [-0.18, 1.28, 0.3, 0.17],
+        [0.18, 1.28, 0.3, 0.17],
+        [0, 1.06, 0.25, 0.16],
+        [-0.28, 1.4, 0.24, 0.12],
+        [0.28, 1.4, 0.24, 0.12],
+      ];
+  for (const [x, y, z, r] of tufts) head.add(mesh(new THREE.IcosahedronGeometry(r, 2), beard, x, y, z));
   for (const s of [-1, 1]) head.add(rbox(0.14, 0.04, 0.05, look.beard, s * 0.16, HEAD_Y + 0.19, 0.41, 0.02));
   const clothTex = fabricTexture([look.cloth, look.cloth, look.clothStripe]);
   clothTex.rotation = Math.PI / 2;
@@ -715,8 +757,179 @@ export function guest(look: GuestLook): Character {
   head.add(rbox(0.8, 0.7, 0.1, look.cloth, 0, HEAD_Y - 0.35, -0.38, 0.05));
   head.add(rbox(0.9, 0.06, 0.06, look.clothStripe, 0, HEAD_Y + 0.18, 0.08, 0.02).rotateX(-0.3));
   rig.add(head);
+  look.extra?.({ rig, head, armL, armR });
   outline(rig);
   return { group, rig, limbs: { armL, armR, legL: new THREE.Group(), legR: new THREE.Group() }, hat: new THREE.Group() };
+}
+
+/** A small harp (lyre): a golden curved frame with strings. */
+export function harp(): THREE.Group {
+  const g = new THREE.Group();
+  const gold = mat('#e8b04a', { metal: 0.4, rough: 0.35 });
+  const arc = mesh(new THREE.TorusGeometry(0.2, 0.025, 8, 20, Math.PI * 1.2), gold, 0, 0.2, 0);
+  arc.rotation.z = -0.3;
+  g.add(arc);
+  g.add(rbox(0.36, 0.05, 0.05, '#c98a2e', 0, 0.02, 0, 0.015));
+  for (let i = 0; i < 5; i++) {
+    const string = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.3, 3), mat('#fff4e0', { emissive: 0.3, rim: 0 }), -0.12 + i * 0.06, 0.17, 0);
+    string.userData.noOutline = true;
+    g.add(string);
+  }
+  return g;
+}
+
+/** Aaron the High Priest: a white robe, a blue sash, a jewelled breastplate and a turban with a gold band. */
+export const aaron = () =>
+  guest({
+    robe: '#fbfaf5',
+    band: '#6c4bd1',
+    sash: '#3a6bd1',
+    skin: '#e6ad85',
+    beard: '#b9b2a8',
+    cloth: '#ffffff',
+    clothStripe: '#ffc933',
+    staff: false,
+    extra: ({ rig }) => {
+      // The breastplate with twelve stones, one for each tribe.
+      rig.add(rbox(0.36, 0.4, 0.06, '#ffc933', 0, 1.02, 0.3, 0.03, { metal: 0.5, rough: 0.3 }));
+      const stones = ['#e63946', '#2a9d8f', '#3a86ff', '#ff9f1c', '#9b5de5', '#06d6a0'];
+      for (let i = 0; i < 12; i++)
+        rig.add(ball(0.035, stones[i % stones.length], -0.1 + (i % 3) * 0.1, 1.16 - Math.floor(i / 3) * 0.09, 0.34, { emissive: 0.3, rough: 0.2 }));
+    },
+  });
+
+/** Joseph in his coat of many colours. */
+export const joseph = () =>
+  guest({
+    robe: '#ff9f1c',
+    robeBands: ['#e63946', '#ff9f1c', '#ffd23f', '#06d6a0', '#3a86ff', '#9b5de5'],
+    band: '#ffffff',
+    sash: '#8a5a36',
+    skin: '#dfa27a',
+    beard: '#3b2a20',
+    cloth: '#fff4e0',
+    clothStripe: '#9b5de5',
+    staff: false,
+    youngBeard: true,
+  });
+
+/** King David: young, with a red beard, a golden crown and his harp. */
+export const david = () =>
+  guest({
+    robe: '#b3203a',
+    band: '#ffc933',
+    sash: '#ffc933',
+    skin: '#e3a97e',
+    beard: '#c2582e',
+    cloth: '#fff4e0',
+    clothStripe: '#b3203a',
+    staff: false,
+    youngBeard: true,
+    extra: ({ head, armL }) => {
+      const gold = mat('#ffc933', { metal: 0.5, rough: 0.3, emissive: 0.15 });
+      const top = HEAD_Y + HEAD_R + 0.1;
+      head.add(mesh(new THREE.CylinderGeometry(0.28, 0.26, 0.14, 20, 1, true), gold, 0, top, 0));
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        head.add(mesh(new THREE.ConeGeometry(0.06, 0.16, 8), gold, Math.sin(a) * 0.26, top + 0.14, Math.cos(a) * 0.26));
+      }
+      const h = harp();
+      h.position.set(0.05, -0.35, 0.2);
+      armL.add(h);
+    },
+  });
+
+/** A village kid with a random look, who needs something. */
+export function villager(i: number): Character {
+  const shirts = ['#ef476f', '#06d6a0', '#ffd166'];
+  const hairs = ['#2b1d14', '#e8b04a', '#a0522d'];
+  const styles = ['ponytail', 'curly', 'spiky'] as const;
+  return character({ name: '', skin: ['#f1c7a0', '#b57d52', '#d9a47a'][i % 3], shirt: shirts[i % 3], hair: hairs[i % 3], hairStyle: styles[i % 3], hat: i === 1 ? 'cap' : 'none', eyes: 'sparkle' });
+}
+
+/** A fruit-seller's stall with a striped awning. */
+export function marketStall(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(rbox(1.8, 0.8, 0.9, '#b8844f', 0, 0.4, 0, 0.06));
+  for (const x of [-0.85, 0.85]) g.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 2, 8), mat('#8a5a36'), x, 1, -0.35));
+  const tex = fabricTexture(['#ffffff', '#e63946']);
+  tex.repeat.set(3, 1);
+  const awning = mesh(new THREE.BoxGeometry(2.1, 0.06, 1.2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }), 0, 2, 0.05);
+  awning.rotation.x = 0.25;
+  g.add(awning);
+  const fruit = ['#ff9f1c', '#ffd400', '#d62839', '#7cc242'];
+  for (let i = 0; i < 12; i++) g.add(ball(0.09, fruit[i % 4], -0.7 + (i % 6) * 0.28, 0.88, -0.2 + Math.floor(i / 6) * 0.3));
+  return g;
+}
+
+/** The things Aaron's villagers need. */
+export function helpItem(id: 'basket' | 'cushion' | 'lulav'): THREE.Group {
+  if (id === 'lulav') return species('lulav');
+  const g = new THREE.Group();
+  if (id === 'basket') {
+    g.add(mesh(new THREE.CylinderGeometry(0.28, 0.2, 0.22, 16, 1, true), mat('#c9955a', { double: true }), 0, 0.11, 0));
+    g.add(mesh(new THREE.TorusGeometry(0.24, 0.02, 6, 20, Math.PI), mat('#a57345'), 0, 0.22, 0));
+    const fruit = ['#ff9f1c', '#d62839', '#ffd400', '#7cc242'];
+    for (let i = 0; i < 5; i++) g.add(ball(0.08, fruit[i % 4], Math.cos(i * 1.3) * 0.12, 0.22, Math.sin(i * 1.3) * 0.12));
+  } else {
+    g.add(rbox(0.5, 0.14, 0.5, '#d62839', 0, 0.07, 0, 0.07));
+    for (const [x, z] of [
+      [-0.25, -0.25],
+      [0.25, -0.25],
+      [-0.25, 0.25],
+      [0.25, 0.25],
+    ])
+      g.add(ball(0.035, '#ffc933', x, 0.07, z, { metal: 0.4 }));
+  }
+  return g;
+}
+
+/** A golden sheaf of wheat, tied in the middle (from Joseph's dream). */
+export function sheaf(): THREE.Group {
+  const g = new THREE.Group();
+  const stalk = mat('#f2c230', { emissive: 0.25, metal: 0.2, rough: 0.4 });
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const r = 0.08 + (i % 2) * 0.05;
+    const s = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.8, 4), stalk, Math.cos(a) * r, 0.4, Math.sin(a) * r);
+    s.rotation.set(Math.sin(a) * 0.18, 0, -Math.cos(a) * 0.18);
+    g.add(s);
+    const grain = mesh(new THREE.CapsuleGeometry(0.03, 0.12, 3, 6), stalk, Math.cos(a) * r * 1.9, 0.84, Math.sin(a) * r * 1.9);
+    grain.rotation.copy(s.rotation);
+    g.add(grain);
+  }
+  g.add(mesh(new THREE.TorusGeometry(0.13, 0.025, 6, 16), mat('#b3203a'), 0, 0.42, 0).rotateX(Math.PI / 2));
+  return g;
+}
+
+/** Aaron's dove of peace: a white bird that flaps along beside the player. */
+export function dove(): { group: THREE.Group; wings: [THREE.Object3D, THREE.Object3D] } {
+  const group = new THREE.Group();
+  const white = mat('#ffffff', { rim: 0.4 });
+  const body = mesh(new THREE.SphereGeometry(0.13, 16, 12), white);
+  body.scale.set(0.9, 0.85, 1.4);
+  group.add(body);
+  group.add(ball(0.09, '#ffffff', 0, 0.08, 0.15));
+  group.add(mesh(new THREE.ConeGeometry(0.03, 0.07, 6), mat('#ffb347'), 0, 0.07, 0.25).rotateX(Math.PI / 2));
+  for (const s of [-1, 1]) group.add(ball(0.018, '#1d2340', s * 0.05, 0.11, 0.21, { rim: 0 }));
+  const tail = mesh(new THREE.ConeGeometry(0.08, 0.2, 6), white, 0, 0.02, -0.22);
+  tail.rotation.x = -Math.PI / 2;
+  tail.scale.z = 0.3;
+  group.add(tail);
+  const wing = (side: number) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.08, 0.05, 0);
+    const w = mesh(new THREE.SphereGeometry(0.14, 12, 8), white, side * 0.14, 0, 0);
+    w.scale.set(1.2, 0.18, 0.7);
+    pivot.add(w);
+    group.add(pivot);
+    return pivot;
+  };
+  const wings: [THREE.Object3D, THREE.Object3D] = [wing(-1), wing(1)];
+  // A little olive branch in its beak.
+  group.add(mesh(leafGeometry(0.12, 0.04), mat('#6a9a3a', { double: true }), 0.04, 0.05, 0.3).rotateZ(-1.2));
+  outline(group);
+  return { group, wings };
 }
 
 export const abraham = () =>
