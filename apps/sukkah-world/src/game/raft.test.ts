@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CURRENT, JUG_SPOTS, RAFT_HALF_WIDTH, RIVER_HALF_WIDTH, RIVER_LENGTH, ROCKS, startRaft, stepRaft } from './raft';
+import { jumpRaft, CURRENT, JUG_SPOTS, RAFT_HALF_WIDTH, RIVER_HALF_WIDTH, RIVER_LENGTH, ROCKS, startRaft, stepRaft } from './raft';
 
 /** Steers straight at the next jug that is still ahead. */
 function autopilot(skip: number[] = []) {
@@ -52,5 +52,17 @@ describe('raft ride', () => {
   it('leaves out jugs collected on earlier rides', () => {
     const { raft } = autopilot([0, 2]);
     expect(raft.jugs.sort()).toEqual([1, 3, 4]);
+  });
+
+  it('jumps clean over a rock', () => {
+    const raft = startRaft();
+    raft.s = ROCKS[0].s - 1.5;
+    raft.offset = ROCKS[0].offset;
+    expect(jumpRaft(raft)).toBe(true);
+    expect(jumpRaft(raft)).toBe(false);
+    const events = [];
+    for (let i = 0; i < 12; i++) events.push(...stepRaft(raft, 0.05, 0));
+    expect(events.filter((e) => e.type === 'rock')).toEqual([]);
+    expect(raft.s).toBeGreaterThan(ROCKS[0].s);
   });
 });

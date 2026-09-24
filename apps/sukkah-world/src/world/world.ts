@@ -12,7 +12,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Hunt, Vec } from '../game/hunt';
-import { JUG_SPOTS, type Raft, RIVER_LENGTH, ROCKS } from '../game/raft';
+import { JUG_SPOTS, type Raft, raftHeight, RIVER_LENGTH, ROCKS } from '../game/raft';
 import { type Avatar, decoration, type GuestId, type PetId, type Placed, SPECIES, type SpeciesId } from '../game/progress';
 import { type StringKey, t } from '../i18n';
 import {
@@ -102,8 +102,15 @@ import {
 export type CameraMode = 'walk' | 'creator' | 'build' | 'raft';
 
 export const WALK_SPEED = 5.2;
+/** Running is this much faster than walking. */
+const RUN_FACTOR = 1.7;
+const JUMP_SPEED = 6.5;
+const GRAVITY = 20;
 const ZOOM_MIN = 0.45;
 const ZOOM_MAX = 1.5;
+/** Camera height factor: low and cinematic up to high and overhead. */
+const TILT_MIN = 0.35;
+const TILT_MAX = 1.8;
 /** Height of a sukkah's floor; characters step up onto it. */
 const FLOOR_Y = 0.09;
 
@@ -192,6 +199,9 @@ export class World {
   private water!: THREE.Mesh;
   private bursts: Burst[] = [];
   private hop = 0;
+  /** The player's jump: height above the ground and vertical speed. */
+  private airY = 0;
+  private airV = 0;
   /** Big things (houses, trees, palms) that turn see-through when they hide the player. */
   private occluders: THREE.Object3D[] = [];
   private grandRoof: THREE.Object3D | null = null;
@@ -203,6 +213,8 @@ export class World {
   private yawGoal = 0;
   private zoom = 1;
   private zoomGoal = 1;
+  private tilt = 1;
+  private tiltGoal = 1;
   private creatorAngle = 0;
   private camTarget = new THREE.Vector3();
   private camPos = new THREE.Vector3();
@@ -786,7 +798,7 @@ export class World {
     // Facing downstream: the tangent of the arc at this angle.
     const heading = Math.atan2(-Math.sin(p.angle), Math.cos(p.angle));
     const bob = Math.sin(this.timer.getElapsed() * 3) * 0.04;
-    this.raftObj.position.set(p.x, 0.05 + bob, p.z);
+    this.raftObj.position.set(p.x, 0.05 + bob + raftHeight(raft), p.z);
     this.raftObj.rotation.set(Math.sin(this.timer.getElapsed() * 2.2) * 0.04 + (raft.bump > 0 ? Math.sin(raft.bump * 30) * 0.12 : 0), heading, 0);
     this.player.pos = { x: p.x, z: p.z };
     this.player.heading = heading;
@@ -1055,6 +1067,14 @@ export class World {
     this.player.heading += radians;
   }
 
+  /** Jumps, if the player is on the ground. Returns whether a jump started. */
+  jump(): boolean {
+    if (this.airY > 0 || this.mode !== 'walk') return false;
+    this.airV = JUMP_SPEED;
+    this.airY = 0.001;
+    return true;
+  }
+
   /** A happy little jump, e.g. when picking something up. */
   celebrate() {
     this.hop = 1;
@@ -1094,7 +1114,7 @@ export class World {
   // --- Frame update -----------------------------------------------------------------------------
 
   /** Moves the player by an input vector (x right, y away from the camera). Returns the distance walked. */
-  walk(dt: number, input: [number, number]): number {
+  walk(dt: number, input: [number, number], running = false): number {
     const p = this.player;
     const [ix, iy] = input;
     const amount = Math.hypot(ix, iy);
@@ -1106,12 +1126,13 @@ export class World {
     const yaw = this.yaw;
     const dx = ix * Math.cos(yaw) - iy * Math.sin(yaw);
     const dz = -ix * Math.sin(yaw) - iy * Math.cos(yaw);
-    const want = resolve({ x: p.pos.x + dx * p.speed * dt, z: p.pos.z + dz * p.speed * dt });
+    const speed = p.speed * (running ? RUN_FACTOR : 1);
+    const want = resolve({ x: p.pos.x + dx * speed * dt, z: p.pos.z + dz * speed * dt });
     const moved = Math.hypot(want.x - p.pos.x, want.z - p.pos.z);
     p.pos = want;
     p.heading = Math.atan2(dx, dz);
-    p.phase += moved * 2.6;
-    p.moving = Math.min(1, amount * 1.3);
+    p.phase += moved * (running ? 2.2 : 2.6);
+    p.moving = Math.min(1, amount * 1.3) * (this.airY > 0 ? 0.3 : 1);
     return moved;
   }
 
@@ -1132,10 +1153,14 @@ export class World {
     this.watchSpeed(raw);
 
     this.hop = Math.max(0, this.hop - dt * 2.5);
+    if (this.airY > 0) {
+      this.airV -= GRAVITY * dt;
+      this.airY = Math.max(0, this.airY + this.airV * dt);
+    }
     for (const w of [this.player, this.rival, ...this.lambs, ...(this.pet ? [this.pet] : [])]) {
       const g = w.char.group;
       const onFloor = inside(w.pos, MY_SUKKAH, -0.1) || inside(w.pos, GRAND_SUKKAH, -0.1);
-      const hop = w === this.player ? Math.sin(this.hop * Math.PI) * 0.6 : 0;
+      const hop = w === this.player ? Math.sin(this.hop * Math.PI) * 0.6 + this.airY : 0;
       const onRaft = this.riding && (w === this.player || w === this.pet) ? this.raftObj.position.y + 0.22 : 0;
       g.position.set(w.pos.x, (onFloor ? FLOOR_Y : 0) + hop + onRaft, w.pos.z);
       g.rotation.y = turnTowards(g.rotation.y, w.heading, dt * 12);
@@ -1265,7 +1290,7 @@ export class World {
     }
     // Orbit around the player at the chosen angle and distance; zooming in also lowers the camera a little.
     const back = (portrait ? 11 : 9.5) * this.zoom;
-    const up = (portrait ? 10 : 7.2) * this.zoom ** 1.15;
+    const up = (portrait ? 10 : 7.2) * this.zoom ** 1.15 * this.tilt;
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
     return {
@@ -1279,6 +1304,7 @@ export class World {
     const ease = 1 - Math.exp(-dt * 8);
     this.yaw = turnTowards(this.yaw, this.yawGoal, ease);
     this.zoom += (this.zoomGoal - this.zoom) * ease;
+    this.tilt += (this.tiltGoal - this.tilt) * ease;
     const goal = this.cameraGoal();
     const k = 1 - Math.exp(-dt * 6);
     this.camPos.lerp(goal.pos, k);
@@ -1323,15 +1349,17 @@ export class World {
   }
 
   /** Turns the camera around the player (radians) and/or zooms (factor; > 1 is further away). */
-  turnCamera(turn: number, zoom = 1) {
+  turnCamera(turn: number, zoom = 1, tilt = 0) {
     if (this.mode !== 'walk') return;
     this.yawGoal += turn;
+    this.tiltGoal = Math.min(TILT_MAX, Math.max(TILT_MIN, this.tiltGoal + tilt));
     this.zoomGoal = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, this.zoomGoal * zoom));
   }
 
   snapCamera() {
     this.yaw = this.yawGoal;
     this.zoom = this.zoomGoal;
+    this.tilt = this.tiltGoal;
     const goal = this.cameraGoal();
     this.camPos.copy(goal.pos);
     this.camTarget.copy(goal.look);

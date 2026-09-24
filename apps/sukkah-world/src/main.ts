@@ -53,8 +53,8 @@ import { canFullscreen, canInstall, install, isFullscreen, onPwaChange, toggleFu
 import './style.css';
 import { WalkInput } from './world/input';
 import type { Vec } from './game/hunt';
-import { JUG_SPOTS, type Raft, startRaft, stepRaft } from './game/raft';
-import { GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RIDE_END, SHEAF_SPOTS, VILLAGERS, HUB, huntCandidates, inside, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
+import { JUG_SPOTS, jumpRaft, type Raft, startRaft, stepRaft } from './game/raft';
+import { RIVER, riverPoint, GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RIDE_END, SHEAF_SPOTS, VILLAGERS, HUB, huntCandidates, inside, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
 import { World } from './world/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -95,6 +95,8 @@ function setScene(next: Scene) {
   $('#hunt-hud').classList.toggle('hidden', next !== 'hunt');
   // The camera can be turned and zoomed while walking around (and during the etrog hunt).
   $('#cam').classList.toggle('hidden', next !== 'walk' && next !== 'hunt');
+  $('#jump').classList.toggle('hidden', next !== 'walk' && next !== 'hunt' && next !== 'raft');
+  $('#raft-exit').classList.toggle('hidden', next !== 'raft');
   $('#quest').classList.toggle('hidden', next === 'hunt');
   if (next !== 'walk') $('#hint').classList.add('gone');
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
@@ -386,7 +388,12 @@ addEventListener('keydown', (e) => {
     return;
   }
   const onPage = document.activeElement === document.body || document.activeElement === null;
-  if (action && (e.code === 'KeyE' || (onPage && (e.code === 'Enter' || e.code === 'Space')))) {
+  if (e.code === 'Space' && onPage && (scene === 'walk' || scene === 'hunt' || scene === 'raft')) {
+    e.preventDefault();
+    jump();
+    return;
+  }
+  if (action && (e.code === 'KeyE' || (onPage && e.code === 'Enter'))) {
     e.preventDefault();
     runAction();
   }
@@ -677,13 +684,27 @@ function tickRide(dt: number) {
     }
   }
   world.syncRide(ride);
-  if (ride.over) {
-    ride = null;
-    world.endRide();
-    world.teleport(RIDE_END, Math.PI * 0.4);
-    setScene('walk');
-    if (progress.quests.moses.stage === 'active') toast(`🛶 ${t('rideOver')}`);
-  }
+  if (ride.over) endRide(false);
+}
+
+/** Ends the ride: at the end of the river, or wherever the raft is when the player jumps off. */
+function endRide(early: boolean) {
+  if (!ride) return;
+  const s = ride.s;
+  ride = null;
+  world.endRide();
+  // Step off onto the near bank, right beside where the raft was.
+  const bank = early ? resolve(riverPoint(s, -(RIVER.halfWidth + 1.4))) : RIDE_END;
+  world.teleport(bank, Math.PI * 0.4);
+  setScene('walk');
+  if (progress.quests.moses.stage === 'active') toast(`🛶 ${t(early ? 'raftLeft' : 'rideOver')}`);
+}
+
+/** Space or the jump button: the player hops, or the raft leaps over rocks. */
+function jump() {
+  if (scene === 'raft' && ride) {
+    if (jumpRaft(ride)) sound.play('pop');
+  } else if ((scene === 'walk' || scene === 'hunt') && world.jump()) sound.play('pop');
 }
 
 // --- Decorating --------------------------------------------------------------------------------
@@ -1094,6 +1115,10 @@ for (const [id, turn, zoom] of [
   ['#cam-out', 0, 1.33],
 ] as const)
   $(id).addEventListener('click', () => world.turnCamera(turn, zoom));
+$('#cam-up').addEventListener('click', () => world.turnCamera(0, 1, 0.3));
+$('#cam-down').addEventListener('click', () => world.turnCamera(0, 1, -0.3));
+$('#jump').addEventListener('click', jump);
+$('#raft-exit').addEventListener('click', () => endRide(true));
 
 input.onDrag = (dx) => {
   if (scene === 'creator') world.spin(dx * 0.012);
@@ -1198,7 +1223,7 @@ function loop() {
   const dt = world.frame();
   if (scene === 'raft') tickRide(dt);
   else if (scene === 'walk' || scene === 'hunt') {
-    const moved = world.walk(dt, input.vector());
+    const moved = world.walk(dt, input.vector(), input.running());
     if (moved > 0 && hintShown) {
       hintShown = false;
       setTimeout(() => $('#hint').classList.add('gone'), 1200);

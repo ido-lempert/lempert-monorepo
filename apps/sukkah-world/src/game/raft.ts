@@ -15,6 +15,8 @@ export interface Raft {
   speed: number;
   /** Seconds left of the slow-down after hitting a rock. */
   bump: number;
+  /** Seconds left in the air after a jump; rocks can't hit a raft in the air. */
+  air: number;
   /** Jugs picked up and rocks hit during this ride (by index). */
   jugs: number[];
   rocks: number[];
@@ -33,6 +35,7 @@ export const CURRENT = 3.3;
 export const STEER_SPEED = 2.8;
 export const BUMP_SECONDS = 0.8;
 export const TOUCH = 1;
+export const JUMP_SECONDS = 0.75;
 
 export const JUG_SPOTS: RiverThing[] = [
   { s: 10, offset: 1.1 },
@@ -50,8 +53,18 @@ export const ROCKS: RiverThing[] = [
 ];
 
 export function startRaft(): Raft {
-  return { s: 0, offset: 0, speed: CURRENT, bump: 0, jugs: [], rocks: [], over: false };
+  return { s: 0, offset: 0, speed: CURRENT, bump: 0, air: 0, jugs: [], rocks: [], over: false };
 }
+
+/** Hops the raft out of the water, clearing any rock underneath. Returns false while already in the air. */
+export function jumpRaft(raft: Raft): boolean {
+  if (raft.air > 0 || raft.over) return false;
+  raft.air = JUMP_SECONDS;
+  return true;
+}
+
+/** Height of the raft above the water during a jump (a smooth arc, in metres). */
+export const raftHeight = (raft: Raft) => (raft.air > 0 ? Math.sin((1 - raft.air / JUMP_SECONDS) * Math.PI) * 1.1 : 0);
 
 /**
  * Advances the ride by `dt` seconds (mutates `raft`). `steer` is −1..1 (towards negative / positive
@@ -61,6 +74,7 @@ export function stepRaft(raft: Raft, dt: number, steer: number, skip: number[] =
   if (raft.over) return [];
   const events: RaftEvent[] = [];
   raft.bump = Math.max(0, raft.bump - dt);
+  raft.air = Math.max(0, raft.air - dt);
   // Hitting a rock slows the raft for a moment, then the current picks it up again.
   raft.speed = raft.bump > 0 ? CURRENT * 0.35 : Math.min(CURRENT, raft.speed + dt * 2);
   raft.s = Math.min(RIVER_LENGTH, raft.s + raft.speed * dt);
@@ -75,7 +89,7 @@ export function stepRaft(raft: Raft, dt: number, steer: number, skip: number[] =
     }
   });
   ROCKS.forEach((r, i) => {
-    if (!raft.rocks.includes(i) && near(r)) {
+    if (!raft.rocks.includes(i) && raft.air === 0 && near(r)) {
       raft.rocks.push(i);
       raft.bump = BUMP_SECONDS;
       // The rock nudges the raft aside.
