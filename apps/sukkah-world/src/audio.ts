@@ -192,6 +192,21 @@ export class Sound {
       ],
       bass: [0, -3, 5, 7, 5, 0, 7, 0],
     },
+    {
+      // Freygish (D–Eb–F#–G–A–Bb–C), the scale of many festive Jewish tunes, kept slow and soft.
+      melody: [
+        0, null, 1, 4, 5, null, 4, null, 1, 0, 1, 4, 0, null, null, null, 7, null, 8, 7, 5, 4, 5, null, 4, null, null, null, 1, null, 0, null,
+        4, 5, 7, 8, 10, 8, 7, null, 5, 7, 5, 4, 1, null, 4, null, 5, 4, 1, 4, 1, 0, -2, null, 0, null, null, null, null, null, null, null,
+      ],
+      bass: [0, 0, 5, 0, -2, 5, -2, 0],
+    },
+    {
+      melody: [
+        7, null, 4, null, 5, 4, 2, null, 0, null, 4, null, 7, null, null, null, 9, null, 7, 5, 4, null, 5, null, 7, null, null, null, null, null, null, null,
+        7, null, 9, null, 12, null, 9, 7, 5, null, 4, null, 2, null, null, null, 4, 5, 7, null, 2, null, -1, null, 0, null, null, null, null, null, null, null,
+      ],
+      bass: [0, -3, 5, 0, 5, -2, -5, 0],
+    },
   ];
   /** Eighth notes of silence between tunes. */
   private static readonly BREATH = 16;
