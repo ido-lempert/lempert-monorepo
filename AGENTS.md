@@ -24,6 +24,13 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - wall of fame: `apps/mancala/server/fame.ts` (`/api/fame`), in memory + JSON file (`FAME_FILE`, default `apps/mancala/.data/fame.json`) – may be wiped on redeploy, which the terms state
   - accessibility target is WCAG AAA: keep text contrast ≥ 7:1 in both themes (use the CSS theme variables), controls ≥ 44px, everything keyboard-operable
   - board layout: sowing is clockwise with each player's store on their left; the rules engine is index-based (`src/game/kalah.ts`) and only `containerCenter` in `src/render/board3d.ts` decides placement
+- `sukkah-world` (3D Sukkot world for kids, Vite + three.js PWA, single-player vs the computer for now):
+  - dev server: `npx nx run sukkah-world:dev` (http://localhost:5174, also on the LAN)
+  - tests: `npx nx run sukkah-world:test`; typecheck + build: `npx nx run sukkah-world:build`
+  - developed in vertical slices; the plan and the product concept live in `_bmad-output/planning-artifacts/sukkah-world/`
+  - game rules are pure and tested (`src/game/`: progress/economy/quest, etrog hunt); `src/world/layout.ts` holds all positions and collisions; `src/world/` renders; `src/main.ts` wires UI to both
+  - every model is procedural (`src/world/models.ts`), so there are no assets and the game works offline
+  - UI text is Hebrew only for now, in `src/i18n/strings.ts`; address kids in the plural and use infinitives on buttons
 
 ## Conventions that differ from defaults
 

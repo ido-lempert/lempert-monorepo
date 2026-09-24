@@ -1,0 +1,707 @@
+/*
+ * The UI floats over a bright 3D scene, so panels are solid dark glass with light text (≥ 7:1 contrast).
+ * Touch targets are at least 44px; layouts adapt from phones in portrait to desktop.
+ */
+:root {
+  --bg: #16324a;
+  --fg: #fffaf0;
+  --muted: #d8e6f0;
+  --glass: rgba(14, 32, 48, 0.94);
+  --surface: #1f4561;
+  --surface-2: #2b5a7c;
+  --border: rgba(255, 255, 255, 0.22);
+  --accent: #ffd166;
+  --on-accent: #16324a;
+  --focus: #ffe066;
+  --target: 44px;
+  --radius: 18px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Rubik, sans-serif;
+  color: var(--fg);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+}
+
+#stage canvas {
+  display: block;
+  touch-action: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.primary,
+.secondary {
+  min-height: var(--target);
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 3px 0 #c99a2e;
+}
+
+.secondary {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.primary:active,
+.secondary:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.icon {
+  width: var(--target);
+  height: var(--target);
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 20px;
+  line-height: 1;
+  flex: none;
+}
+
+/* --- Floating labels over the scene (CSS2DRenderer positions from the left, so keep it LTR) ------ */
+
+.labels {
+  direction: ltr;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.label {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #ffffff;
+  background: rgba(14, 32, 48, 0.85);
+  font-size: clamp(12px, 1.8vmin, 16px);
+}
+
+.label.zone {
+  font-size: clamp(13px, 2.2vmin, 18px);
+  background: rgba(22, 50, 74, 0.9);
+  border: 2px solid rgba(255, 209, 102, 0.8);
+}
+
+.label.npc[data-mark='!']::before,
+.label.npc[data-mark='?']::before {
+  content: attr(data-mark);
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  translate: -50% -4px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--on-accent);
+  background: var(--accent);
+  animation: bob 1s ease-in-out infinite alternate;
+}
+
+@keyframes bob {
+  to {
+    translate: -50% -12px;
+  }
+}
+
+/* --- HUD ----------------------------------------------------------------------------------------- */
+
+.hud {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  inset-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.hud > * {
+  pointer-events: auto;
+}
+
+.coins,
+.quest {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--target);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+.coins b {
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.quest {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.hud .icon {
+  margin-inline-start: auto;
+  background: var(--glass);
+  border: 1px solid var(--border);
+}
+
+.hunt-hud {
+  position: fixed;
+  top: calc(max(10px, env(safe-area-inset-top)) + 56px);
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+.hunt-score b {
+  font-size: 24px;
+  margin-inline-start: 4px;
+}
+
+.hunt-score.me b {
+  color: var(--accent);
+}
+
+.hunt-time {
+  min-width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+/* --- Menu ---------------------------------------------------------------------------------------- */
+
+.menu {
+  position: fixed;
+  top: calc(max(10px, env(safe-area-inset-top)) + 54px);
+  inset-inline-end: max(10px, env(safe-area-inset-right));
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 230px;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--border);
+}
+
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--target);
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: none;
+  text-align: start;
+  font-size: 16px;
+}
+
+.menu button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.menu hr {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.version {
+  margin: 4px 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* --- Hint, toast, action button ------------------------------------------------------------------- */
+
+.hint {
+  position: fixed;
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 70px);
+  left: 50%;
+  translate: -50% 0;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--glass);
+  font-size: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.6s;
+}
+
+.hint.gone {
+  opacity: 0;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 28%;
+  translate: -50% -50%;
+  scale: 0.85;
+  max-width: min(90vw, 520px);
+  padding: 12px 22px;
+  border-radius: var(--radius);
+  background: rgba(14, 32, 48, 0.95);
+  font-size: clamp(18px, 4.2vmin, 30px);
+  font-weight: 800;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 40;
+  transition:
+    opacity 0.25s,
+    scale 0.25s;
+}
+
+.toast.show {
+  opacity: 1;
+  scale: 1;
+}
+
+.action {
+  position: fixed;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  translate: -50% 0;
+  z-index: 10;
+  min-height: 56px;
+  padding: 12px 30px;
+  font-size: 20px;
+  animation: pop 0.25s ease-out;
+}
+
+@keyframes pop {
+  from {
+    scale: 0.7;
+    opacity: 0;
+  }
+}
+
+/* --- Dialog with a character ----------------------------------------------------------------------- */
+
+.dialog {
+  position: fixed;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 50%;
+  translate: -50% 0;
+  z-index: 20;
+  width: min(640px, calc(100vw - 20px));
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 2px solid var(--accent);
+  animation: pop 0.25s ease-out;
+}
+
+.dialog-face {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  background: var(--surface-2);
+}
+
+.dialog h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: var(--accent);
+}
+
+.dialog p {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* --- Decorating ------------------------------------------------------------------------------------ */
+
+.build {
+  position: fixed;
+  bottom: 0;
+  inset-inline: 0;
+  z-index: 15;
+  padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: var(--glass);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.build-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.build h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.build-hint {
+  margin: 6px 0 10px;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.build-selected {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.palette {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.item {
+  flex: none;
+  width: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 3px solid transparent;
+}
+
+.item[aria-selected='true'] {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.item.cant {
+  opacity: 0.6;
+}
+
+.item-icon {
+  font-size: 30px;
+}
+
+.item-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.item-status {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* --- Character creator: a side panel on wide screens, a bottom sheet on phones --------------------- */
+
+.creator {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+
+.creator .card {
+  pointer-events: auto;
+  width: min(400px, calc(100vw - 32px));
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+@media (max-aspect-ratio: 1/1) {
+  .creator {
+    inset: auto 0 0 0;
+    padding: 0;
+  }
+  .creator .card {
+    width: 100%;
+    max-height: 58vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
+.card {
+  padding: 20px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--border);
+}
+
+.card h1 {
+  margin: 0 0 12px;
+  font-size: clamp(22px, 4vmin, 28px);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  border: none;
+}
+
+.field-label {
+  font-weight: 700;
+  font-size: 16px;
+  padding: 0;
+}
+
+.field input {
+  min-height: var(--target);
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 18px;
+  user-select: text;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.swatch {
+  width: var(--target);
+  height: var(--target);
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+}
+
+.swatch[aria-pressed='true'] {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segmented button {
+  min-height: var(--target);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 2px solid transparent;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.big {
+  width: 100%;
+  min-height: 56px;
+  font-size: 20px;
+}
+
+/* --- Overlays (etrog hunt intro / result) ---------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(10, 20, 30, 0.45);
+}
+
+.overlay .card {
+  width: min(460px, 100%);
+  text-align: center;
+  animation: pop 0.25s ease-out;
+}
+
+.card-art {
+  font-size: 56px;
+}
+
+.lead {
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.overlay .actions {
+  justify-content: center;
+}
+
+/* --- Floating joystick ----------------------------------------------------------------------------- */
+
+.joystick {
+  position: fixed;
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.joystick-knob {
+  position: absolute;
+  inset: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* --- Update banner --------------------------------------------------------------------------------- */
+
+.update {
+  position: fixed;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  inset-inline-start: 16px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 16px;
+  padding-inline: 16px 6px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 520px) {
+  .quest {
+    font-size: 15px;
+    padding: 6px 10px;
+  }
+  .coins {
+    padding: 6px 10px;
+  }
+  .dialog {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .dialog .actions {
+    justify-content: center;
+  }
+  .dialog-face {
+    width: 52px;
+    height: 52px;
+    font-size: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before {
+    animation: none !important;
+    transition: none !important;
+  }
+}
