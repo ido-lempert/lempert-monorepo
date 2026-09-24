@@ -49,7 +49,7 @@ import {
 } from './game/progress';
 import { Sound } from './audio';
 import { applyDocument, type StringKey, t } from './i18n';
-import { canFullscreen, canInstall, install, isFullscreen, onPwaChange, toggleFullscreen } from './pwa';
+import { canFullscreen, canInstall, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
 import './style.css';
 import { WalkInput } from './world/input';
 import type { Vec } from './game/hunt';
@@ -270,6 +270,8 @@ function talkTo(guest: GuestId) {
           primary: true,
           onClick: () => {
             commit(completeQuest(progress, guest));
+            // A good moment to suggest installing: the kid just finished something and is having fun.
+            setTimeout(() => nudgeInstall(), 3000);
             sound.play('fanfare');
             world.sparkle(world.guestSpot(guest), '#ffd166', 2);
             world.celebrate();
@@ -812,6 +814,7 @@ function showHuntCard(mode: 'intro' | 'result') {
     $('#hunt-card-text').textContent = t('huntIntro', { per: COINS_PER_ETROG, bonus: HUNT_WIN_BONUS });
     go.textContent = t('huntStart');
     $('#hunt-card-back').textContent = t('notNow');
+    $('#hunt-card-share').classList.add('hidden');
   } else {
     const h = hunt!;
     const won = h.mine > h.rivals;
@@ -821,6 +824,8 @@ function showHuntCard(mode: 'intro' | 'result') {
     $('#hunt-card-text').textContent = t('huntResult', { mine: h.mine, rival: h.rivals, coins: huntReward(h.mine, h.rivals) });
     go.textContent = t('playAgain');
     $('#hunt-card-back').textContent = t('backToVillage');
+    $('#hunt-card-share').classList.remove('hidden');
+    $('#hunt-card-share').onclick = () => void shareGame(t('shareHunt', { n: h.mine }));
   }
   $('#hunt-card-best').textContent = progress.bestHunt ? t('huntBest', { best: progress.bestHunt }) : '';
   $('#hunt-card').classList.remove('hidden');
@@ -1147,7 +1152,7 @@ function closeMenu() {
 }
 
 function renderMenu() {
-  $('#m-install').classList.toggle('hidden', !canInstall());
+  $('#m-install').classList.toggle('hidden', !installable());
   $('#m-fullscreen').classList.toggle('hidden', !canFullscreen());
   $('#m-fullscreen-label').textContent = t(isFullscreen() ? 'exitFullscreen' : 'fullscreen');
   $('#m-music').setAttribute('aria-pressed', String(sound.prefs.music));
@@ -1199,12 +1204,77 @@ $('#m-sfx').addEventListener('click', () => {
 document.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('button')) sound.play('click');
 });
-$('#m-install').addEventListener('click', () => void install());
+$('#m-install').addEventListener('click', () => {
+  closeMenu();
+  if (canInstall()) void install();
+  else nudgeInstall(true);
+});
 $('#m-reset').addEventListener('click', () => {
   if (!confirm(t('resetConfirm'))) return;
   localStorage.removeItem(SAVE_KEY);
   location.reload();
 });
+
+// --- Sharing ------------------------------------------------------------------------------------
+
+const shareUrl = () => location.origin + location.pathname;
+
+/** The device's share sheet where there is one; otherwise WhatsApp or copying the link. */
+async function shareGame(text = t('shareText')) {
+  const url = shareUrl();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: t('appName'), text, url });
+      return;
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+    }
+  }
+  $<HTMLAnchorElement>('#share-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`;
+  $('#share').classList.remove('hidden');
+  $('#share-copy').focus();
+}
+
+$('#m-share').addEventListener('click', () => {
+  closeMenu();
+  void shareGame();
+});
+$('#share-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(shareUrl());
+    toast(`🔗 ${t('shareCopied')}`);
+  } catch {
+    prompt(t('shareCopy'), shareUrl());
+  }
+  $('#share').classList.add('hidden');
+});
+$('#share-close').addEventListener('click', () => $('#share').classList.add('hidden'));
+
+// --- Install nudge --------------------------------------------------------------------------------
+
+const NUDGE_KEY = 'sukkahWorld.installNudge';
+
+/** Suggests installing the game, at most every couple of days and three times in all. */
+function nudgeInstall(force = false) {
+  if (!installable() || scene !== 'walk' || !$('#install-nudge').classList.contains('hidden')) return;
+  const seen = JSON.parse(localStorage.getItem(NUDGE_KEY) ?? '{"count":0,"at":0}') as { count: number; at: number };
+  if (!force && (seen.count >= 3 || Date.now() - seen.at < 2 * 24 * 3600 * 1000)) return;
+  localStorage.setItem(NUDGE_KEY, JSON.stringify({ count: seen.count + 1, at: Date.now() }));
+  const phone = matchMedia('(pointer: coarse)').matches;
+  $('#install-title').textContent = t(phone ? 'installTitleMobile' : 'installTitleDesktop');
+  $('#install-lead').textContent = t(isIos() && !canInstall() ? 'installIos' : 'installLead');
+  $('#install-yes').textContent = t(isIos() && !canInstall() ? 'installGotIt' : 'installNow');
+  $('#install-nudge').classList.remove('hidden');
+  sound.play('pop');
+}
+
+$('#install-yes').addEventListener('click', () => {
+  $('#install-nudge').classList.add('hidden');
+  if (canInstall()) void install();
+});
+$('#install-no').addEventListener('click', () => $('#install-nudge').classList.add('hidden'));
+// Also after a few minutes of play, for kids who haven't finished a quest yet.
+setTimeout(() => nudgeInstall(), 4 * 60 * 1000);
 
 // --- Hint --------------------------------------------------------------------------------------
 

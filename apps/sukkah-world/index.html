@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#3aa0ff" />
     <meta name="description" content="עולם הסוכה – עולם תלת־ממדי לילדים: בונים סוכה, פוגשים אושפיזין ומשחקים בכפר הסוכות." />
+    <!-- Link previews (WhatsApp, Facebook, X…) -->
+    <link rel="canonical" href="%SITE_URL%/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="עולם הסוכה" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:title" content="עולם הסוכה 🍋 משחק חינם לחג הסוכות" />
+    <meta property="og:description" content="בונים סוכה, פוגשים את שבעת האושפיזין, שטים בנהר, מוצאים אוצרות וחוגגים! משחק תלת־ממד לילדים, בדפדפן ובלי התקנה." />
+    <meta property="og:image" content="%SITE_URL%/og-image.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="דמות עם כתר כוכבים וטלה ליד הסוכה הגדולה בכפר הסוכות" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="עולם הסוכה 🍋 משחק חינם לחג הסוכות" />
+    <meta name="twitter:description" content="בונים סוכה, פוגשים את שבעת האושפיזין וחוגגים! משחק תלת־ממד לילדים, בדפדפן." />
+    <meta name="twitter:image" content="%SITE_URL%/og-image.jpg" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="עולם הסוכה" />
@@ -94,6 +111,7 @@
       <button id="m-music" aria-pressed="true"><span aria-hidden="true" id="m-music-icon">🎵</span> <span data-i18n="music"></span></button>
       <button id="m-sfx" aria-pressed="true"><span aria-hidden="true" id="m-sfx-icon">🔊</span> <span data-i18n="sfx"></span></button>
       <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
+      <button id="m-share"><span aria-hidden="true">📣</span> <span data-i18n="share"></span></button>
       <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
       <hr />
       <button id="m-reset"><span aria-hidden="true">↺</span> <span data-i18n="reset"></span></button>
@@ -175,6 +193,7 @@
         <div class="actions">
           <button class="primary" id="hunt-card-go"></button>
           <button class="secondary" id="hunt-card-back"></button>
+          <button class="secondary hidden" id="hunt-card-share" data-i18n="shareScore"></button>
         </div>
       </div>
     </div>
@@ -188,6 +207,33 @@
         <p class="tune-status" id="tune-status" role="status" aria-live="polite"></p>
         <div class="pads" id="tune-pads"></div>
         <button class="secondary" id="tune-close" data-i18n="close"></button>
+      </div>
+    </div>
+
+    <!-- Sharing, when the device has no share sheet -->
+    <div class="overlay hidden" id="share">
+      <div class="card" role="dialog" aria-modal="true" aria-labelledby="share-title">
+        <div class="card-art" aria-hidden="true">📣</div>
+        <h1 id="share-title" data-i18n="shareTitle"></h1>
+        <p class="lead" data-i18n="shareLead"></p>
+        <div class="actions">
+          <a class="primary share-link" id="share-whatsapp" target="_blank" rel="noopener">WhatsApp</a>
+          <button class="secondary" id="share-copy" data-i18n="shareCopy"></button>
+        </div>
+        <button class="link-btn" id="share-close" data-i18n="close"></button>
+      </div>
+    </div>
+
+    <!-- Nudge to install the game -->
+    <div class="install hidden" id="install-nudge" role="dialog" aria-labelledby="install-title">
+      <img src="icon.svg" alt="" width="64" height="64" />
+      <div class="install-text">
+        <h2 id="install-title"></h2>
+        <p id="install-lead"></p>
+      </div>
+      <div class="install-actions">
+        <button class="primary" id="install-yes" data-i18n="installNow"></button>
+        <button class="link-btn" id="install-no" data-i18n="installLater"></button>
       </div>
     </div>
 
