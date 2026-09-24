@@ -1,6 +1,7 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec).
 # Mancala: one web service for the static build + multiplayer WebSocket on the same port.
-# Sukkah World: a static site.
+# Sukkah World: a static site (a PWA with no server yet).
+# Both deploy from the Blueprint's branch (main); each only rebuilds when its own files change.
 services:
   - type: web
     name: mancala
@@ -26,7 +27,6 @@ services:
   - type: web
     name: sukkah-world
     runtime: static
-    branch: sukkah-world
     buildCommand: npm ci --include=dev && npm run build -w sukkah-world
     staticPublishPath: apps/sukkah-world/dist
     headers:
