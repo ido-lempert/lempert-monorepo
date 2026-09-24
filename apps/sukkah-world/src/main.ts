@@ -82,14 +82,15 @@ const world = new World($('#stage'));
 const input = new WalkInput(world.canvas);
 applyDocument();
 
-type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune';
+type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune' | 'finale';
 let scene: Scene = 'walk';
 
 function setScene(next: Scene) {
   scene = next;
   input.reset();
   input.walking = next === 'walk' || next === 'hunt' || next === 'raft';
-  if (next !== 'raft') world.setMode(next === 'creator' ? 'creator' : next === 'build' ? 'build' : 'walk');
+  if (next !== 'raft' && next !== 'finale') world.setMode(next === 'creator' ? 'creator' : next === 'build' ? 'build' : 'walk');
+  if (next !== 'finale') $('#finale').classList.add('hidden');
   $('#hud').classList.toggle('hidden', next === 'creator');
   $('#creator').classList.toggle('hidden', next !== 'creator');
   $('#build').classList.toggle('hidden', next !== 'build');
@@ -400,6 +401,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     if (!$('#menu').classList.contains('hidden')) closeMenu();
     else if (scene === 'build' || scene === 'dialog') setScene('walk');
+    else if (scene === 'finale') showFinaleCard();
     return;
   }
   const onPage = document.activeElement === document.body || document.activeElement === null;
@@ -656,11 +658,55 @@ world.onFirework = () => sound.play('firework');
 function checkGrandEvent() {
   if (!readyForGrandEvent(progress) || !inside(world.player.pos, GRAND_SUKKAH, -0.5)) return;
   commit(celebrateGrandEvent(progress));
-  world.fireworks(GRAND_SUKKAH, 12);
-  world.celebrate();
-  sound.play('fanfare');
-  say(GUEST_FACE.abraham, t('abraham'), t('grandEventText', { name: playerName(), coins: GRAND_EVENT_REWARD.coins }), [{ label: t('grandEventOk'), primary: true }]);
+  startFinale(true);
 }
+
+/** In front of the Grand Sukkah, where the hora is danced. */
+const FINALE_CENTER = { x: GRAND_SUKKAH.x, z: GRAND_SUKKAH.z + GRAND_SUKKAH.d / 2 + 3.6 };
+let finaleTimers: number[] = [];
+
+/** `first`: the celebration that ends the game (with its rewards), rather than a replay from the menu. */
+let finaleFirst = false;
+
+function startFinale(first = false) {
+  finaleFirst = first;
+  setScene('finale');
+  world.startFinale(FINALE_CENTER);
+  sound.play('fanfare');
+  finaleTimers.forEach(clearTimeout);
+  finaleTimers = [
+    window.setTimeout(() => sound.play('achievement'), 1600),
+    window.setTimeout(showFinaleCard, 4500),
+  ];
+}
+
+function showFinaleCard() {
+  if (scene !== 'finale') return;
+  $('#finale-text').textContent = t('finaleText', { name: playerName() });
+  $('#finale-hunt').classList.toggle('hidden', progress.achievements.includes('firstHunt'));
+  $('#finale-reward').textContent = finaleFirst ? t('finaleReward', { coins: GRAND_EVENT_REWARD.coins }) : '';
+  $('#finale').classList.remove('hidden');
+  $('#finale-share').focus();
+}
+
+function endFinale() {
+  finaleTimers.forEach(clearTimeout);
+  world.endFinale();
+  setScene('walk');
+  refresh();
+}
+
+$('#finale-share').addEventListener('click', () => void shareGame(t('finaleShareText')));
+$('#finale-dance').addEventListener('click', () => {
+  $('#finale').classList.add('hidden');
+  // Bring the card back after a while, so there's always a way out of the party.
+  finaleTimers.push(window.setTimeout(showFinaleCard, 12000));
+});
+$('#finale-back').addEventListener('click', endFinale);
+$('#m-party').addEventListener('click', () => {
+  closeMenu();
+  if (scene === 'walk') startFinale(false);
+});
 
 // --- Moses' raft ride ---------------------------------------------------------------------------
 
@@ -1197,7 +1243,9 @@ function renderMenu() {
   $('#m-sfx').setAttribute('aria-pressed', String(sound.prefs.sfx));
   $('#m-sfx-icon').textContent = sound.prefs.sfx ? '🔊' : '🔇';
   // Travelling away mid-hunt would be cheating the race.
-  const busy = scene === 'hunt' || scene === 'raft';
+  const busy = scene === 'hunt' || scene === 'raft' || scene === 'finale';
+  $('#m-party').classList.toggle('hidden', !progress.achievements.includes('grandEvent'));
+  $('#m-party').toggleAttribute('disabled', busy);
   $('#m-home').toggleAttribute('disabled', busy);
   $('#m-plaza').toggleAttribute('disabled', busy);
   $('#m-avatar').toggleAttribute('disabled', busy);

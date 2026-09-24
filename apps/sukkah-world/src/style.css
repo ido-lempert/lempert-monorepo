@@ -1496,3 +1496,55 @@ html.reduce-motion *::after {
   font-weight: 700;
   text-decoration: underline;
 }
+
+/* --- Grand finale ------------------------------------------------------------------------------------- */
+
+.overlay.finale {
+  background: radial-gradient(circle at 50% 30%, rgba(255, 210, 63, 0.25), rgba(29, 43, 83, 0.45));
+  backdrop-filter: none;
+}
+
+.finale-card {
+  width: min(520px, 100%);
+  max-height: calc(100dvh - 70px);
+  overflow-y: auto;
+}
+
+.finale-card h1 {
+  font-size: clamp(30px, 7vmin, 42px);
+  color: var(--grape);
+}
+
+.verse {
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: #fff6d6;
+  box-shadow: inset 0 0 0 2px var(--sun);
+}
+
+.verse p {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
+.verse cite {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  font-style: normal;
+  color: var(--ink-soft);
+}
+
+.finale-reward {
+  font-size: 17px;
+  font-weight: 800;
+  color: #8a5a00;
+}
+
+.finale-hunt {
+  font-weight: 800;
+  color: var(--sun-ink);
+}

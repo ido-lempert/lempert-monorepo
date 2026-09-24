@@ -117,6 +117,7 @@
       <button id="m-share"><span aria-hidden="true">📣</span> <span data-i18n="share"></span></button>
       <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
       <hr />
+      <button id="m-party" class="hidden"><span aria-hidden="true">🎉</span> <span data-i18n="partyAgain"></span></button>
       <button id="m-goto"><span aria-hidden="true">🧭</span> <span data-i18n="takeMeThere"></span></button>
       <hr />
       <p class="menu-heading" data-i18n="accessibilityTitle"></p>
@@ -250,6 +251,26 @@
       <div class="install-actions">
         <button class="primary" id="install-yes" data-i18n="installNow"></button>
         <button class="link-btn" id="install-no" data-i18n="installLater"></button>
+      </div>
+    </div>
+
+    <!-- The grand finale's greeting card -->
+    <div class="overlay finale hidden" id="finale">
+      <div class="card finale-card" role="dialog" aria-modal="true" aria-labelledby="finale-title">
+        <div class="card-art" aria-hidden="true">🛖</div>
+        <h1 id="finale-title" data-i18n="finaleTitle"></h1>
+        <blockquote class="verse">
+          <p data-i18n="finaleVerse"></p>
+          <cite data-i18n="finaleVerseRef"></cite>
+        </blockquote>
+        <p class="lead" id="finale-text"></p>
+        <p class="finale-reward" id="finale-reward"></p>
+        <p class="lead finale-hunt hidden" id="finale-hunt" data-i18n="finaleHunt"></p>
+        <div class="actions">
+          <button class="primary" id="finale-share" data-i18n="finaleShare"></button>
+          <button class="secondary" id="finale-dance" data-i18n="finaleDance"></button>
+          <button class="secondary" id="finale-back" data-i18n="backToVillage"></button>
+        </div>
       </div>
     </div>
 

@@ -100,7 +100,7 @@ import {
   tree,
 } from './models';
 
-export type CameraMode = 'walk' | 'creator' | 'build' | 'raft';
+export type CameraMode = 'walk' | 'creator' | 'build' | 'raft' | 'finale';
 
 export const WALK_SPEED = 5.2;
 /** Running is this much faster than walking. */
@@ -176,6 +176,7 @@ export class World {
   private sheafState = { active: false, found: [] as string[] };
   private dove: { group: THREE.Group; wings: [THREE.Object3D, THREE.Object3D] } | null = null;
   private fireworksUntil = 0;
+  private finale: { center: Vec; start: number } | null = null;
   private nextFirework = 0;
   private lanterns: THREE.Mesh[] = [];
   /** Jacob's lambs: lost in the maze, following the player, or safe in the pen. */
@@ -885,6 +886,77 @@ export class World {
     this.sheafState = { active, found };
   }
 
+  /**
+   * The grand finale: everyone – the seven Ushpizin, the villagers, Shoshi and the player – dances a hora in
+   * a ring, the lamb hops in the middle and the dove circles above, under fireworks.
+   */
+  startFinale(center: Vec) {
+    this.finale = { center, start: this.timer.getElapsed() };
+    this.setMode('finale');
+    this.fireworks({ x: center.x, z: center.z - 3 }, 30);
+    for (const v of this.villagers) v.char.group.visible = true;
+  }
+
+  endFinale() {
+    if (!this.finale) return;
+    const c = this.finale.center;
+    this.finale = null;
+    this.fireworksUntil = 0;
+    // Everyone goes back to their places; the player stays in the middle of the plaza-side dance floor.
+    this.seatGuests([...this.guests.values()].some((g) => g.seat));
+    for (const v of this.villagers) {
+      v.char.group.position.set(v.home.x, 0, v.home.z);
+      v.char.rig.rotation.set(0, 0, 0);
+    }
+    for (const g of this.guests.values()) g.char.rig.rotation.set(0, 0, 0);
+    this.rival.pos = { ...RIVAL_HOME };
+    this.player.char.rig.rotation.set(0, 0, 0);
+    this.teleport({ x: c.x, z: c.z + 1 }, Math.PI);
+    this.setMode('walk');
+  }
+
+  get inFinale(): boolean {
+    return this.finale !== null;
+  }
+
+  private updateFinale(time: number, still: boolean) {
+    const f = this.finale!;
+    const t = time - f.start;
+    const dancers: { char: Character; walker?: Walker }[] = [
+      ...[...this.guests.values()].map((g) => ({ char: g.char })),
+      ...this.villagers.map((v) => ({ char: v.char })),
+      { char: this.rival.char, walker: this.rival },
+      { char: this.player.char, walker: this.player },
+    ];
+    const r = 3.6;
+    dancers.forEach(({ char, walker }, i) => {
+      const a = (i / dancers.length) * Math.PI * 2 + (still ? 0 : t * 0.55);
+      const x = f.center.x + Math.cos(a) * r;
+      const z = f.center.z + Math.sin(a) * r;
+      if (walker) walker.pos = { x, z };
+      char.group.position.set(x, 0, z);
+      // Face the middle, with a little sway; every few seconds each dancer does a twirl.
+      const twirl = still ? 0 : Math.max(0, Math.sin(t * 1.3 - i * 0.9) - 0.85) * 40;
+      char.group.rotation.y = Math.atan2(f.center.x - x, f.center.z - z) + (still ? 0 : Math.sin(t * 3 + i) * 0.2) + twirl;
+      if (still) return;
+      const beat = t * 6 + i;
+      animateWalk(char, beat, 1, time);
+      char.rig.position.y = Math.abs(Math.sin(beat)) * 0.35;
+      char.limbs.armL.rotation.set(0, 0, -2.5 + Math.sin(beat) * 0.35);
+      char.limbs.armR.rotation.set(0, 0, 2.5 - Math.sin(beat) * 0.35);
+    });
+    if (this.pet) {
+      this.pet.pos = { ...f.center };
+      this.pet.char.group.position.set(f.center.x, still ? 0 : Math.abs(Math.sin(t * 5)) * 0.6, f.center.z);
+      this.pet.char.group.rotation.y = still ? 0 : t * 2;
+    }
+    if (this.dove) {
+      const a = still ? 0 : t * 1.2;
+      this.dove.group.position.set(f.center.x + Math.cos(a) * 2, 3.4 + Math.sin(t * 2) * 0.3, f.center.z + Math.sin(a) * 2);
+      this.dove.group.rotation.y = -a;
+    }
+  }
+
   /** Seats the Ushpizin around the Grand Sukkah table (true) or sends them back to their places. */
   seatGuests(seated: boolean) {
     [...this.guests.values()].forEach((g, i) => {
@@ -1067,7 +1139,7 @@ export class World {
     if (mode === 'creator' && this.mode !== 'creator') this.creatorAngle = this.player.heading;
     this.mode = mode;
     this.mySukkah.roof.visible = mode !== 'build';
-    this.labels.domElement.classList.toggle('hidden', mode === 'creator');
+    this.labels.domElement.classList.toggle('hidden', mode === 'creator' || mode === 'finale');
     // While decorating the camera looks down into the sukkah; the player would only be in the way.
     this.player.char.group.visible = mode !== 'build';
   }
@@ -1215,6 +1287,7 @@ export class World {
     this.updateLambs(dt, time);
     this.updateGuide(time);
     this.updateHelpers(dt, time, still);
+    if (this.finale) this.updateFinale(time, still);
 
     if (!still) {
       setWindTime(time);
@@ -1306,6 +1379,16 @@ export class World {
       return {
         pos: new THREE.Vector3(s.x, portrait ? 13 : 9, s.z + (portrait ? 3.5 : 4.5)),
         look: new THREE.Vector3(s.x, 0, s.z + (portrait ? 1 : 0.3)),
+      };
+    }
+    if (this.mode === 'finale' && this.finale) {
+      // Slowly circling the dancers from above.
+      const c = this.finale.center;
+      const a = (this.timer.getElapsed() - this.finale.start) * 0.18 + 0.4;
+      const dist = portrait ? 13 : 11;
+      return {
+        pos: new THREE.Vector3(c.x + Math.sin(a) * dist, portrait ? 8 : 6.5, c.z + Math.cos(a) * dist),
+        look: new THREE.Vector3(c.x, 1.1, c.z),
       };
     }
     if (this.mode === 'raft') {
