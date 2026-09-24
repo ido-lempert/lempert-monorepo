@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#3aa0ff" />
+    <meta name="description" content="עולם הסוכה – עולם תלת־ממדי לילדים: בונים סוכה, פוגשים אושפיזין ומשחקים בכפר הסוכות." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="עולם הסוכה" />
+    <title>עולם הסוכה</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <style>
+      /* Critical styles: show the splash immediately and keep the rest hidden until the world is ready. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #3aa0ff;
+        color: #1d2b53;
+        font-family: 'Rubik Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      body:not(.ready) > :not(#splash):not(script) {
+        visibility: hidden;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: linear-gradient(180deg, #3aa0ff 0%, #8fd3ff 70%, #bff0a0 100%);
+        transition: opacity 0.45s ease;
+      }
+      #splash.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash img {
+        width: min(36vmin, 190px);
+        height: auto;
+        filter: drop-shadow(0 10px 18px rgba(29, 43, 83, 0.35));
+        animation: splash-bounce 0.9s ease-in-out infinite alternate;
+      }
+      #splash .splash-title {
+        padding: 6px 22px;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: 0 5px 0 rgba(29, 43, 83, 0.2);
+        font-size: clamp(24px, 6vmin, 38px);
+        font-weight: 900;
+      }
+      @keyframes splash-bounce {
+        to {
+          transform: translateY(-14px) scale(1.03);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash" role="status" aria-live="polite">
+      <img src="icon.svg" alt="" width="190" height="190" />
+      <div class="splash-title">עולם הסוכה</div>
+      <div data-i18n="loading" style="font-weight: 700">טוען…</div>
+    </div>
+
+    <main id="stage" data-i18n-attr="aria-label:sceneLabel"></main>
+
+    <header class="hud" id="hud">
+      <div class="coins" id="coins" role="status"><span class="coin" aria-hidden="true"></span><b id="coin-count">0</b><span class="sr-only" data-i18n="coins"></span></div>
+      <div class="quest" id="quest" role="status"><span class="quest-icon" id="quest-icon" aria-hidden="true"></span><span id="quest-text" dir="auto"></span></div>
+      <button class="icon" id="menu-btn" aria-expanded="false" aria-controls="menu" data-i18n-attr="title:menu;aria-label:menu">☰</button>
+    </header>
+
+    <div class="hunt-hud hidden" id="hunt-hud" role="status">
+      <div class="hunt-score me"><span data-i18n="huntYou"></span> <b id="hunt-me">0</b></div>
+      <div class="hunt-time" id="hunt-time">60</div>
+      <div class="hunt-score rival"><span data-i18n="huntShoshi"></span> <b id="hunt-rival">0</b></div>
+    </div>
+
+    <nav class="menu hidden" id="menu" data-i18n-attr="aria-label:menu">
+      <button id="m-avatar"><span aria-hidden="true">🧒</span> <span data-i18n="editAvatar"></span></button>
+      <button id="m-home"><span aria-hidden="true">🛖</span> <span data-i18n="goToMySukkah"></span></button>
+      <button id="m-plaza"><span aria-hidden="true">⛲</span> <span data-i18n="goToPlaza"></span></button>
+      <button id="m-music" aria-pressed="true"><span aria-hidden="true" id="m-music-icon">🎵</span> <span data-i18n="music"></span></button>
+      <button id="m-sfx" aria-pressed="true"><span aria-hidden="true" id="m-sfx-icon">🔊</span> <span data-i18n="sfx"></span></button>
+      <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
+      <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
+      <hr />
+      <button id="m-reset"><span aria-hidden="true">↺</span> <span data-i18n="reset"></span></button>
+      <p class="version"><span data-i18n="version"></span> <span id="app-version" dir="ltr"></span></p>
+    </nav>
+
+    <div class="hint" id="hint" aria-hidden="true"></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <button class="action primary hidden" id="action"></button>
+
+    <!-- Talking to characters -->
+    <div class="dialog hidden" id="dialog" role="dialog" aria-modal="false" aria-labelledby="dialog-name">
+      <div class="dialog-face" id="dialog-face" aria-hidden="true"></div>
+      <div class="dialog-body">
+        <h2 id="dialog-name"></h2>
+        <p id="dialog-text"></p>
+        <div class="actions" id="dialog-actions"></div>
+      </div>
+    </div>
+
+    <!-- Decorating my sukkah -->
+    <section class="build hidden" id="build" aria-labelledby="build-title">
+      <header class="build-head">
+        <h2 id="build-title" data-i18n="buildTitle"></h2>
+        <button class="primary" id="build-done" data-i18n="done"></button>
+      </header>
+      <p class="build-hint" id="build-hint"></p>
+      <div class="build-selected hidden" id="build-selected">
+        <button class="secondary" id="build-rotate"><span aria-hidden="true">⟳</span> <span data-i18n="rotate"></span></button>
+        <button class="secondary" id="build-remove"><span aria-hidden="true">✕</span> <span data-i18n="remove"></span></button>
+      </div>
+      <div class="palette" id="palette" role="listbox" data-i18n-attr="aria-label:buildTitle"></div>
+    </section>
+
+    <!-- Character creator -->
+    <div class="creator hidden" id="creator">
+      <form class="card" id="creator-form">
+        <div class="creator-top">
+          <h1 id="creator-title" data-i18n="creatorTitle"></h1>
+          <button type="button" class="icon dice" id="avatar-random" data-i18n-attr="title:randomLook;aria-label:randomLook">🎲</button>
+        </div>
+        <label class="field">
+          <span class="field-label" data-i18n="nameLabel"></span>
+          <input id="avatar-name" maxlength="14" autocomplete="nickname" dir="auto" data-i18n-attr="placeholder:namePlaceholder" />
+        </label>
+        <div class="tabs" id="creator-tabs" role="tablist" data-i18n-attr="aria-label:creatorTitle"></div>
+        <div class="tab-panel" id="creator-panel" role="tabpanel"></div>
+        <div class="try-on hidden" id="try-on" role="status">
+          <span id="try-on-text"></span>
+          <button type="button" class="primary" id="try-on-buy"></button>
+        </div>
+        <p class="drag-hint" data-i18n="dragToTurn"></p>
+        <button type="submit" class="primary big" id="creator-submit"></button>
+      </form>
+    </div>
+
+    <!-- Etrog hunt: intro and result -->
+    <div class="overlay hidden" id="hunt-card">
+      <div class="card" role="dialog" aria-modal="true" aria-labelledby="hunt-card-title">
+        <div class="card-art" aria-hidden="true" id="hunt-card-art">🍋🐑</div>
+        <h1 id="hunt-card-title"></h1>
+        <p class="lead" id="hunt-card-text"></p>
+        <p class="lead muted" id="hunt-card-best"></p>
+        <div class="actions">
+          <button class="primary" id="hunt-card-go"></button>
+          <button class="secondary" id="hunt-card-back"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- David's musical memory game -->
+    <div class="overlay hidden" id="tune">
+      <div class="card tune-card" role="dialog" aria-modal="true" aria-labelledby="tune-title">
+        <div class="card-art" aria-hidden="true">🎵</div>
+        <h1 id="tune-title" data-i18n="tuneTitle"></h1>
+        <p class="lead" id="tune-round"></p>
+        <p class="tune-status" id="tune-status" role="status" aria-live="polite"></p>
+        <div class="pads" id="tune-pads"></div>
+        <button class="secondary" id="tune-close" data-i18n="close"></button>
+      </div>
+    </div>
+
+    <div class="update hidden" id="update" role="status">
+      <span data-i18n="updateAvailable"></span>
+      <button class="primary" id="update-now" data-i18n="updateNow"></button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
