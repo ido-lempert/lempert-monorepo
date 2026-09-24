@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { attachGameServer } from './server/attach.ts';
@@ -19,16 +20,30 @@ const gameServer = (): Plugin => {
   };
 };
 
+/** Short commit id shown in the menu, so it's easy to tell which version is running. */
+function appVersion(): string {
+  const fromRender = process.env.RENDER_GIT_COMMIT?.slice(0, 7);
+  if (fromRender) return fromRender;
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 export default defineConfig({
   base: './',
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
     gameServer(),
     VitePWA({
-      // Ask before updating (never reload mid-game); main.ts shows an "Update" button.
+      // A new version takes over as soon as it is installed (skipWaiting/clientsClaim below) so installed
+      // apps never get stuck on an old one; main.ts then offers an "Update" button instead of reloading mid-game.
       registerType: 'prompt',
       injectRegister: false,
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
+        id: './',
         name: 'Mancala · מנקלה',
         short_name: 'Mancala',
         description: 'Mancala in 3D – play against the computer, on one device, or online with a friend.',
@@ -52,6 +67,8 @@ export default defineConfig({
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/ws/, /^\/api\//],
         cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],

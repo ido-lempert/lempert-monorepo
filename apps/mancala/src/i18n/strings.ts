@@ -128,6 +128,7 @@ export const en = {
   fameNeedsName: "Add your name in settings to appear on the wall of fame.",
   updateAvailable: "A new version is ready.",
   updateNow: "Update",
+  version: "Version",
 };
 
 export type Dict = Record<keyof typeof en, string>;
@@ -260,6 +261,7 @@ export const he: Dict = {
   fameNeedsName: "רוצים להופיע בקיר התהילה? הוסיפו את השם שלכם בהגדרות.",
   updateAvailable: "יש גרסה חדשה.",
   updateNow: "לעדכן",
+  version: "גרסה",
 };
 
 export const ar: Dict = {
@@ -390,6 +392,7 @@ export const ar: Dict = {
   fameNeedsName: "أضف اسمك في الإعدادات لتظهر في جدار الشرف.",
   updateAvailable: "إصدار جديد جاهز.",
   updateNow: "تحديث",
+  version: "الإصدار",
 };
 
 export const ru: Dict = {
@@ -521,6 +524,7 @@ export const ru: Dict = {
   fameNeedsName: "Укажите имя в настройках, чтобы попасть на доску почёта.",
   updateAvailable: "Доступна новая версия.",
   updateNow: "Обновить",
+  version: "Версия",
 };
 
 export const fr: Dict = {
@@ -652,6 +656,7 @@ export const fr: Dict = {
   fameNeedsName: "Indiquez votre nom dans les réglages pour figurer au tableau d'honneur.",
   updateAvailable: "Une nouvelle version est prête.",
   updateNow: "Mettre à jour",
+  version: "Version",
 };
 
 export const es: Dict = {
@@ -783,4 +788,5 @@ export const es: Dict = {
   fameNeedsName: "Añade tu nombre en los ajustes para aparecer en el muro de la fama.",
   updateAvailable: "Hay una nueva versión lista.",
   updateNow: "Actualizar",
+  version: "Versión",
 };

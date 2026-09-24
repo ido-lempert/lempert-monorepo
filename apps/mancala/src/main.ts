@@ -963,11 +963,26 @@ const hideHint = () => $('#hint').classList.add('gone');
 $('#stage').addEventListener('pointerdown', hideHint, { once: true });
 setTimeout(hideHint, 12000);
 
-// New versions wait for the player's go-ahead instead of reloading mid-game.
-const updateSW = registerSW({
-  onNeedRefresh: () => show('#update', true),
+// Updates: a new service worker takes over as soon as it is installed; the page then offers "Update"
+// rather than reloading mid-game. Installed apps rarely navigate, so check for new versions regularly.
+let hadController = !!navigator.serviceWorker?.controller;
+navigator.serviceWorker?.addEventListener('controllerchange', () => {
+  if (hadController) show('#update', true); // not on the very first install
+  hadController = true;
 });
-$('#update-now').addEventListener('click', () => void updateSW(true));
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, registration) {
+    if (!registration) return;
+    const check = () => {
+      if (navigator.onLine) void registration.update().catch(() => {});
+    };
+    setInterval(check, 30 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check());
+  },
+});
+$('#update-now').addEventListener('click', () => location.reload());
+$('#app-version').textContent = __APP_VERSION__;
 
 // --- Start ------------------------------------------------------------------
 

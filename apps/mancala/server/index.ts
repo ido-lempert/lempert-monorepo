@@ -27,7 +27,16 @@ const server = createServer((req, res) => {
   if (handleFame(fame, req, res)) return;
   const path = normalize(decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
   let file = join(DIST, path);
-  if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html');
+  const found = file.startsWith(DIST) && existsSync(file) && !statSync(file).isDirectory();
+  if (!found) {
+    // A missing file (e.g. an asset from an older build) is a real 404; only page routes get the app.
+    if (extname(path) && extname(path) !== '.html') {
+      res.writeHead(404, { 'content-type': 'text/plain', 'cache-control': 'no-cache' });
+      res.end('Not found');
+      return;
+    }
+    file = join(DIST, 'index.html');
+  }
   const hashed = file.includes(`${join(DIST, 'assets')}`);
   res.writeHead(200, {
     'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
