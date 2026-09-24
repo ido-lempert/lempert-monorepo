@@ -1004,3 +1004,9 @@ table.fame tbody tr:nth-child(3) th::before {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
 }
+
+.menu .version {
+  margin: 4px 12px 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
