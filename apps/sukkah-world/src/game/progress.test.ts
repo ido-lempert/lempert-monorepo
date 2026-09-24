@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   available,
+  buyWear,
+  fullAvatar,
+  ownsWear,
+  setAvatar,
+  WEAR_PRICES,
   buy,
   completeQuest,
   findSpecies,
@@ -104,5 +109,40 @@ describe('saving', () => {
     expect(parseProgress('not json')).toEqual(newProgress());
     expect(parseProgress(null)).toEqual(newProgress());
     expect(parseProgress('{"version":99}')).toEqual(newProgress());
+  });
+});
+
+describe('character wearables', () => {
+  const avatar = { name: 'נועה', skin: '#f1c7a0', shirt: '#2a9d8f', hat: 'kippah' as const };
+
+  it('fills in defaults for avatars saved before the new options', () => {
+    const a = fullAvatar(avatar);
+    expect(a.hairStyle).toBe('short');
+    expect(a.accessory).toBe('none');
+  });
+
+  it('has free basics and paid festive items', () => {
+    const p = newProgress();
+    expect(ownsWear(p, 'kippah')).toBe(true);
+    expect(ownsWear(p, 'glasses')).toBe(true);
+    expect(ownsWear(p, 'crown')).toBe(false);
+  });
+
+  it('buys a wearable once, only with enough coins', () => {
+    expect(buyWear(newProgress(), 'crown').ownedWear).toEqual([]);
+    let p: Progress = { ...newProgress(), coins: 100 };
+    p = buyWear(buyWear(p, 'crown'), 'crown');
+    expect(p.ownedWear).toEqual(['crown']);
+    expect(p.coins).toBe(100 - WEAR_PRICES.crown!);
+    expect(p.achievements).toContain('firstWear');
+  });
+
+  it('does not save items that were only tried on', () => {
+    let p = setAvatar(newProgress(), { ...avatar, hat: 'cap' });
+    p = setAvatar(p, { ...avatar, hat: 'crown', accessory: 'lantern' });
+    expect(p.avatar!.hat).toBe('cap');
+    expect(p.avatar!.accessory).toBe('none');
+    p = setAvatar({ ...p, ownedWear: ['crown'] }, { ...avatar, hat: 'crown' });
+    expect(p.avatar!.hat).toBe('crown');
   });
 });

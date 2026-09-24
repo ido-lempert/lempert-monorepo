@@ -131,6 +131,7 @@ export class World {
   private faded = new Set<THREE.Object3D>();
 
   mode: CameraMode = 'walk';
+  private creatorAngle = 0;
   private camTarget = new THREE.Vector3();
   private camPos = new THREE.Vector3();
   private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -191,7 +192,7 @@ export class World {
     this.scene.add(this.abraham.group);
     this.abrahamTag = this.label('abraham', 0, 2.35, 0, 'npc', this.abraham.group);
 
-    this.player = this.walker(character({ shirt: '#2a9d8f', skin: '#f1c7a0', hat: 'kippah' }), SPAWN, WALK_SPEED);
+    this.player = this.walker(character({ name: '', shirt: '#2a9d8f', skin: '#f1c7a0', hat: 'kippah' }), SPAWN, WALK_SPEED);
     this.player.heading = Math.PI;
     this.rival = this.walker(sheep(), RIVAL_HOME, 0);
     this.label('rival', 0, 1.75, 0, 'npc', this.rival.char.group);
@@ -573,11 +574,18 @@ export class World {
   }
 
   setMode(mode: CameraMode) {
+    // The creator camera stays put in front of the character, so dragging turns the character, not the view.
+    if (mode === 'creator' && this.mode !== 'creator') this.creatorAngle = this.player.heading;
     this.mode = mode;
     this.mySukkah.roof.visible = mode !== 'build';
     this.labels.domElement.classList.toggle('hidden', mode === 'creator');
     // While decorating the camera looks down into the sukkah; the player would only be in the way.
     this.player.char.group.visible = mode !== 'build';
+  }
+
+  /** Turns the character around in the creator (drag on the scene). */
+  spin(radians: number) {
+    this.player.heading += radians;
   }
 
   /** A happy little jump, e.g. when picking something up. */
@@ -741,12 +749,12 @@ export class World {
     const portrait = this.camera.aspect < 1;
     const p = this.player.pos;
     if (this.mode === 'creator') {
-      const h = this.player.heading;
-      const dist = portrait ? 6 : 4;
+      const h = this.creatorAngle;
+      const dist = portrait ? 6.6 : 4.8;
       return {
-        pos: new THREE.Vector3(p.x + Math.sin(h) * dist, portrait ? 1.3 : 1.5, p.z + Math.cos(h) * dist),
+        pos: new THREE.Vector3(p.x + Math.sin(h) * dist, portrait ? 1.5 : 1.6, p.z + Math.cos(h) * dist),
         // On a phone the creator panel covers the bottom half, so aim below the feet to lift the character up.
-        look: new THREE.Vector3(p.x, portrait ? -1.2 : 1, p.z),
+        look: new THREE.Vector3(p.x, portrait ? -1 : 1.15, p.z),
       };
     }
     if (this.mode === 'build') {

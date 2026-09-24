@@ -27,16 +27,55 @@ export const DECORATIONS: DecorationDef[] = [
 
 export const decoration = (id: DecorationId) => DECORATIONS.find((d) => d.id === id)!;
 
-export type HatId = 'none' | 'kippah' | 'cap' | 'crown';
+export type HatId = 'none' | 'kippah' | 'cap' | 'crown' | 'sukkahHat' | 'hadasWreath';
+export type HairStyle = 'short' | 'long' | 'curly' | 'ponytail' | 'spiky' | 'buzz';
+export type EyeStyle = 'round' | 'happy' | 'sparkle';
+export type MouthStyle = 'smile' | 'grin' | 'tongue';
+export type Pattern = 'plain' | 'stripes' | 'stars';
+export type AccessoryId = 'none' | 'glasses' | 'etrogBag' | 'lantern' | 'sukkahBackpack';
 
 export interface Avatar {
   name: string;
-  shirt: string;
   skin: string;
-  /** Added after the first release, so older saves may not have it. */
-  hair?: string;
+  shirt: string;
   hat: HatId;
+  // Everything below was added after the first release, so older saves may not have it (see `fullAvatar`).
+  hair?: string;
+  hairStyle?: HairStyle;
+  eyes?: EyeStyle;
+  mouth?: MouthStyle;
+  pattern?: Pattern;
+  pants?: string;
+  shoes?: string;
+  accessory?: AccessoryId;
 }
+
+export const AVATAR_DEFAULTS: Required<Omit<Avatar, 'name' | 'skin' | 'shirt' | 'hat'>> = {
+  hair: '#5a3825',
+  hairStyle: 'short',
+  eyes: 'round',
+  mouth: 'smile',
+  pattern: 'plain',
+  pants: '#3b5b9a',
+  shoes: '#f4f4f4',
+  accessory: 'none',
+};
+
+export function fullAvatar(a: Avatar): Required<Avatar> {
+  return { ...AVATAR_DEFAULTS, ...a } as Required<Avatar>;
+}
+
+/** Festive wearables bought with coins in the character creator. Anything not listed here is free. */
+export type WearId = Exclude<HatId | AccessoryId, 'none'>;
+
+export const WEAR_PRICES: Partial<Record<WearId, number>> = {
+  crown: 30,
+  sukkahHat: 25,
+  hadasWreath: 20,
+  etrogBag: 20,
+  lantern: 25,
+  sukkahBackpack: 40,
+};
 
 export interface Placed {
   id: DecorationId;
@@ -61,6 +100,8 @@ export interface Progress {
   quest: { stage: QuestStage; found: SpeciesId[] };
   achievements: string[];
   bestHunt: number;
+  /** Wearables bought in the character creator. */
+  ownedWear: WearId[];
 }
 
 export const QUEST_REWARD = { coins: 50, item: 'lantern' as DecorationId };
@@ -78,6 +119,7 @@ export function newProgress(): Progress {
     quest: { stage: 'notStarted', found: [] },
     achievements: [],
     bestHunt: 0,
+    ownedWear: [],
   };
 }
 
@@ -88,6 +130,9 @@ export function parseProgress(raw: string | null): Progress {
   try {
     const data = JSON.parse(raw) as Partial<Progress>;
     if (data.version !== 1) return fresh;
+    const ownedWear = Array.isArray(data.ownedWear) ? data.ownedWear : [];
+    // The crown was free before wearables had prices; whoever already wears it keeps it.
+    if (data.avatar?.hat === 'crown' && !ownedWear.includes('crown')) ownedWear.push('crown');
     return {
       ...fresh,
       ...data,
@@ -95,6 +140,7 @@ export function parseProgress(raw: string | null): Progress {
       owned: { ...data.owned },
       placed: Array.isArray(data.placed) ? data.placed : [],
       achievements: Array.isArray(data.achievements) ? data.achievements : [],
+      ownedWear,
     };
   } catch {
     return fresh;
@@ -104,8 +150,24 @@ export function parseProgress(raw: string | null): Progress {
 const withAchievement = (p: Progress, id: string): Progress =>
   p.achievements.includes(id) ? p : { ...p, achievements: [...p.achievements, id] };
 
+export function ownsWear(p: Progress, id: HatId | AccessoryId): boolean {
+  return id === 'none' || !(id in WEAR_PRICES) || p.ownedWear.includes(id as WearId);
+}
+
+export function buyWear(p: Progress, id: WearId): Progress {
+  const price = WEAR_PRICES[id];
+  if (price === undefined || ownsWear(p, id) || p.coins < price) return p;
+  return withAchievement({ ...p, coins: p.coins - price, ownedWear: [...p.ownedWear, id] }, 'firstWear');
+}
+
+/** Saves the avatar; wearables tried on but not bought fall back to what was worn before (or nothing). */
 export function setAvatar(p: Progress, avatar: Avatar): Progress {
-  return { ...p, avatar };
+  const before = p.avatar;
+  const hat = ownsWear(p, avatar.hat) ? avatar.hat : before && ownsWear(p, before.hat) ? before.hat : 'none';
+  const acc = avatar.accessory ?? 'none';
+  const prevAcc = before?.accessory ?? 'none';
+  const accessory = ownsWear(p, acc) ? acc : ownsWear(p, prevAcc) ? prevAcc : 'none';
+  return { ...p, avatar: { ...avatar, hat, accessory } };
 }
 
 export function startQuest(p: Progress): Progress {

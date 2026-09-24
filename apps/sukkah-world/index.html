@@ -130,27 +130,21 @@
     <!-- Character creator -->
     <div class="creator hidden" id="creator">
       <form class="card" id="creator-form">
-        <h1 id="creator-title" data-i18n="creatorTitle"></h1>
+        <div class="creator-top">
+          <h1 id="creator-title" data-i18n="creatorTitle"></h1>
+          <button type="button" class="icon dice" id="avatar-random" data-i18n-attr="title:randomLook;aria-label:randomLook">🎲</button>
+        </div>
         <label class="field">
           <span class="field-label" data-i18n="nameLabel"></span>
           <input id="avatar-name" maxlength="14" autocomplete="nickname" dir="auto" data-i18n-attr="placeholder:namePlaceholder" />
         </label>
-        <fieldset class="field">
-          <legend class="field-label" data-i18n="shirt"></legend>
-          <div class="swatches" id="shirt-swatches"></div>
-        </fieldset>
-        <fieldset class="field">
-          <legend class="field-label" data-i18n="skin"></legend>
-          <div class="swatches" id="skin-swatches"></div>
-        </fieldset>
-        <fieldset class="field">
-          <legend class="field-label" data-i18n="hair"></legend>
-          <div class="swatches" id="hair-swatches"></div>
-        </fieldset>
-        <fieldset class="field">
-          <legend class="field-label" data-i18n="hat"></legend>
-          <div class="segmented" id="hat-choices"></div>
-        </fieldset>
+        <div class="tabs" id="creator-tabs" role="tablist" data-i18n-attr="aria-label:creatorTitle"></div>
+        <div class="tab-panel" id="creator-panel" role="tabpanel"></div>
+        <div class="try-on hidden" id="try-on" role="status">
+          <span id="try-on-text"></span>
+          <button type="button" class="primary" id="try-on-buy"></button>
+        </div>
+        <p class="drag-hint" data-i18n="dragToTurn"></p>
         <button type="submit" class="primary big" id="creator-submit"></button>
       </form>
     </div>

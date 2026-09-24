@@ -902,8 +902,206 @@ button:disabled {
   padding: 4px;
 }
 
-/* Keep the main button in reach while the creator sheet scrolls on small phones. */
+
+/* --- Character creator: tabs, options and try-on ----------------------------------------------------- */
+
+/* The card is a column; only the options panel scrolls, so tabs and the main button always stay in reach. */
+.creator .card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: min(720px, 100%);
+}
+
+.creator-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.creator-top h1 {
+  margin: 0;
+}
+
+.dice {
+  background: linear-gradient(180deg, #efe9ff, #d9ceff);
+  font-size: 26px;
+}
+
+.dice:active {
+  transform: rotate(40deg) scale(0.92);
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  margin: 0 -2px;
+  scrollbar-width: none;
+  flex: none;
+}
+
+.tab {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 62px;
+  min-height: 58px;
+  padding: 6px 8px;
+  border-radius: 16px;
+  background: var(--paper-2);
+  box-shadow: 0 3px 0 var(--line);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tab-icon {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.tab[aria-selected='true'] {
+  background: var(--grape);
+  color: #fff;
+  box-shadow: 0 3px 0 #2f1c86;
+}
+
+.tab-panel {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 8px 2px 4px;
+  margin-bottom: 8px;
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+}
+
+.choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 78px;
+  padding: 8px 4px;
+  border-radius: 18px;
+  background: var(--paper-2);
+  box-shadow: 0 4px 0 var(--line);
+  font-weight: 700;
+  font-size: 14px;
+  transition: transform 0.1s;
+}
+
+.choice-icon {
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.choice[aria-pressed='true'] {
+  background: #fff6d6;
+  box-shadow:
+    0 4px 0 var(--sun-edge),
+    inset 0 0 0 3px var(--sun-2);
+  transform: translateY(-2px);
+}
+
+.choice.locked .choice-icon {
+  filter: saturate(0.6);
+}
+
+.choice-price {
+  position: absolute;
+  top: -8px;
+  inset-inline-end: -4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--grape);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.try-on {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 8px 8px 14px;
+  padding-inline: 14px 8px;
+  border-radius: 18px;
+  background: #efe9ff;
+  font-weight: 700;
+  flex: none;
+  animation: pop 0.25s ease-out;
+}
+
+.try-on .primary {
+  min-height: 44px;
+  padding: 6px 18px;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.try-on .primary.cant {
+  filter: grayscale(0.6);
+  opacity: 0.8;
+}
+
+.drag-hint {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-soft);
+  flex: none;
+}
+
 .creator .big {
-  position: sticky;
-  bottom: 0;
+  flex: none;
+}
+
+.creator .field {
+  margin-bottom: 12px;
+}
+
+@media (max-aspect-ratio: 1/1) {
+  .creator .card {
+    max-height: 60vh;
+    padding-top: 16px;
+  }
+  .creator .card h1 {
+    font-size: 22px;
+  }
+  .drag-hint {
+    display: none;
+  }
+  .tabs {
+    gap: 4px;
+  }
+  .tab {
+    min-width: 52px;
+    padding: 5px 4px;
+    font-size: 12px;
+  }
+  .creator .field input {
+    min-height: 46px;
+    font-size: 17px;
+  }
 }

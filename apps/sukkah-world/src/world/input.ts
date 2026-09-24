@@ -23,6 +23,9 @@ export class WalkInput {
   private base: HTMLDivElement;
   /** Taps (short presses without dragging) are passed on, e.g. for placing decorations. */
   onTap: (x: number, y: number) => void = () => {};
+  /** Horizontal drag in pixels while not walking, e.g. to turn the character in the creator. */
+  onDrag: (dx: number) => void = () => {};
+  private lastX = 0;
   /** While false the drag joystick is off and every press counts as a tap. */
   walking = true;
   private downAt = 0;
@@ -53,6 +56,7 @@ export class WalkInput {
       this.pointer = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
       this.downAt = performance.now();
       this.moved = false;
+      this.lastX = e.clientX;
     });
     surface.addEventListener('pointermove', (e) => {
       const p = this.pointer;
@@ -64,6 +68,8 @@ export class WalkInput {
         if (this.walking) this.showJoystick(p.x0, p.y0);
       }
       if (this.moved && this.walking) this.moveKnob();
+      if (this.moved && !this.walking) this.onDrag(e.clientX - this.lastX);
+      this.lastX = e.clientX;
     });
     const end = (e: PointerEvent) => {
       const p = this.pointer;

@@ -1,8 +1,19 @@
 import { registerSW } from 'virtual:pwa-register';
 import { createHunt, type Hunt, HUNT_ETROGS, pickSpots, stepHunt } from './game/hunt';
 import {
+  type AccessoryId,
   type Avatar,
+  AVATAR_DEFAULTS,
   available,
+  buyWear,
+  type EyeStyle,
+  fullAvatar,
+  type HairStyle,
+  type MouthStyle,
+  ownsWear,
+  type Pattern,
+  WEAR_PRICES,
+  type WearId,
   buy,
   canBuy,
   completeQuest,
@@ -402,61 +413,221 @@ $('#hunt-card-back').addEventListener('click', () => {
 
 // --- Character creator -------------------------------------------------------------------------
 
-const SHIRTS = ['#2a9d8f', '#e76f51', '#457b9d', '#f4a261', '#9b5de5', '#ef476f', '#06d6a0', '#ffd166'];
-const SKINS = ['#f8d5b8', '#f1c7a0', '#d9a47a', '#b57d52', '#8d5a3b', '#5e3b26'];
-const HAIRS = ['#2b1d14', '#5a3825', '#a0522d', '#e8b04a', '#d9534f', '#6c4bd1'];
-const HATS: { id: HatId; key: StringKey }[] = [
-  { id: 'none', key: 'hatNone' },
-  { id: 'kippah', key: 'hatKippah' },
-  { id: 'cap', key: 'hatCap' },
-  { id: 'crown', key: 'hatCrown' },
+const SHIRTS = ['#2a9d8f', '#e76f51', '#457b9d', '#f4a261', '#9b5de5', '#ef476f', '#06d6a0', '#ffd166', '#ffffff', '#1d2b53'];
+const SKINS = ['#fbe0cb', '#f1c7a0', '#d9a47a', '#b57d52', '#8d5a3b', '#5e3b26'];
+const HAIRS = ['#2b1d14', '#5a3825', '#a0522d', '#e8b04a', '#f2e2b3', '#d9534f', '#ff8fc7', '#6c4bd1', '#3aa0ff'];
+const PANTS = ['#3b5b9a', '#1d2b53', '#6b7b8c', '#8a5a36', '#2a9d8f', '#ef476f'];
+const SHOES = ['#f4f4f4', '#1d2b53', '#ff4d5e', '#ffd23f', '#3aa0ff', '#7cf07c'];
+
+interface Option<T extends string> {
+  value: T;
+  key: StringKey;
+  icon: string;
+}
+
+const HATS: Option<HatId>[] = [
+  { value: 'none', key: 'hatNone', icon: '🚫' },
+  { value: 'kippah', key: 'hatKippah', icon: '🔵' },
+  { value: 'cap', key: 'hatCap', icon: '🧢' },
+  { value: 'crown', key: 'hatCrown', icon: '👑' },
+  { value: 'sukkahHat', key: 'hatSukkah', icon: '🛖' },
+  { value: 'hadasWreath', key: 'hatHadas', icon: '🌿' },
 ];
-let draft: Avatar = progress.avatar ?? { name: '', shirt: SHIRTS[0], skin: SKINS[1], hair: HAIRS[1], hat: 'kippah' };
+const ACCESSORIES: Option<AccessoryId>[] = [
+  { value: 'none', key: 'accNone', icon: '🚫' },
+  { value: 'glasses', key: 'accGlasses', icon: '👓' },
+  { value: 'etrogBag', key: 'accEtrogBag', icon: '🍋' },
+  { value: 'lantern', key: 'accLantern', icon: '🏮' },
+  { value: 'sukkahBackpack', key: 'accBackpack', icon: '🎒' },
+];
+const HAIR_STYLES: Option<HairStyle>[] = [
+  { value: 'short', key: 'hairShort', icon: '💇' },
+  { value: 'long', key: 'hairLong', icon: '👧' },
+  { value: 'curly', key: 'hairCurly', icon: '🌀' },
+  { value: 'ponytail', key: 'hairPonytail', icon: '🎀' },
+  { value: 'spiky', key: 'hairSpiky', icon: '⚡' },
+  { value: 'buzz', key: 'hairBuzz', icon: '🧑' },
+];
+const EYES: Option<EyeStyle>[] = [
+  { value: 'round', key: 'eyesRound', icon: '👀' },
+  { value: 'happy', key: 'eyesHappy', icon: '😊' },
+  { value: 'sparkle', key: 'eyesSparkle', icon: '🤩' },
+];
+const MOUTHS: Option<MouthStyle>[] = [
+  { value: 'smile', key: 'mouthSmile', icon: '🙂' },
+  { value: 'grin', key: 'mouthGrin', icon: '😁' },
+  { value: 'tongue', key: 'mouthTongue', icon: '😛' },
+];
+const PATTERNS: Option<Pattern>[] = [
+  { value: 'plain', key: 'patternPlain', icon: '👕' },
+  { value: 'stripes', key: 'patternStripes', icon: '〰️' },
+  { value: 'stars', key: 'patternStars', icon: '⭐' },
+];
+
+type Tab = 'body' | 'face' | 'hair' | 'clothes' | 'hats' | 'extras';
+const TABS: { id: Tab; key: StringKey; icon: string }[] = [
+  { id: 'body', key: 'tabBody', icon: '🧒' },
+  { id: 'face', key: 'tabFace', icon: '😊' },
+  { id: 'hair', key: 'tabHair', icon: '💇' },
+  { id: 'clothes', key: 'tabClothes', icon: '👕' },
+  { id: 'hats', key: 'tabHats', icon: '🎩' },
+  { id: 'extras', key: 'tabExtras', icon: '🎒' },
+];
+let tab: Tab = 'body';
+
+const newDraft = (): Avatar => ({ ...AVATAR_DEFAULTS, name: '', shirt: SHIRTS[0], skin: SKINS[1], hat: 'kippah' });
+let draft: Avatar = progress.avatar ? fullAvatar(progress.avatar) : newDraft();
 
 function pickDraft(change: Partial<Avatar>) {
   draft = { ...draft, ...change };
   world.setAvatar(draft);
+  world.celebrate();
   renderCreator();
 }
 
+const pick = <T,>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
+
+function randomLook() {
+  const owned = <T extends HatId | AccessoryId>(list: Option<T>[]) => list.filter((c) => ownsWear(progress, c.value)).map((c) => c.value);
+  pickDraft({
+    skin: pick(SKINS),
+    hair: pick(HAIRS),
+    hairStyle: pick(HAIR_STYLES).value,
+    eyes: pick(EYES).value,
+    mouth: pick(MOUTHS).value,
+    shirt: pick(SHIRTS),
+    pattern: pick(PATTERNS).value,
+    pants: pick(PANTS),
+    shoes: pick(SHOES),
+    hat: pick(owned(HATS)),
+    accessory: pick(owned(ACCESSORIES)),
+  });
+}
+
+function section(label: StringKey, body: HTMLElement): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  const title = document.createElement('span');
+  title.className = 'field-label';
+  title.textContent = t(label);
+  wrap.append(title, body);
+  return wrap;
+}
+
+function swatchRow(label: StringKey, colors: string[], key: 'shirt' | 'skin' | 'hair' | 'pants' | 'shoes'): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'swatches';
+  const current = fullAvatar(draft)[key];
+  colors.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch';
+    b.style.background = c;
+    b.dataset.focusId = `${key}-${i}`;
+    b.setAttribute('aria-label', `${t(label)} ${i + 1}`);
+    b.setAttribute('aria-pressed', String(current === c));
+    b.addEventListener('click', () => pickDraft({ [key]: c }));
+    row.append(b);
+  });
+  return section(label, row);
+}
+
+function choiceRow<T extends string>(label: StringKey, choices: Option<T>[], key: keyof Avatar, priced = false): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'choices';
+  const current = (fullAvatar(draft) as unknown as Record<string, string>)[key];
+  for (const c of choices) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'choice';
+    b.dataset.focusId = `${String(key)}-${c.value}`;
+    b.setAttribute('aria-pressed', String(current === c.value));
+    const locked = priced && !ownsWear(progress, c.value as HatId | AccessoryId);
+    const price = WEAR_PRICES[c.value as WearId];
+    b.innerHTML = '<span class="choice-icon" aria-hidden="true"></span><span class="choice-name"></span>';
+    b.querySelector('.choice-icon')!.textContent = c.icon;
+    b.querySelector('.choice-name')!.textContent = t(c.key);
+    if (locked) {
+      b.classList.add('locked');
+      const tag = document.createElement('span');
+      tag.className = 'choice-price';
+      tag.textContent = `🔒 ${price}`;
+      b.append(tag);
+      b.setAttribute('aria-label', `${t(c.key)}, ${t('lockedPrice', { price: price ?? 0 })}`);
+    }
+    b.addEventListener('click', () => pickDraft({ [key]: c.value }));
+    row.append(b);
+  }
+  return section(label, row);
+}
+
+/** A bar offering to buy whatever is being tried on but isn't owned yet. */
+function renderTryOn() {
+  const bar = $('#try-on');
+  const tryOn = [draft.hat, draft.accessory ?? 'none'].find((id) => !ownsWear(progress, id)) as WearId | undefined;
+  bar.classList.toggle('hidden', !tryOn);
+  if (!tryOn) return;
+  const choice = [...HATS, ...ACCESSORIES].find((c) => c.value === tryOn)!;
+  const price = WEAR_PRICES[tryOn]!;
+  $('#try-on-text').textContent = `${choice.icon} ${t('tryOnText', { item: t(choice.key), price })}`;
+  const buyBtn = $('#try-on-buy');
+  buyBtn.textContent = t('buyWear', { price });
+  buyBtn.classList.toggle('cant', progress.coins < price);
+  buyBtn.onclick = () => {
+    if (progress.coins < price) {
+      toast(t('notEnoughWear', { n: price - progress.coins }));
+      return;
+    }
+    commit(buyWear(progress, tryOn));
+    world.sparkle(world.player.pos, '#ffd23f', 1.4);
+    world.celebrate();
+    toast(`✨ ${t('boughtWear', { item: t(choice.key) })}`);
+    renderCreator();
+  };
+}
+
 function renderCreator() {
-  const swatches = (el: HTMLElement, colors: string[], key: 'shirt' | 'skin' | 'hair') =>
-    el.replaceChildren(
-      ...colors.map((c, i) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'swatch';
-        b.style.background = c;
-        b.setAttribute('aria-label', `${t(key)} ${i + 1}`);
-        b.setAttribute('aria-pressed', String((draft[key] ?? HAIRS[1]) === c));
-        b.addEventListener('click', () => {
-          pickDraft({ [key]: c });
-          (el.children[i] as HTMLElement | undefined)?.focus();
-        });
-        return b;
-      }),
-    );
-  swatches($('#shirt-swatches'), SHIRTS, 'shirt');
-  swatches($('#skin-swatches'), SKINS, 'skin');
-  swatches($('#hair-swatches'), HAIRS, 'hair');
-  const hats = $('#hat-choices');
-  hats.replaceChildren(
-    ...HATS.map((h, i) => {
+  const focused = (document.activeElement as HTMLElement | null)?.dataset?.focusId;
+  $('#creator-tabs').replaceChildren(
+    ...TABS.map((tb) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = t(h.key);
-      b.setAttribute('aria-pressed', String(draft.hat === h.id));
+      b.className = 'tab';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(tab === tb.id));
+      b.dataset.focusId = `tab-${tb.id}`;
+      b.innerHTML = '<span class="tab-icon" aria-hidden="true"></span><span class="tab-name"></span>';
+      b.querySelector('.tab-icon')!.textContent = tb.icon;
+      b.querySelector('.tab-name')!.textContent = t(tb.key);
       b.addEventListener('click', () => {
-        pickDraft({ hat: h.id });
-        (hats.children[i] as HTMLElement | undefined)?.focus();
+        tab = tb.id;
+        renderCreator();
       });
       return b;
     }),
   );
+  const panel = $('#creator-panel');
+  const parts: HTMLElement[] = [];
+  if (tab === 'body') parts.push(swatchRow('skin', SKINS, 'skin'));
+  if (tab === 'face') parts.push(choiceRow('eyes', EYES, 'eyes'), choiceRow('mouth', MOUTHS, 'mouth'));
+  if (tab === 'hair') parts.push(choiceRow('hairStyle', HAIR_STYLES, 'hairStyle'), swatchRow('hair', HAIRS, 'hair'));
+  if (tab === 'clothes')
+    parts.push(
+      swatchRow('shirt', SHIRTS, 'shirt'),
+      choiceRow('pattern', PATTERNS, 'pattern'),
+      swatchRow('pants', PANTS, 'pants'),
+      swatchRow('shoes', SHOES, 'shoes'),
+    );
+  if (tab === 'hats') parts.push(choiceRow('hat', HATS, 'hat', true));
+  if (tab === 'extras') parts.push(choiceRow('accessory', ACCESSORIES, 'accessory', true));
+  panel.replaceChildren(...parts);
+  renderTryOn();
+  // Re-rendering replaces the buttons; keep keyboard focus where it was.
+  if (focused) document.querySelector<HTMLElement>(`[data-focus-id="${focused}"]`)?.focus();
 }
 
 function openCreator() {
-  draft = progress.avatar ?? draft;
+  draft = progress.avatar ? fullAvatar(progress.avatar) : draft;
   world.setAvatar(draft);
   $<HTMLInputElement>('#avatar-name').value = draft.name;
   $('#creator-submit').textContent = t(progress.avatar ? 'saveAvatar' : 'enterVillage');
@@ -464,13 +635,23 @@ function openCreator() {
   world.player.heading = 0.35;
   renderCreator();
   setScene('creator');
+  world.snapCamera();
 }
+
+input.onDrag = (dx) => {
+  if (scene === 'creator') world.spin(dx * 0.012);
+};
+$('#avatar-random').addEventListener('click', randomLook);
 
 $('#creator-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $<HTMLInputElement>('#avatar-name').value.trim().slice(0, 14);
   const first = !progress.avatar;
+  const triedOn = !ownsWear(progress, draft.hat) || !ownsWear(progress, draft.accessory ?? 'none');
   commit(setAvatar(progress, { ...draft, name }));
+  if (triedOn) toast(t('tryOnNotSaved'));
+  world.setAvatar(progress.avatar!);
+  draft = fullAvatar(progress.avatar!);
   world.player.heading = Math.PI;
   setScene('walk');
   if (first) showHint();
