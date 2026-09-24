@@ -98,7 +98,7 @@
       <button class="icon" id="menu-btn" aria-expanded="false" aria-controls="menu" data-i18n-attr="title:menu;aria-label:menu">☰</button>
     </header>
 
-    <button class="side-quest hidden" id="side-quest"><span aria-hidden="true">🍋</span> <span data-i18n="sideHunt"></span></button>
+    <button class="side-quest hidden" id="side-quest"><span aria-hidden="true" id="side-icon"></span> <span id="side-text"></span></button>
     <div class="sr-only" id="live" aria-live="polite"></div>
 
     <div class="hunt-hud hidden" id="hunt-hud" role="status">
@@ -124,6 +124,8 @@
       <button id="m-calm" aria-pressed="false"><span aria-hidden="true">🐢</span> <span data-i18n="calmMode"></span></button>
       <button id="m-bigtext" aria-pressed="false"><span aria-hidden="true">🔠</span> <span data-i18n="bigText"></span></button>
       <button id="m-motion" aria-pressed="false"><span aria-hidden="true">🌙</span> <span data-i18n="lessMotion"></span></button>
+      <button id="m-campad" class="touch-only" aria-pressed="false"><span aria-hidden="true">🎥</span> <span data-i18n="cameraButtons"></span></button>
+      <button id="m-battery" aria-pressed="false"><span aria-hidden="true">🔋</span> <span data-i18n="batterySaver"></span></button>
       <hr />
       <button data-page="terms"><span aria-hidden="true">📜</span> <span data-i18n="terms"></span></button>
       <button data-page="privacy"><span aria-hidden="true">🔒</span> <span data-i18n="privacy"></span></button>
@@ -140,7 +142,6 @@
 
     <!-- Camera: turn around the player and zoom -->
     <div class="cam" id="cam" role="group" data-i18n-attr="aria-label:camera">
-      <button class="cam-btn cam-toggle" id="cam-toggle" aria-expanded="false" aria-controls="cam" data-i18n-attr="aria-label:cameraButtons;title:cameraButtons"><span aria-hidden="true">🎥</span></button>
       <button class="cam-btn" id="cam-left" data-i18n-attr="aria-label:camLeft;title:camLeft">↺</button>
       <button class="cam-btn" id="cam-in" data-i18n-attr="aria-label:camIn;title:camIn">＋</button>
       <button class="cam-btn" id="cam-out" data-i18n-attr="aria-label:camOut;title:camOut">－</button>
@@ -176,6 +177,7 @@
       </div>
       <div class="palette" id="palette" role="listbox" data-i18n-attr="aria-label:buildTitle"></div>
       <button class="secondary build-auto" id="build-auto"><span aria-hidden="true">✨</span> <span data-i18n="buildAuto"></span></button>
+      <button class="secondary build-auto hidden" id="build-share"><span aria-hidden="true">📸</span> <span data-i18n="photoShare"></span></button>
     </section>
 
     <!-- Character creator -->
@@ -267,6 +269,7 @@
         <p class="lead" id="finale-text"></p>
         <p class="finale-reward" id="finale-reward"></p>
         <p class="lead finale-hunt hidden" id="finale-hunt" data-i18n="finaleHunt"></p>
+        <p class="lead finale-hunt hidden" id="finale-decorate" data-i18n="finaleDecorate"></p>
         <div class="actions">
           <button class="primary" id="finale-share" data-i18n="finaleShare"></button>
           <button class="secondary" id="finale-dance" data-i18n="finaleDance"></button>

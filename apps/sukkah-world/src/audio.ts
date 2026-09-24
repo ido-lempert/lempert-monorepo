@@ -18,6 +18,12 @@ export type Sfx =
   | 'lose'
   | 'firework';
 
+/**
+ * What the music is doing: the calm village tunes, a quest's own faster tune (while it is on), the etrog
+ * hunt, the grand finale, or nothing (during David's memory game, so the notes to remember stand out).
+ */
+export type Theme = 'village' | 'quiet' | 'hunt' | 'finale' | 'abraham' | 'isaac' | 'jacob' | 'moses' | 'aaron' | 'joseph' | 'david';
+
 const KEY = 'sukkahWorld.sound';
 /** Quiet enough to play under the game without getting in the way. */
 const MUSIC_VOLUME = 0.11;
@@ -38,6 +44,8 @@ export class Sound {
   private noise!: AudioBuffer;
   private nextNote = 0;
   private step = 0;
+  private theme: Theme = 'village';
+  private pending: Theme | null = null;
 
   constructor() {
     try {
@@ -213,26 +221,179 @@ export class Sound {
   private static readonly BREATH = 16;
   private tune = 0;
 
+  /**
+   * Upbeat loops for the quests, the hunt and the finale: quicker, with an oom-pah bass, a soft kick, claps
+   * and a shaker. Each has its own character, so every quest sounds different. Same notation as above.
+   */
+  private static readonly THEMES: Record<Exclude<Theme, 'village' | 'quiet'>, { bpm: number; melody: (number | null)[]; bass: number[] }> = {
+    // Abraham: a bright garden walk.
+    abraham: {
+      bpm: 128,
+      melody: [
+        0, 4, 7, 4, 9, 7, 4, 7, 5, 4, 2, 4, 0, null, 0, null, 2, 4, 5, 7, 9, 7, 5, 4, 2, null, 7, null, 2, null, null, null,
+        0, 4, 7, 4, 9, 7, 4, 7, 12, 11, 9, 7, 9, null, 7, null, 5, 4, 2, 5, 4, 2, 0, 4, 2, null, -1, null, 0, null, null, null,
+      ],
+      bass: [0, 5, 5, 7, 0, 0, 7, 0],
+    },
+    // Isaac: racing the lantern clock, in D minor.
+    isaac: {
+      bpm: 144,
+      melody: [
+        0, 0, 3, 0, 7, 0, 3, 0, 5, 5, 8, 5, 10, 8, 7, 5, 3, 3, 7, 3, 10, 3, 7, 3, 2, 3, 5, 7, 5, 3, 2, null,
+        0, 0, 3, 0, 7, 0, 3, 0, 5, 5, 8, 5, 12, 10, 8, 7, 8, 7, 5, 3, 5, 3, 2, 3, 0, null, 7, null, 0, null, null, null,
+      ],
+      bass: [0, 5, 3, 7, 0, -4, 5, 0],
+    },
+    // Jacob: tiptoeing through the maze.
+    jacob: {
+      bpm: 126,
+      melody: [
+        7, null, 4, 5, 7, null, 4, 5, 7, 9, 7, 5, 4, null, 2, null, 5, null, 2, 4, 5, null, 2, 4, 5, 7, 5, 4, 2, null, 0, null,
+        7, null, 4, 5, 7, null, 12, 11, 9, null, 7, 9, 10, 9, 7, 5, 4, 5, 7, 4, 2, 4, 5, 2, 0, null, -5, null, 0, null, null, null,
+      ],
+      bass: [0, 0, 5, 7, 0, -2, 7, 0],
+    },
+    // Moses: sailing down the river.
+    moses: {
+      bpm: 132,
+      melody: [
+        0, 2, 4, 7, 9, 7, 4, 2, 4, null, null, 2, 0, null, null, null, 5, 7, 9, 12, 14, 12, 9, 7, 9, null, null, 7, 4, null, null, null,
+        0, 2, 4, 7, 9, 7, 4, 2, 4, null, null, 7, 9, null, null, null, 12, 11, 9, 7, 5, 4, 2, 4, 0, null, null, null, null, null, null, null,
+      ],
+      bass: [0, 0, 5, -3, 0, -3, 7, 0],
+    },
+    // Aaron: warm and bouncy, for helping friends.
+    aaron: {
+      bpm: 124,
+      melody: [
+        7, null, 7, 9, 7, 4, null, 4, 5, 4, 2, 4, 0, null, null, null, 2, null, 2, 4, 5, 7, null, 5, 4, 2, 0, 2, 4, null, null, null,
+        7, null, 7, 9, 12, 9, null, 7, 9, 7, 5, 4, 2, null, null, null, 5, 5, 4, 4, 2, 2, 4, 2, 0, null, null, null, null, null, null, null,
+      ],
+      bass: [0, 0, 7, 0, 5, 7, 7, 0],
+    },
+    // Joseph: a mysterious treasure hunt, in freygish.
+    joseph: {
+      bpm: 126,
+      melody: [
+        0, null, 4, 5, 7, null, 8, 7, 5, 4, 1, 0, 1, null, null, null, 0, null, 4, 5, 7, null, 10, 8, 7, 5, 4, 5, 7, null, null, null,
+        12, null, 10, 8, 7, null, 8, 10, 8, 7, 5, 4, 5, null, 7, null, 4, 5, 4, 1, 4, 5, 7, 4, 0, null, null, null, null, null, null, null,
+      ],
+      bass: [0, -7, 0, 0, -2, -7, -2, 0],
+    },
+    // David: a dance tune.
+    david: {
+      bpm: 138,
+      melody: [
+        0, 4, 7, 4, 0, 4, 7, 4, 5, 9, 12, 9, 5, 9, 12, 9, 7, 9, 7, 5, 4, 5, 4, 2, 0, 2, 4, null, 0, null, null, null,
+        12, 12, 11, 9, 11, 11, 9, 7, 9, 9, 7, 5, 7, null, 4, null, 5, 7, 5, 4, 2, 4, 2, -1, 0, null, 7, null, 0, null, null, null,
+      ],
+      bass: [0, 5, 7, 0, 7, 5, 7, 0],
+    },
+    // Shoshi's etrog hunt: a one-minute race.
+    hunt: {
+      bpm: 152,
+      melody: [
+        0, 3, 7, 3, 0, 3, 7, 3, -2, 2, 5, 2, -2, 2, 5, 2, -4, 0, 3, 0, -4, 0, 3, 0, -5, -1, 2, 5, 7, null, null, null,
+        12, 7, 3, 7, 12, 7, 3, 7, 10, 5, 2, 5, 10, 5, 2, 5, 8, 3, 0, 3, 8, 3, 0, 3, 7, 11, 14, 11, 7, null, null, null,
+      ],
+      bass: [0, -2, -4, -5, 0, -2, -4, -5],
+    },
+    // The grand finale: David's dance, a little faster – everyone dances the hora.
+    finale: {
+      bpm: 150,
+      melody: [
+        0, 4, 7, 4, 0, 4, 7, 4, 5, 9, 12, 9, 5, 9, 12, 9, 7, 9, 7, 5, 4, 5, 4, 2, 0, 2, 4, null, 0, null, null, null,
+        12, 12, 11, 9, 11, 11, 9, 7, 9, 9, 7, 5, 7, null, 4, null, 5, 7, 5, 4, 2, 4, 2, -1, 0, null, 7, null, 0, null, null, null,
+      ],
+      bass: [0, 5, 7, 0, 7, 5, 7, 0],
+    },
+  };
+
+  /** Changes the music; the new tune comes in on the next beat. */
+  setTheme(theme: Theme) {
+    if (theme === (this.pending ?? this.theme)) return;
+    this.pending = theme;
+  }
+
+  /** A soft kick drum. */
+  private kick(at: number) {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    const env = ctx.createGain();
+    o.frequency.setValueAtTime(140, at);
+    o.frequency.exponentialRampToValueAtTime(45, at + 0.12);
+    env.gain.setValueAtTime(0.55, at);
+    env.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+    o.connect(env).connect(this.musicBus);
+    o.start(at);
+    o.stop(at + 0.2);
+  }
+
+  /** A light hand clap. */
+  private clap(at: number) {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1500;
+    bp.Q.value = 0.8;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.16, at);
+    env.gain.exponentialRampToValueAtTime(0.0001, at + 0.1);
+    src.connect(bp).connect(env).connect(this.musicBus);
+    src.start(at, Math.random() * 0.4, 0.12);
+  }
+
   private schedule() {
     const ctx = this.ctx!;
-    const eighth = 60 / 92 / 2;
     while (this.nextNote < ctx.currentTime + 0.25) {
-      const { melody, bass } = Sound.TUNES[this.tune];
+      // A new theme starts on a beat, from its beginning.
+      if (this.pending && this.step % 2 === 0) {
+        this.theme = this.pending;
+        this.pending = null;
+        this.step = 0;
+      }
+      const theme = this.theme;
       const i = this.step;
-      if (this.prefs.music && i < melody.length) {
+      if (theme === 'village') {
+        const { melody, bass } = Sound.TUNES[this.tune];
+        if (this.prefs.music && i < melody.length) {
+          const note = melody[i];
+          const root = bass[Math.floor(i / 8)];
+          if (note !== null) this.pluck(midi(74 + note), this.nextNote, 0.7, 0.34, this.musicBus);
+          if (i % 8 === 0) this.pluck(midi(50 + root), this.nextNote, 1.2, 0.5, this.musicBus);
+          if (i % 8 === 4) this.pluck(midi(57 + root), this.nextNote, 0.6, 0.2, this.musicBus);
+          if (i % 4 === 2) this.shaker(this.nextNote, 0.035);
+        }
+        this.nextNote += 60 / 92 / 2;
+        this.step++;
+        if (this.step >= melody.length + Sound.BREATH) {
+          this.step = 0;
+          this.tune = (this.tune + 1) % Sound.TUNES.length;
+        }
+        continue;
+      }
+      if (theme === 'quiet') {
+        this.nextNote += 0.25;
+        this.step++;
+        continue;
+      }
+      const { bpm, melody, bass } = Sound.THEMES[theme];
+      const at = this.nextNote;
+      if (this.prefs.music) {
         const note = melody[i];
         const root = bass[Math.floor(i / 8)];
-        if (note !== null) this.pluck(midi(74 + note), this.nextNote, 0.7, 0.34, this.musicBus);
-        if (i % 8 === 0) this.pluck(midi(50 + root), this.nextNote, 1.2, 0.5, this.musicBus);
-        if (i % 8 === 4) this.pluck(midi(57 + root), this.nextNote, 0.6, 0.2, this.musicBus);
-        if (i % 4 === 2) this.shaker(this.nextNote, 0.035);
+        if (note !== null) this.pluck(midi(74 + note), at, 0.4, 0.32, this.musicBus);
+        // Oom-pah: the root on the beat, the fifth in between.
+        if (i % 4 === 0) this.pluck(midi(50 + root), at, 0.45, 0.5, this.musicBus);
+        if (i % 4 === 2) this.pluck(midi(57 + root), at, 0.3, 0.26, this.musicBus);
+        if (i % 8 === 0 || i % 8 === 4) this.kick(at);
+        if (i % 8 === 2 || i % 8 === 6) this.clap(at);
+        if (i % 2 === 1) this.shaker(at, 0.03);
       }
-      this.nextNote += eighth;
-      this.step++;
-      if (this.step >= melody.length + Sound.BREATH) {
-        this.step = 0;
-        this.tune = (this.tune + 1) % Sound.TUNES.length;
-      }
+      this.nextNote += 60 / bpm / 2;
+      this.step = (i + 1) % melody.length;
     }
   }
 
@@ -245,17 +406,23 @@ export class Sound {
 
   // --- Effects ------------------------------------------------------------------------------------------
 
-  play(name: Sfx) {
+  /**
+   * Plays an effect. `lift` raises it by that many semitones: quest finds climb higher and higher as the
+   * quest fills up.
+   */
+  play(name: Sfx, lift = 0) {
     if (!this.ctx || !this.prefs.sfx) return;
     const t = this.ctx.currentTime + 0.01;
     const bus = this.sfxBus;
+    const k = 2 ** (lift / 12);
+    const midi = (n: number) => 440 * 2 ** ((n + lift - 69) / 12);
     const arp = (notes: number[], gap: number, len = 0.35, gain = 0.6) => notes.forEach((n, i) => this.pluck(midi(n), t + i * gap, len, gain, bus));
     switch (name) {
       case 'click':
-        this.tone('sine', 900, 600, t, 0.06, 0.25);
+        this.tone('sine', 900 * k, 600 * k, t, 0.06, 0.25);
         break;
       case 'pop':
-        this.tone('sine', 400, 900, t, 0.12, 0.35);
+        this.tone('sine', 400 * k, 900 * k, t, 0.12, 0.35);
         break;
       case 'pickup':
         arp([79, 83, 86, 91], 0.06);
@@ -274,7 +441,7 @@ export class Sound {
         arp([72, 71, 69, 67], 0.16, 0.45, 0.45);
         break;
       case 'blip':
-        this.tone('triangle', 300, 220, t, 0.12, 0.25);
+        this.tone('triangle', 300 * k, 220 * k, t, 0.12, 0.25);
         break;
       case 'buy':
         arp([84, 88, 91, 96], 0.05, 0.3, 0.45);
@@ -309,8 +476,8 @@ export class Sound {
         const ctx = this.ctx;
         const o = ctx.createOscillator();
         o.type = 'sawtooth';
-        o.frequency.setValueAtTime(520, t);
-        o.frequency.linearRampToValueAtTime(440, t + 0.45);
+        o.frequency.setValueAtTime(520 * k, t);
+        o.frequency.linearRampToValueAtTime(440 * k, t + 0.45);
         const lfo = ctx.createOscillator();
         lfo.frequency.value = 28;
         const depth = ctx.createGain();

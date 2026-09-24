@@ -898,7 +898,14 @@ button:disabled {
 }
 
 #quest-text {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  /* Two lines at most; only then an ellipsis (the texts are written short enough not to need it). */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .field legend.field-label {
@@ -1209,33 +1216,17 @@ button:disabled {
   box-shadow: 0 3px 0 var(--line);
 }
 
-.cam-toggle {
-  display: none;
-}
-
-/* Touch screens: fold the pad into one button, so it doesn't cover the game or the hints. */
+/* Touch screens: two fingers turn, zoom and tilt, so the pad stays off the screen unless it is switched on
+   in the accessibility menu (a one-finger alternative to the gestures). */
 @media (pointer: coarse) {
-  .cam {
-    grid-template-columns: 44px;
-  }
-  .cam-toggle {
-    display: block;
-  }
-  .cam:not(.open) .cam-btn:not(.cam-toggle) {
+  html:not(.cam-pad) .cam {
     display: none;
   }
-  .cam.open {
-    grid-template-columns: repeat(2, 44px);
-  }
-  .cam.open .cam-toggle {
-    grid-column: 1 / -1;
-    width: 100%;
-    background: #efe9ff;
-  }
-  .cam:not(.open) {
-    grid-template-columns: 44px;
-    background: transparent;
-    box-shadow: none;
+}
+
+@media not all and (pointer: coarse) {
+  .touch-only {
+    display: none;
   }
 }
 

@@ -121,8 +121,10 @@ interface Walker {
   heading: number;
   phase: number;
   speed: number;
-  /** 0..1 how much it is walking this frame (for the animation). */
+  /** 0..1 how much it is walking this frame. */
   moving: number;
+  /** `moving`, eased, so legs never snap between walking and standing. */
+  gait: number;
 }
 
 interface Burst {
@@ -165,6 +167,12 @@ export class World {
   private raycaster = new THREE.Raycaster();
   quality: Quality = initialQuality();
   private slowFrames = 0;
+  /** Battery saver, chosen in the menu: low quality and a calmer frame rate. */
+  private saver = false;
+  /** Frames per second to draw at (see `setPace`), and when the last one was drawn. */
+  private fps = 60;
+  private lastDraw = -Infinity;
+  private frameCount = 0;
 
   readonly player: Walker;
   private rival: Walker;
@@ -234,6 +242,8 @@ export class World {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Shadows are redrawn every other frame (see `frame`), which nobody notices and saves a whole scene pass.
+    this.renderer.shadowMap.autoUpdate = false;
     // Neutral keeps the bright toy colours saturated (ACES washes them out).
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 1;
@@ -324,7 +334,7 @@ export class World {
   private walker(char: Character, at: Vec, speed: number): Walker {
     char.group.position.set(at.x, 0, at.z);
     this.scene.add(char.group);
-    return { char, pos: { ...at }, heading: 0, phase: 0, speed, moving: 0 };
+    return { char, pos: { ...at }, heading: 0, phase: 0, speed, moving: 0, gait: 0 };
   }
 
   private add<T extends THREE.Object3D>(o: T, x: number, z: number, y = 0): T {
@@ -680,17 +690,20 @@ export class World {
       const dz = target.z - w.pos.z;
       const d = Math.hypot(dx, dz);
       w.moving = 0;
-      if (d < 0.05) return;
+      if (d < 0.02) return;
       // Far behind (e.g. after travelling through the menu): catch up at once.
       if (d > 6) {
         w.pos = { ...target };
         return;
       }
-      const step = Math.min(d, speed * dt);
+      // Slow down smoothly when close, rather than dashing and stopping every other frame (which made
+      // the lambs' legs stutter), and speed up to keep up with a running player.
+      const pace = Math.min(speed, d * 6);
+      const step = Math.min(d, pace * dt);
       w.pos = { x: w.pos.x + (dx / d) * step, z: w.pos.z + (dz / d) * step };
       w.phase += step * 4;
-      w.heading = Math.atan2(dx, dz);
-      w.moving = 1;
+      if (d > 0.1) w.heading = Math.atan2(dx, dz);
+      w.moving = Math.min(1, pace / 2);
     };
     // Each follower stays about 1.1 m behind the one in front, measured along the path.
     const behind = (k: number) => {
@@ -711,14 +724,14 @@ export class World {
     let k = 0;
     this.lambs.forEach((lamb, i) => {
       const st = this.lambStates[i];
-      if (st === 'following') goTo(lamb, behind(k++), WALK_SPEED * 1.15);
+      if (st === 'following') goTo(lamb, behind(k++), WALK_SPEED * RUN_FACTOR * 1.1);
       else if (st === 'home') {
         const spot = { x: PEN.x + Math.cos(time * 0.3 + i * 2.1) * 0.8, z: PEN.z + Math.sin(time * 0.3 + i * 2.1) * 0.8 };
         goTo(lamb, spot, 0.8);
         lamb.moving *= 0.5;
       } else lamb.moving = 0;
     });
-    if (this.pet && !this.riding) goTo(this.pet, behind(k), WALK_SPEED * 1.15);
+    if (this.pet && !this.riding) goTo(this.pet, behind(k), WALK_SPEED * RUN_FACTOR * 1.1);
   }
 
   /** Moses' river: flowing water between sandy banks, reeds, rocks, floating jugs and a raft at the jetty. */
@@ -1032,11 +1045,70 @@ export class World {
   /** Called for every firework burst (for the bang sound). */
   onFirework: (() => void) | null = null;
 
+  // --- Photo -------------------------------------------------------------------------------------
+
+  /**
+   * A square photo of the player's own sukkah, with their character standing in the doorway, for sharing.
+   * It is drawn off-screen at full size (sharp even in battery saver), and nothing on screen changes.
+   */
+  photoSukkah(size = 1080): HTMLCanvasElement {
+    const s = MY_SUKKAH;
+    const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+    cam.position.set(s.x - 8.4, 2.2, s.z + 0.9);
+    cam.lookAt(s.x + 0.3, 1.35, s.z);
+    const g = this.player.char.group;
+    const saved = { pos: g.position.clone(), rot: g.rotation.y, visible: g.visible, roof: this.mySukkah.roof.visible };
+    const hidden = [this.guide, this.selection].filter((o) => o.visible);
+    // Off to one side of the doorway, so the decorations stay in view.
+    g.position.set(s.x - s.w / 2 + 0.9, FLOOR_Y, s.z + 1.4);
+    g.rotation.y = -Math.PI / 2 + 0.3;
+    g.visible = true;
+    this.mySukkah.roof.visible = true;
+    hidden.forEach((o) => (o.visible = false));
+    // Light and shadows centred on the sukkah, wherever the player is.
+    this.sun.position.set(s.x - 12, 22, s.z + 10);
+    this.sun.target.position.set(s.x, 0, s.z);
+    this.sun.target.updateMatrixWorld();
+    this.renderer.shadowMap.needsUpdate = true;
+
+    // Render in HDR, then tone-map into an 8-bit image and read it back.
+    const hdr = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, samples: 4 });
+    const ldr = new THREE.WebGLRenderTarget(size, size);
+    this.renderer.setRenderTarget(hdr);
+    this.renderer.render(this.scene, cam);
+    const output = new OutputPass();
+    output.render(this.renderer, ldr, hdr, 0, false);
+    const pixels = new Uint8Array(size * size * 4);
+    this.renderer.readRenderTargetPixels(ldr, 0, 0, size, size, pixels);
+    this.renderer.setRenderTarget(null);
+    hdr.dispose();
+    ldr.dispose();
+    output.dispose();
+
+    g.position.copy(saved.pos);
+    g.rotation.y = saved.rot;
+    g.visible = saved.visible;
+    this.mySukkah.roof.visible = saved.roof;
+    hidden.forEach((o) => (o.visible = true));
+    this.renderer.shadowMap.needsUpdate = true;
+
+    // WebGL rows start at the bottom.
+    const out = document.createElement('canvas');
+    out.width = out.height = size;
+    const ctx = out.getContext('2d')!;
+    const image = ctx.createImageData(size, size);
+    const row = size * 4;
+    for (let y = 0; y < size; y++) image.data.set(pixels.subarray((size - 1 - y) * row, (size - y) * row), y * row);
+    ctx.putImageData(image, 0, 0);
+    return out;
+  }
+
   // --- Quality ----------------------------------------------------------------------------------
 
   private applyQuality() {
     const high = this.quality === 'high';
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));
+    // Above 1.5 the extra pixels barely show on a small screen but cost a lot of heat and battery.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 1.5 : 1));
     this.sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
@@ -1044,9 +1116,34 @@ export class World {
     this.resize();
   }
 
+  /** Battery saver: low quality (no bloom, fewer pixels) and at most 30 frames per second. */
+  setBatterySaver(on: boolean) {
+    if (on === this.saver) return;
+    this.saver = on;
+    this.quality = on ? 'low' : initialQuality();
+    this.applyQuality();
+  }
+
+  /**
+   * How fast to draw: 60 frames per second while something is going on, 30 when the scene is calm (a dialog,
+   * the decorating screen, the player standing still) or the device is on low quality. Screens that refresh
+   * at 120 Hz (Macs, newer iPhones) would otherwise draw twice as often, and run hot, for no visible gain.
+   */
+  setPace(busy: boolean) {
+    this.fps = busy && this.quality === 'high' ? 60 : 30;
+  }
+
+  /** Whether a frame is due at `now` (the requestAnimationFrame time, in ms). */
+  due(now: number): boolean {
+    // A couple of ms of slack, so a 60 Hz screen isn't mistaken for "too early" and drawn at 30.
+    if (now - this.lastDraw < 1000 / this.fps - 3) return false;
+    this.lastDraw = now;
+    return true;
+  }
+
   /** Drops to low quality when the device can't keep up (sustained slow frames). */
   private watchSpeed(raw: number) {
-    if (this.quality === 'low' || this.timer.getElapsed() < 4) return;
+    if (this.quality === 'low' || this.fps < 60 || this.timer.getElapsed() < 4) return;
     this.slowFrames = raw > 1 / 36 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
     if (this.slowFrames > 90) {
       this.quality = 'low';
@@ -1266,7 +1363,8 @@ export class World {
       const onRaft = this.riding && (w === this.player || w === this.pet) ? this.raftObj.position.y + 0.22 : 0;
       g.position.set(w.pos.x, (onFloor ? FLOOR_Y : 0) + hop + onRaft, w.pos.z);
       g.rotation.y = turnTowards(g.rotation.y, w.heading, dt * 12);
-      animateWalk(w.char, w.phase, w.moving, still ? 0 : time);
+      w.gait += (w.moving - w.gait) * (1 - Math.exp(-dt * 10));
+      animateWalk(w.char, w.phase, w.gait, still ? 0 : time);
     }
 
     // The guests turn to whoever comes near, and wave.
@@ -1324,6 +1422,7 @@ export class World {
     this.updateBursts(dt);
     this.updateCamera(dt);
     this.fadeOccluders();
+    this.renderer.shadowMap.needsUpdate = this.frameCount++ % (this.quality === 'high' ? 2 : 3) === 0;
     if (this.bloom.enabled) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
@@ -1338,12 +1437,14 @@ export class World {
     const dz = target.z - r.pos.z;
     const dist = Math.hypot(dx, dz);
     r.moving = 0;
-    if (dist > 0.3) {
-      const step = Math.min(dist, 1.4 * dt);
+    if (dist > 0.05) {
+      // Easing in as she arrives, so she ambles instead of stopping and starting.
+      const pace = Math.min(1.4, dist * 2);
+      const step = Math.min(dist, pace * dt);
       r.pos = resolve({ x: r.pos.x + (dx / dist) * step, z: r.pos.z + (dz / dist) * step });
-      r.heading = Math.atan2(dx, dz);
+      if (dist > 0.15) r.heading = Math.atan2(dx, dz);
       r.phase += step * 3.5;
-      r.moving = 0.7;
+      r.moving = Math.min(0.7, pace / 2);
     }
   }
 
