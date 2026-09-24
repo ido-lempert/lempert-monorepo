@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { applyMove, createGame, type GameState, legalMoves, type Player } from '../src/game/kalah.ts';
+import { applyMove, canUseCard, type Card, createGame, type GameState, legalMoves, type Player, useCard } from '../src/game/kalah.ts';
 import type { ClientMsg, ServerMsg } from '../src/net/protocol.ts';
+import type { Fame } from './fame.ts';
 
 /** Anything that can receive server messages; a WebSocket in production, a fake in tests. */
 export interface Conn {
@@ -21,6 +22,7 @@ interface Room {
   first: Player;
   rematch: Set<Player>;
   lastActive: number;
+  magic: boolean;
 }
 
 const ROOM_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -43,11 +45,16 @@ function cleanName(name: unknown): string {
 export class Rooms {
   private rooms = new Map<string, Room>();
   private seatOf = new Map<Conn, { room: Room; player: Player }>();
+  private fame: Fame | null;
+
+  constructor(fame: Fame | null = null) {
+    this.fame = fame;
+  }
 
   handle(conn: Conn, msg: ClientMsg) {
     switch (msg?.t) {
       case 'create':
-        return this.create(conn, cleanName(msg.name));
+        return this.create(conn, cleanName(msg.name), msg.magic === true);
       case 'peek':
         return this.peek(conn, msg.room);
       case 'join':
@@ -56,6 +63,8 @@ export class Rooms {
         return this.resume(conn, msg.room, msg.token);
       case 'move':
         return this.move(conn, msg.pit);
+      case 'card':
+        return this.card(conn, msg.card, msg.target);
       case 'rematch':
         return this.rematch(conn);
       default:
@@ -83,7 +92,7 @@ export class Rooms {
     return this.rooms.size;
   }
 
-  private create(conn: Conn, name: string) {
+  private create(conn: Conn, name: string, magic: boolean) {
     this.leaveCurrent(conn);
     let id = roomId();
     while (this.rooms.has(id)) id = roomId();
@@ -94,6 +103,7 @@ export class Rooms {
       first: 0,
       rematch: new Set(),
       lastActive: Date.now(),
+      magic,
     };
     this.rooms.set(id, room);
     this.seatOf.set(conn, { room, player: 0 });
@@ -103,7 +113,7 @@ export class Rooms {
   private peek(conn: Conn, id: string) {
     const room = this.rooms.get(id);
     if (!room) return conn.send({ t: 'error', code: 'not-found' });
-    conn.send({ t: 'room', room: id, hostName: room.seats[0].name, open: room.seats[1] === null });
+    conn.send({ t: 'room', room: id, hostName: room.seats[0].name, open: room.seats[1] === null, magic: room.magic });
   }
 
   private join(conn: Conn, id: string, name: string) {
@@ -113,7 +123,7 @@ export class Rooms {
     this.leaveCurrent(conn);
     room.seats[1] = { name, token: randomUUID(), conn };
     this.seatOf.set(conn, { room, player: 1 });
-    room.state = createGame(4, room.first);
+    room.state = createGame(4, room.first, room.magic);
     room.lastActive = Date.now();
     this.syncAll(room, 'start');
   }
@@ -144,6 +154,29 @@ export class Rooms {
     room.state = applyMove(state, pit).state;
     room.lastActive = Date.now();
     for (const s of room.seats) s?.conn?.send({ t: 'moved', pit, by: player, state: room.state });
+    this.recordWinner(room);
+  }
+
+  private card(conn: Conn, card: Card, target: number | null) {
+    const seat = this.seatOf.get(conn);
+    if (!seat) return conn.send({ t: 'error', code: 'not-in-room' });
+    const { room, player } = seat;
+    const state = room.state;
+    if (!state || state.current !== player || !canUseCard(state, card)) return conn.send({ t: 'error', code: 'bad-move' });
+    try {
+      room.state = useCard(state, card, target).state;
+    } catch {
+      return conn.send({ t: 'error', code: 'bad-move' });
+    }
+    room.lastActive = Date.now();
+    for (const s of room.seats) s?.conn?.send({ t: 'card-used', by: player, card, target, state: room.state });
+    this.recordWinner(room);
+  }
+
+  /** Online wins count on the wall of fame; the server saw the whole game, so they can be trusted. */
+  private recordWinner(room: Room) {
+    const w = room.state?.winner;
+    if (room.state?.over && (w === 0 || w === 1)) this.fame?.record(room.seats[w]?.name ?? '', 'online');
   }
 
   private rematch(conn: Conn) {
@@ -158,7 +191,7 @@ export class Rooms {
     }
     room.rematch.clear();
     room.first = room.first === 0 ? 1 : 0;
-    room.state = createGame(4, room.first);
+    room.state = createGame(4, room.first, room.magic);
     room.lastActive = Date.now();
     this.syncAll(room, 'rematch');
   }

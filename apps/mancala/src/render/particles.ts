@@ -224,3 +224,15 @@ export const iceStyle = (): TrailStyle => ({
   drag: 2.2,
   density: 1,
 });
+
+/** Purple sparkles for magic cards. */
+export const magicStyle = (): TrailStyle => ({
+  texture: sparkleTexture(),
+  colors: ['#ffffff', '#f3c6ff', '#c07bff', '#7b3fe4', '#1e0a4a'],
+  life: [0.5, 1.1],
+  size: [0.34, 0.06],
+  velocity: (v) => v.set(rand(-0.6, 0.6), rand(0.1, 0.9), rand(-0.6, 0.6)),
+  gravity: 0.3,
+  drag: 2,
+  density: 2,
+});

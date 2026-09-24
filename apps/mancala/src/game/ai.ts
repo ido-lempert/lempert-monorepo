@@ -1,4 +1,4 @@
-import { applyMove, type GameState, legalMoves, type Player, STORE } from './kalah';
+import { applyMove, blockTargets, type Card, type GameState, legalMoves, type Player, STORE, useCard } from './kalah';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
@@ -56,4 +56,43 @@ export function chooseMove(state: GameState, difficulty: Difficulty, rng: () => 
     } else if (v === bestValue) best.push(m);
   }
   return best[Math.floor(rng() * best.length)];
+}
+
+export interface CardPlay {
+  card: Card;
+  target: number | null;
+}
+
+/** Value of the position for `me` assuming the player to move plays their best move. */
+function positionValue(s: GameState, depth: number, me: Player): number {
+  if (s.over) return evaluate(s, me);
+  return search(s, depth, -Infinity, Infinity, me);
+}
+
+/**
+ * Decides whether to play the computer's magic card before moving this turn.
+ * Easy plays it at a random moment; medium and hard play it only when a search shows a clear gain.
+ */
+export function chooseCardPlay(state: GameState, difficulty: Difficulty, rng: () => number = Math.random): CardPlay | null {
+  const card = state.magic?.cards[state.current];
+  if (!card || state.over) return null;
+  const options: CardPlay[] =
+    card === 'mirror' ? [{ card, target: null }] : blockTargets(state).map((target) => ({ card, target }));
+  if (!options.length) return null;
+
+  if (difficulty === 'easy') return rng() < 0.2 ? options[Math.floor(rng() * options.length)] : null;
+
+  const depth = difficulty === 'hard' ? 6 : 3;
+  const me = state.current;
+  const without = positionValue(state, depth, me);
+  let best: CardPlay | null = null;
+  let bestValue = without + 2; // only worth it for a clear gain
+  for (const option of options) {
+    const v = positionValue(useCard(state, option.card, option.target).state, depth, me);
+    if (v > bestValue) {
+      bestValue = v;
+      best = option;
+    }
+  }
+  return best;
 }

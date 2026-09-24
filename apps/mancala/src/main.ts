@@ -1,22 +1,41 @@
 import './style.css';
+import { registerSW } from 'virtual:pwa-register';
 import { Sound } from './audio/sound';
-import type { Difficulty } from './game/ai';
-import { applyMove, createGame, type GameState, legalMoves, type Player, pitsOf, STORE } from './game/kalah';
+import type { CardPlay, Difficulty } from './game/ai';
+import type { AiRequest } from './game/ai.worker';
+import {
+  applyMove,
+  blockTargets,
+  type Card,
+  type CardResult,
+  createGame,
+  type GameState,
+  isBlocked,
+  legalMoves,
+  type Player,
+  pitsOf,
+  STORE,
+  useCard,
+} from './game/kalah';
 import { applyDocument, getLang, type Lang, LANGUAGES, onLangChange, setLang, type StringKey, t } from './i18n';
 import { type PageId, PAGES } from './i18n/pages';
 import { OnlineClient, savedToken } from './net/online';
 import type { ServerMsg } from './net/protocol';
+import { apply as applyDisplay, isLight, onDisplayChange, reducedMotion, setReducedMotion, setTheme, type ThemePref, themePref } from './prefs';
 import { canFullscreen, canInstall, install, isFullscreen, isOnline, onPwaChange, toggleFullscreen } from './pwa';
 import { Board3D, PLAYER_COLORS } from './render/board3d';
 import { confetti } from './render/confetti';
+import { flushQueuedWins, renderFame, reportComputerWin } from './ui/fame';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
 type Mode = 'ai' | 'pvp' | 'online';
+type Variant = 'classic' | 'magic';
 
 interface Settings {
   mode: Mode;
   difficulty: Difficulty;
+  variant: Variant;
   names: [string, string];
 }
 
@@ -30,9 +49,11 @@ interface Online {
 }
 
 const SETTINGS_KEY = 'mancala.settings';
+const MAGIC_OFFERED_KEY = 'mancala.magicOffered';
+const CARD_ICON: Record<Card, string> = { block: '🔒', mirror: '🪞' };
 
 function loadSettings(): Settings {
-  const defaults: Settings = { mode: 'ai', difficulty: 'medium', names: ['', ''] };
+  const defaults: Settings = { mode: 'ai', difficulty: 'medium', variant: 'classic', names: ['', ''] };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
   } catch {
@@ -40,6 +61,7 @@ function loadSettings(): Settings {
   }
 }
 
+applyDisplay();
 let settings = loadSettings();
 let online: Online | null = null;
 let state: GameState = createGame();
@@ -51,7 +73,9 @@ let moveQueue: Promise<void> = Promise.resolve();
 /** True while the computer or remote friend is to move; used to chime when it's our turn again. */
 let waitingOnOther = false;
 /** Which join screen is showing, so it can be re-rendered on language change. */
-let joinView: { kind: 'invited' | 'full' | 'gone' | 'offline'; host: string } | null = null;
+let joinView: { kind: 'invited' | 'full' | 'gone' | 'offline'; host: string; magic: boolean } | null = null;
+/** Choosing which opponent pit a Block card should lock. */
+let targeting = false;
 
 const board = new Board3D($('#stage'), (pit) => onPitClicked(pit));
 const sound = new Sound();
@@ -59,15 +83,30 @@ board.onLift = () => sound.lift();
 board.onStoneLanded = (container, element) => sound.drop(element, container === STORE[0] || container === STORE[1]);
 
 const worker = new Worker(new URL('./game/ai.worker.ts', import.meta.url), { type: 'module' });
-function computerMove(s: GameState): Promise<number> {
+function askComputer<T>(kind: AiRequest['kind'], s: GameState): Promise<T> {
   return new Promise((resolve) => {
-    worker.onmessage = (e: MessageEvent<number>) => resolve(e.data);
-    worker.postMessage({ state: s, difficulty: settings.difficulty });
+    worker.onmessage = (e: MessageEvent<T>) => resolve(e.data);
+    worker.postMessage({ kind, state: s, difficulty: settings.difficulty } satisfies AiRequest);
   });
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const show = (sel: string, visible: boolean) => $(sel).classList.toggle('hidden', !visible);
+
+function show(sel: string, visible: boolean) {
+  $(sel).classList.toggle('hidden', !visible);
+  if ($(sel).classList.contains('overlay')) syncInert();
+}
+
+/** While a dialog is open, everything behind it is inert, so focus and screen readers stay inside it. */
+function syncInert() {
+  const open = [...document.querySelectorAll<HTMLElement>('.overlay:not(.hidden)')];
+  const top = open.at(-1) ?? null;
+  for (const el of document.querySelectorAll<HTMLElement>('body > *:not(script):not(#splash)')) {
+    el.inert = top !== null && el !== top && !['toast', 'live', 'update'].includes(el.id);
+  }
+}
+
+const other = (p: Player): Player => (p === 0 ? 1 : 0);
 
 function isComputer(p: Player): boolean {
   return !online && settings.mode === 'ai' && p === 1;
@@ -89,13 +128,18 @@ function playerName(p: Player): string {
   return settings.names[p].trim() || t('playerN', { n: p + 1 });
 }
 
+const cardName = (card: Card) => t(`card_${card}` as StringKey);
+/** Card name without its emoji, for places that already show the card's icon. */
+const cardTitle = (card: Card) => cardName(card).replace(/\s*\p{Extended_Pictographic}\uFE0F?/gu, '').trim();
+const cardText = (card: Card) => t(`cardText_${card}` as StringKey);
+
 function toast(text: string, color: string) {
   const el = $('#toast');
   el.textContent = text;
   el.style.color = color;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => el.classList.remove('show'), 1100);
+  toastTimer = window.setTimeout(() => el.classList.remove('show'), 1400);
 }
 
 /** Reads a message to screen-reader users. */
@@ -131,23 +175,26 @@ function updateHud() {
     else turn = t('turnOf', { name: playerName(state.current) });
   }
   $('#turn').textContent = turn;
-  show('#restart', !online);
+  show('#m-new', !online);
   renderPitKeys();
+  renderCard();
 }
 
-/** Keyboard / screen-reader buttons for the current local player's pits, in sowing order. */
+/** Keyboard / screen-reader buttons: the local player's pits in sowing order, or Block targets while targeting. */
 function renderPitKeys() {
   const box = $('#pit-keys');
   const p = state.current;
   const enabled = !busy && !state.over && isLocalTurn(p) && $('#setup').classList.contains('hidden');
-  const legal = new Set(legalMoves(state));
+  const pits = targeting ? pitsOf(other(p)) : pitsOf(p);
+  const allowed = new Set(targeting ? blockTargets(state) : legalMoves(state));
   box.replaceChildren(
-    ...pitsOf(p).map((pit, i) => {
+    ...pits.map((pit, i) => {
       const b = document.createElement('button');
       b.textContent = String(i + 1);
       b.style.borderColor = PLAYER_COLORS[p];
-      b.setAttribute('aria-label', t('pitButton', { n: i + 1, count: state.board[pit] }));
-      b.disabled = !enabled || !legal.has(pit);
+      const params = { n: i + 1, count: state.board[pit] };
+      b.setAttribute('aria-label', t(isBlocked(state, pit) ? 'pitBlocked' : 'pitButton', params));
+      b.disabled = !enabled || !allowed.has(pit);
       b.addEventListener('click', () => onPitClicked(pit));
       b.addEventListener('focus', () => board.setHover(pit));
       b.addEventListener('blur', () => board.setHover(null));
@@ -155,6 +202,132 @@ function renderPitKeys() {
     }),
   );
 }
+
+// --- Magic cards ------------------------------------------------------------
+
+/** Whose card this device shows: yours against the computer or online; whoever's turn it is on a shared device. */
+function cardHolder(): Player {
+  if (online) return online.me;
+  return settings.mode === 'ai' ? 0 : state.current;
+}
+
+function renderCard() {
+  const holder = cardHolder();
+  const card = state.magic?.cards[holder] ?? null;
+  const visible = !!card && !state.over && $('#setup').classList.contains('hidden');
+  show('#card', visible);
+  const opp = other(holder);
+  const oppCard = settings.mode !== 'pvp' || online ? state.magic?.cards[opp] : null;
+  $('#opp-card').textContent = oppCard ? t('opponentHasCard', { name: playerName(opp) }) : '';
+  show('#opp-card', !!oppCard && !state.over && $('#setup').classList.contains('hidden'));
+  // Keep the board clear of the card (on narrow screens it spans the bottom).
+  requestAnimationFrame(() => board.setBottomInset(visible ? $('#card').offsetHeight + 16 : 0));
+  if (!card) return;
+
+  $('#card').style.setProperty('--card-color', PLAYER_COLORS[holder]);
+  $('#card-heading').textContent = settings.mode === 'pvp' && !online ? t('cardOf', { name: playerName(holder) }) : t('yourCard');
+  $('#card-icon').textContent = CARD_ICON[card];
+  $('#card-title').textContent = cardTitle(card);
+  $('#card-text').textContent = cardText(card);
+  const canPlay =
+    !busy && state.current === holder && isLocalTurn(holder) && (card === 'mirror' || blockTargets(state).length > 0);
+  const button = $<HTMLButtonElement>('#card-use');
+  button.textContent = targeting ? t('cancelCard') : t('useCard');
+  button.disabled = !canPlay && !targeting;
+  $('#card-hint').textContent = targeting ? t('chooseBlockTarget') : canPlay ? '' : t('cardWait');
+}
+
+function startTargeting() {
+  targeting = true;
+  board.setActive(state.current, blockTargets(state));
+  renderPitKeys();
+  renderCard();
+  announce(t('chooseBlockTarget'));
+  $<HTMLButtonElement>('#pit-keys button:not([disabled])')?.focus();
+}
+
+function stopTargeting() {
+  if (!targeting) return;
+  targeting = false;
+  board.setActive(state.current, isLocalTurn(state.current) ? legalMoves(state) : []);
+  renderPitKeys();
+  renderCard();
+}
+
+$('#card-use').addEventListener('click', () => {
+  const card = state.magic?.cards[state.current];
+  if (targeting) return stopTargeting();
+  if (!card) return;
+  if (card === 'block') startTargeting();
+  else playCard('mirror', null);
+});
+
+function playCard(card: Card, target: number | null) {
+  targeting = false;
+  if (online) {
+    board.setActive(null);
+    online.client.send({ t: 'card', card, target });
+    return;
+  }
+  const current = game;
+  void animateCard(useCard(state, card, target)).then((done) => {
+    if (done && current === game) void nextTurn();
+  });
+}
+
+/** Shows a card being played, then adopts the resulting state. */
+async function animateCard(result: CardResult): Promise<boolean> {
+  busy = true;
+  board.setActive(null);
+  renderPitKeys();
+  const current = game;
+  const message = t('cardPlayed', { name: playerName(result.by), card: cardName(result.card) });
+  toast(message, PLAYER_COLORS[result.by]);
+  announce(`${message} ${cardText(result.card)}`);
+  sound.magic();
+  if (result.card === 'mirror') await board.playMirror();
+  else {
+    board.setBlocked(result.state.magic?.blocked ?? []);
+    await wait(reducedMotion() ? 150 : 700);
+  }
+  if (current !== game) return false;
+  if (result.sweeps.length) await board.playSweeps(result.sweeps);
+  if (current !== game) return false;
+  state = result.state;
+  busy = false;
+  updateHud();
+  return true;
+}
+
+function showMagicIntro() {
+  if (!state.magic) return;
+  const holders: Player[] = settings.mode === 'pvp' && !online ? [0, 1] : [cardHolder()];
+  $('#magic-intro-cards').replaceChildren(
+    ...holders.map((p) => {
+      const card = state.magic!.cards[p]!;
+      const item = document.createElement('div');
+      item.className = 'intro-card';
+      item.style.setProperty('--card-color', PLAYER_COLORS[p]);
+      const owner = document.createElement('p');
+      owner.className = 'card-owner';
+      owner.textContent = holders.length > 1 ? t('cardOf', { name: playerName(p) }) : t('yourCard');
+      const title = document.createElement('h2');
+      title.textContent = cardName(card);
+      const text = document.createElement('p');
+      text.textContent = cardText(card);
+      item.append(owner, title, text);
+      return item;
+    }),
+  );
+  show('#magic-intro', true);
+  $('#magic-intro-ok').focus();
+}
+$('#magic-intro-ok').addEventListener('click', () => {
+  show('#magic-intro', false);
+  $<HTMLButtonElement>('#card-use').focus();
+});
+
+// --- Turn flow --------------------------------------------------------------
 
 function localWinner(): Player | null {
   // Against a remote friend or the computer there is a "you"; on a shared device any winner is a local human.
@@ -175,7 +348,7 @@ function renderGameOver() {
     if (online && w === online.me) result.textContent = t('youWon');
     else if (isComputer(w)) result.textContent = t('computerWon');
     else result.textContent = t('wins', { name: playerName(w) });
-    result.style.color = PLAYER_COLORS[w];
+    result.style.color = `var(--p${w + 1}-text)`;
   }
   // Viewer's score first, matching the HUD order.
   $('#final').textContent = viewer() === 0 ? `${a} : ${b}` : `${b} : ${a}`;
@@ -186,7 +359,7 @@ function showGameOver() {
   const winner = localWinner();
   if (winner !== null) {
     sound.win();
-    confetti();
+    if (!reducedMotion()) confetti();
   } else if (state.winner === 'draw') sound.win();
   else sound.lose();
   announce(`${$('#result').textContent} ${$('#final').textContent}`);
@@ -195,9 +368,44 @@ function showGameOver() {
   $('#rematch').removeAttribute('disabled');
   $('#rematch').textContent = t('rematch');
   show('#rematch-note', false);
+  recordFame(winner);
+  // After the first finished game, invite players to try Magic mode next time.
+  const offer = settings.variant === 'classic' && !localStorage.getItem(MAGIC_OFFERED_KEY);
+  if (offer) localStorage.setItem(MAGIC_OFFERED_KEY, '1');
+  show('#magic-offer', offer);
   show('#gameover', true);
-  $<HTMLButtonElement>(online ? '#rematch' : '#again').focus();
+  $<HTMLButtonElement>(offer ? '#magic-yes' : online ? '#rematch' : '#again').focus();
 }
+
+function recordFame(winner: Player | null) {
+  const note = (key: StringKey | null) => {
+    $('#fame-note').textContent = key ? t(key) : '';
+    show('#fame-note', !!key);
+  };
+  note(null);
+  if (winner === null) return;
+  if (online) {
+    // The server records online wins itself.
+    if (online.names[winner].trim()) note('fameAdded');
+  } else if (settings.mode === 'ai') {
+    const name = settings.names[0].trim();
+    if (!name) return note('fameNeedsName');
+    void reportComputerWin(name, settings.difficulty).then((ok) => ok && note('fameAdded'));
+  }
+}
+
+$('#magic-yes').addEventListener('click', () => {
+  settings.variant = 'magic';
+  saveSettings();
+  show('#magic-offer', false);
+  announce(t('magicOfferDone'));
+  toast(t('magicOfferDone'), '#ffffff');
+  $<HTMLButtonElement>(online ? '#rematch' : '#again').focus();
+});
+$('#magic-no').addEventListener('click', () => {
+  show('#magic-offer', false);
+  $<HTMLButtonElement>(online ? '#rematch' : '#again').focus();
+});
 
 /** Animates a move, updates state and HUD. Used by every mode. */
 async function animateMove(pit: number): Promise<boolean> {
@@ -211,23 +419,32 @@ async function animateMove(pit: number): Promise<boolean> {
   await board.playMove(pit, result, mover);
   if (current !== game) return false;
   state = result.state;
+  board.setBlocked(state.magic?.blocked ?? []);
   busy = false;
   updateHud();
-  const score = t('announceScore', { a: state.board[STORE[viewer()]], b: state.board[STORE[viewer() === 0 ? 1 : 0]] });
+  const score = t('announceScore', { a: state.board[STORE[viewer()]], b: state.board[STORE[other(viewer())]] });
+  const events: string[] = [];
+  if (result.unblocked !== null) events.push(t('blockBroken'));
   if (result.capture) {
-    toast(t('capture', { n: result.capture.count }), PLAYER_COLORS[mover]);
+    events.push(t('capture', { n: result.capture.count }));
     sound.capture(mover);
-    announce(`${t('capture', { n: result.capture.count })} ${score}`);
   } else if (result.extraTurn) {
-    toast(t('extraTurn'), PLAYER_COLORS[mover]);
+    events.push(t('extraTurn'));
     sound.extraTurn();
-    announce(`${t('extraTurn')} ${score}`);
-  } else announce(score);
+  }
+  if (result.passed !== null) events.push(t('turnPassed', { name: playerName(result.passed) }));
+  if (events.length) toast(events.join(' '), PLAYER_COLORS[mover]);
+  announce([...events, score].join(' '));
   return true;
 }
 
 function onPitClicked(pit: number) {
-  if (busy || !isLocalTurn(state.current) || !legalMoves(state).includes(pit)) return;
+  if (busy || !isLocalTurn(state.current)) return;
+  if (targeting) {
+    if (blockTargets(state).includes(pit)) playCard('block', pit);
+    return;
+  }
+  if (!legalMoves(state).includes(pit)) return;
   if (online) {
     // The server is the referee: send the move and animate it when it comes back.
     board.setActive(null);
@@ -248,45 +465,74 @@ async function nextTurn() {
     if (waitingOnOther) sound.yourTurn();
     waitingOnOther = false;
     board.setActive(state.current, legalMoves(state));
-    renderPitKeys();
+    updateHud();
     return;
   }
   waitingOnOther = true;
   board.setActive(null);
+  updateHud();
   if (!isComputer(state.current)) return; // online: wait for the opponent's move
   const current = game;
+  // The computer may play its magic card first.
+  if (state.magic?.cards[state.current]) {
+    const [play] = await Promise.all([askComputer<CardPlay | null>('card', state), wait(500)]);
+    if (current !== game) return;
+    if (play && !(await animateCard(useCard(state, play.card, play.target)))) return;
+    if (state.over) return void nextTurn();
+  }
   // A short pause so the computer's move reads as a separate turn.
-  const [pit] = await Promise.all([computerMove(state), wait(700)]);
+  const [pit] = await Promise.all([askComputer<number>('move', state), wait(700)]);
   if (current === game && (await animateMove(pit))) void nextTurn();
 }
 
-function startGame(initial: GameState) {
+function startGame(initial: GameState, intro = true) {
   game++;
   waitingOnOther = false;
+  targeting = false;
   moveQueue = Promise.resolve();
   state = initial;
   busy = false;
   board.setBoard(state.board);
+  board.setBlocked(state.magic?.blocked ?? []);
   for (const id of ['#gameover', '#setup', '#invite', '#join']) show(id, false);
   updateHud();
+  if (intro) showMagicIntro();
   void nextTurn();
 }
 
 function newLocalGame() {
   board.setViewer(0);
-  startGame(createGame());
+  startGame(createGame(4, 0, settings.variant === 'magic'));
 }
 
-// Number keys 1–6 play the current local player's pits in sowing order.
 document.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
   if (e.key === 'Escape') {
     closePanels();
-    if (!$('#page').classList.contains('hidden')) closePage();
+    if (targeting) stopTargeting();
+    for (const id of ['#page', '#magic-intro']) if (!$(id).classList.contains('hidden')) id === '#page' ? closePage() : show(id, false);
     return;
   }
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+  if (document.querySelector('.overlay:not(.hidden)')) return;
+  // Camera: arrows rotate, +/- zoom, 0 resets.
+  const camera: Record<string, () => void> = {
+    ArrowLeft: () => board.orbit(-0.15, 0),
+    ArrowRight: () => board.orbit(0.15, 0),
+    ArrowUp: () => board.orbit(0, -0.1),
+    ArrowDown: () => board.orbit(0, 0.1),
+    '+': () => board.zoom(0.9),
+    '=': () => board.zoom(0.9),
+    '-': () => board.zoom(1.1),
+    '0': () => board.resetCamera(),
+  };
+  if (camera[e.key]) {
+    e.preventDefault();
+    camera[e.key]();
+    return;
+  }
+  // Number keys 1–6 play the current local player's pits in sowing order (or pick a Block target).
   const n = Number(e.key);
-  if (n >= 1 && n <= 6 && isLocalTurn(state.current)) onPitClicked(pitsOf(state.current)[n - 1]);
+  if (n >= 1 && n <= 6 && isLocalTurn(state.current)) onPitClicked((targeting ? pitsOf(other(state.current)) : pitsOf(state.current))[n - 1]);
 });
 
 // --- Online play ----------------------------------------------------------
@@ -325,7 +571,24 @@ function onConnection(connected: boolean) {
 }
 
 function opponentName(): string {
-  return playerName(online?.me === 0 ? 1 : 0);
+  return playerName(other(online?.me ?? 0));
+}
+
+/** Runs server events one after another, after any animation already playing. */
+function enqueue(step: () => Promise<void>) {
+  const current = game;
+  moveQueue = moveQueue.then(async () => {
+    if (current === game) await step();
+  });
+}
+
+/** Trust the server if we ever drift from it. */
+function reconcile(server: GameState) {
+  if (JSON.stringify(state) === JSON.stringify(server)) return;
+  state = server;
+  board.setBoard(state.board);
+  board.setBlocked(state.magic?.blocked ?? []);
+  updateHud();
 }
 
 function onServerMessage(msg: ServerMsg) {
@@ -338,7 +601,7 @@ function onServerMessage(msg: ServerMsg) {
       openInvite(msg.room);
       break;
     case 'room':
-      showJoin(msg.open ? 'invited' : 'full', msg.hostName);
+      showJoin(msg.open ? 'invited' : 'full', msg.hostName, msg.magic);
       break;
     case 'sync':
       o.room = msg.room;
@@ -351,24 +614,23 @@ function onServerMessage(msg: ServerMsg) {
         openInvite(msg.room);
         break;
       }
-      startGame(msg.state);
+      startGame(msg.state, msg.reason !== 'resume');
       if (msg.reason === 'start') toast(t('joined', { name: opponentName() }), PLAYER_COLORS[msg.you]);
       break;
-    case 'moved': {
-      const current = game;
-      moveQueue = moveQueue.then(async () => {
-        if (current !== game) return;
+    case 'moved':
+      enqueue(async () => {
         if (!(await animateMove(msg.pit))) return;
-        // Trust the server if we ever drift from it.
-        if (JSON.stringify(state) !== JSON.stringify(msg.state)) {
-          state = msg.state;
-          board.setBoard(state.board);
-          updateHud();
-        }
+        reconcile(msg.state);
         await nextTurn();
       });
       break;
-    }
+    case 'card-used':
+      enqueue(async () => {
+        if (!(await animateCard(useCard(state, msg.card, msg.target)))) return;
+        reconcile(msg.state);
+        await nextTurn();
+      });
+      break;
     case 'peer':
       o.peerConnected = msg.connected;
       banner(msg.connected ? null : { key: 'peerLeft', name: opponentName() });
@@ -409,14 +671,15 @@ async function copyLink(url: string, button: HTMLElement) {
   }
   button.textContent = t('copied');
   button.classList.add('done');
+  announce(t('copied'));
   setTimeout(() => {
     button.textContent = t('copy');
     button.classList.remove('done');
   }, 1800);
 }
 
-function showJoin(kind: 'invited' | 'full' | 'gone' | 'offline', host = '') {
-  joinView = { kind, host };
+function showJoin(kind: 'invited' | 'full' | 'gone' | 'offline', host = '', magic = false) {
+  joinView = { kind, host, magic };
   renderJoin();
   $<HTMLInputElement>('#join-name').value = settings.names[0];
   for (const id of ['#setup', '#gameover', '#invite']) show(id, false);
@@ -426,7 +689,7 @@ function showJoin(kind: 'invited' | 'full' | 'gone' | 'offline', host = '') {
 
 function renderJoin() {
   if (!joinView) return;
-  const { kind, host } = joinView;
+  const { kind, host, magic } = joinView;
   const keys: Record<typeof kind, StringKey> = {
     invited: 'joinInvited',
     full: 'joinFull',
@@ -434,6 +697,7 @@ function renderJoin() {
     offline: 'joinOffline',
   };
   $('#join-lead').textContent = t(keys[kind], { host: host || t('aFriend') });
+  show('#join-magic', kind === 'invited' && magic);
   show('#join-name-field', kind === 'invited');
   show('#join-submit', kind === 'invited');
 }
@@ -447,7 +711,8 @@ function renderSetup() {
   show('#mode-online', !offline);
   show('#offline-note', offline);
   document.querySelectorAll<HTMLElement>('.segmented').forEach((group) => {
-    const value = group.dataset.name === 'mode' ? mode : settings.difficulty;
+    const name = group.dataset.name as 'mode' | 'difficulty' | 'variant';
+    const value = name === 'mode' ? mode : settings[name];
     group.querySelectorAll<HTMLButtonElement>('button').forEach((b) => {
       const selected = b.dataset.value === value;
       b.classList.toggle('selected', selected);
@@ -466,13 +731,14 @@ function renderSetup() {
 function openSetup() {
   game++; // cancel any running animation / computer turn
   busy = false;
+  targeting = false;
   joinView = null;
   leaveOnline();
   board.setActive(null);
   $<HTMLInputElement>('#name0').value = settings.names[0];
   $<HTMLInputElement>('#name1').value = settings.names[1];
   renderSetup();
-  for (const id of ['#gameover', '#invite', '#join']) show(id, false);
+  for (const id of ['#gameover', '#invite', '#join', '#magic-intro']) show(id, false);
   show('#setup', true);
   updateHud();
 }
@@ -485,7 +751,7 @@ document.querySelectorAll<HTMLElement>('.segmented').forEach((group) => {
   group.addEventListener('click', (e) => {
     const button = (e.target as HTMLElement).closest('button');
     if (!button) return;
-    const key = group.dataset.name as 'mode' | 'difficulty';
+    const key = group.dataset.name as 'mode' | 'difficulty' | 'variant';
     settings = { ...settings, [key]: button.dataset.value };
     renderSetup();
   });
@@ -497,7 +763,7 @@ $('#setup-form').addEventListener('submit', (e) => {
   if (!isOnline() && settings.mode === 'online') settings.mode = 'ai';
   saveSettings();
   if (settings.mode === 'online') {
-    goOnline().client.send({ t: 'create', name: settings.names[0] });
+    goOnline().client.send({ t: 'create', name: settings.names[0], magic: settings.variant === 'magic' });
     return;
   }
   newLocalGame();
@@ -529,7 +795,6 @@ $('#invite-link').addEventListener('focus', (e) => (e.target as HTMLInputElement
 $('#invite-cancel').addEventListener('click', openSetup);
 $('#join-leave').addEventListener('click', openSetup);
 
-$('#restart').addEventListener('click', newLocalGame);
 $('#again').addEventListener('click', newLocalGame);
 $('#rematch').addEventListener('click', () => {
   online?.client.send({ t: 'rematch' });
@@ -582,22 +847,16 @@ $('#toggle-sfx').addEventListener('change', (e) => {
   renderSound();
 });
 
-$('#m-settings').addEventListener('click', () => {
-  closePanels();
-  openSetup();
-});
-$('#m-camera').addEventListener('click', () => {
-  closePanels();
-  board.resetCamera();
-});
-$('#m-fullscreen').addEventListener('click', () => {
-  closePanels();
-  void toggleFullscreen();
-});
-$('#m-install').addEventListener('click', () => {
-  closePanels();
-  void install();
-});
+const menuAction = (id: string, fn: () => void) =>
+  $(id).addEventListener('click', () => {
+    closePanels();
+    fn();
+  });
+menuAction('#m-new', newLocalGame);
+menuAction('#m-settings', openSetup);
+menuAction('#m-camera', () => board.resetCamera());
+menuAction('#m-fullscreen', () => void toggleFullscreen());
+menuAction('#m-install', () => void install());
 
 function renderPwa() {
   show('#m-fullscreen', canFullscreen());
@@ -606,8 +865,21 @@ function renderPwa() {
   // Going offline mid-setup hides online play; coming back restores it.
   if (!$('#setup').classList.contains('hidden')) renderSetup();
   if (joinView && !isOnline()) showJoin('offline');
+  if (currentPage() === 'fame') void renderFame($('#page-body'));
 }
 onPwaChange(renderPwa);
+
+// --- Display: theme and motion --------------------------------------------
+
+function renderDisplay() {
+  board.setTheme(isLight());
+  board.setReducedMotion(reducedMotion());
+  $<HTMLSelectElement>('#m-theme').value = themePref();
+  $<HTMLInputElement>('#toggle-motion').checked = reducedMotion();
+}
+onDisplayChange(renderDisplay);
+$('#m-theme').addEventListener('change', (e) => setTheme((e.target as HTMLSelectElement).value as ThemePref));
+$('#toggle-motion').addEventListener('change', (e) => setReducedMotion((e.target as HTMLInputElement).checked));
 
 // --- Language -------------------------------------------------------------
 
@@ -628,31 +900,35 @@ function renderAll() {
   renderJoin();
   renderSound();
   renderPwa();
+  renderDisplay();
   updateHud();
   if (!$('#gameover').classList.contains('hidden')) renderGameOver();
+  if (!$('#magic-intro').classList.contains('hidden')) showMagicIntro();
   if (bannerKey) banner(bannerKey);
   const page = currentPage();
   if (page) renderPage(page);
 }
 onLangChange(renderAll);
 
-// --- Pages: how to play, terms, accessibility ------------------------------
+// --- Pages: wall of fame, how to play, terms, accessibility ------------------
 
-const PAGE_IDS: PageId[] = ['rules', 'terms', 'accessibility'];
+type Page = PageId | 'fame';
+const PAGE_IDS: Page[] = ['fame', 'rules', 'terms', 'accessibility'];
 let pageReturnFocus: HTMLElement | null = null;
 
-function currentPage(): PageId | null {
-  const id = location.hash.slice(1) as PageId;
+function currentPage(): Page | null {
+  const id = location.hash.slice(1) as Page;
   return PAGE_IDS.includes(id) ? id : null;
 }
 
-function renderPage(id: PageId) {
+function renderPage(id: Page) {
   $('#page-title').textContent = t(id);
-  $('#page-body').innerHTML = PAGES[getLang()][id];
+  if (id === 'fame') void renderFame($('#page-body'));
+  else $('#page-body').innerHTML = PAGES[getLang()][id];
 }
 
-function openPage(id: PageId) {
-  pageReturnFocus = document.activeElement as HTMLElement | null;
+function openPage(id: Page) {
+  if ($('#page').classList.contains('hidden')) pageReturnFocus = document.activeElement as HTMLElement | null;
   renderPage(id);
   show('#page', true);
   $('#page-close').focus();
@@ -667,7 +943,7 @@ function closePage() {
 document.querySelectorAll<HTMLElement>('[data-page]').forEach((el) =>
   el.addEventListener('click', () => {
     closePanels();
-    const id = el.dataset.page as PageId;
+    const id = el.dataset.page as Page;
     history.replaceState(null, '', `${location.pathname}${location.search}#${id}`);
     openPage(id);
   }),
@@ -687,10 +963,17 @@ const hideHint = () => $('#hint').classList.add('gone');
 $('#stage').addEventListener('pointerdown', hideHint, { once: true });
 setTimeout(hideHint, 12000);
 
+// New versions wait for the player's go-ahead instead of reloading mid-game.
+const updateSW = registerSW({
+  onNeedRefresh: () => show('#update', true),
+});
+$('#update-now').addEventListener('click', () => void updateSW(true));
+
 // --- Start ------------------------------------------------------------------
 
 board.setBoard(state.board);
 renderAll();
+void flushQueuedWins();
 
 // Opened from an invite link (or reloaded mid-game): join or resume that room.
 const invitedRoom = new URLSearchParams(location.search).get('room');
@@ -722,6 +1005,12 @@ requestAnimationFrame(() =>
 if (import.meta.env.DEV) {
   // Hook for automated playtests: lets a script find pits on screen and read the game state.
   Object.assign(window, {
-    __mancala: { pitScreen: (i: number) => board.screenPosition(i), state: () => state, busy: () => busy, sound },
+    __mancala: {
+      pitScreen: (i: number) => board.screenPosition(i),
+      state: () => state,
+      setState: (s: GameState) => startGame(s, false),
+      busy: () => busy,
+      sound,
+    },
   });
 }

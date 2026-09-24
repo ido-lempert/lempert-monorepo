@@ -6,6 +6,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { attachGameServer } from './attach.ts';
+import { Fame, handleFame } from './fame.ts';
 
 const DIST = join(import.meta.dirname, '..', 'dist');
 const PORT = Number(process.env.PORT ?? 8080);
@@ -19,7 +20,11 @@ const TYPES: Record<string, string> = {
   '.webmanifest': 'application/manifest+json',
 };
 
+// The wall of fame is saved next to the app by default; FAME_FILE can point at a persistent disk.
+const fame = new Fame(process.env.FAME_FILE ?? join(import.meta.dirname, '..', '.data', 'fame.json'));
+
 const server = createServer((req, res) => {
+  if (handleFame(fame, req, res)) return;
   const path = normalize(decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
   let file = join(DIST, path);
   if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html');
@@ -31,5 +36,5 @@ const server = createServer((req, res) => {
   createReadStream(file).pipe(res);
 });
 
-attachGameServer(server);
+attachGameServer(server, fame);
 server.listen(PORT, () => console.log(`Mancala on http://localhost:${PORT}`));

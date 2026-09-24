@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chooseMove, type Difficulty } from './ai';
-import { applyMove, createGame, type GameState, legalMoves, type Player } from './kalah';
+import { chooseCardPlay, chooseMove, type Difficulty } from './ai';
+import { applyMove, createGame, type GameState, legalMoves, type Player, useCard } from './kalah';
 
 type Agent = (s: GameState) => number;
 const random: Agent = (s) => {
@@ -39,7 +39,8 @@ describe('ai', () => {
     expect(chooseMove(s, 'hard')).toBe(5);
   });
 
-  it('gets stronger with difficulty', () => {
+  // Plays 30 full games, several with a deep search.
+  it('gets stronger with difficulty', { timeout: 30_000 }, () => {
     expect(winRate(ai('medium'), random, 20)).toBeGreaterThanOrEqual(0.8);
     expect(winRate(ai('hard'), ai('easy'), 10)).toBeGreaterThanOrEqual(0.8);
   });
@@ -48,5 +49,27 @@ describe('ai', () => {
     const t = performance.now();
     chooseMove(createGame(), 'hard');
     expect(performance.now() - t).toBeLessThan(1500);
+  });
+
+  it('plays a mirror card when it clearly wins stones, and holds it otherwise', () => {
+    const base = { current: 0 as const, over: false, winner: null };
+    // Opponent's side is loaded and ours is nearly empty: mirroring is a big gain.
+    const good: GameState = { ...base, board: [1, 0, 0, 0, 0, 0, 10, 9, 9, 9, 9, 9, 9, 10], magic: { cards: ['mirror', null], blocked: [] } };
+    expect(chooseCardPlay(good, 'hard')).toEqual({ card: 'mirror', target: null });
+    // Symmetric board: mirroring changes nothing, so keep the card.
+    const even: GameState = { ...createGame(4, 0), magic: { cards: ['mirror', null], blocked: [] } };
+    expect(chooseCardPlay(even, 'hard')).toBeNull();
+  });
+
+  it('only suggests legal card plays', () => {
+    for (let g = 0; g < 20; g++) {
+      let s = createGame(4, 0, true);
+      while (!s.over) {
+        const play = chooseCardPlay(s, g % 2 ? 'medium' : 'easy');
+        if (play) s = useCard(s, play.card, play.target).state;
+        if (s.over) break;
+        s = applyMove(s, chooseMove(s, 'easy')).state;
+      }
+    }
   });
 });

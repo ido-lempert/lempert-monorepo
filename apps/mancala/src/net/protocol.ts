@@ -1,14 +1,16 @@
-import type { GameState, Player } from '../game/kalah.ts';
+import type { Card, GameState, Player } from '../game/kalah.ts';
 
 /** Messages from a browser to the game server. */
 export type ClientMsg =
-  | { t: 'create'; name: string }
+  | { t: 'create'; name: string; magic?: boolean }
   /** Ask who is hosting a room before joining it (to greet the invited player). */
   | { t: 'peek'; room: string }
   | { t: 'join'; room: string; name: string }
   /** Reconnect to a seat after a reload or a dropped connection. */
   | { t: 'resume'; room: string; token: string }
   | { t: 'move'; pit: number }
+  /** Play this seat's magic card (before moving this turn). */
+  | { t: 'card'; card: Card; target: number | null }
   | { t: 'rematch' };
 
 export type ErrorCode = 'not-found' | 'full' | 'bad-move' | 'not-in-room' | 'bad-request';
@@ -16,7 +18,7 @@ export type ErrorCode = 'not-found' | 'full' | 'bad-move' | 'not-in-room' | 'bad
 /** Messages from the game server to a browser. */
 export type ServerMsg =
   | { t: 'created'; room: string; token: string }
-  | { t: 'room'; room: string; hostName: string; open: boolean }
+  | { t: 'room'; room: string; hostName: string; open: boolean; magic: boolean }
   /** Full game snapshot: sent when a game starts, on rematch, and on resume. */
   | {
       t: 'sync';
@@ -28,6 +30,7 @@ export type ServerMsg =
       reason: 'start' | 'rematch' | 'resume';
     }
   | { t: 'moved'; pit: number; by: Player; state: GameState }
+  | { t: 'card-used'; by: Player; card: Card; target: number | null; state: GameState }
   | { t: 'peer'; connected: boolean }
   | { t: 'rematch-requested'; by: Player }
   | { t: 'error'; code: ErrorCode };

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1b1e2b" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Mancala in 3D – play against the computer, on one device, or online with a friend." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -44,6 +45,16 @@
         width: min(34vmin, 180px);
         height: auto;
         animation: splash-pop 0.6s ease-out both;
+      }
+      @media (prefers-color-scheme: light) {
+        html,
+        body {
+          background: #f1ece2;
+          color: #1b1e2b;
+        }
+        #splash {
+          background: radial-gradient(circle at 50% 40%, #ffffff, #f1ece2 70%);
+        }
       }
       #splash .splash-title {
         font-size: clamp(22px, 5vmin, 34px);
@@ -86,7 +97,7 @@
     <div id="splash" role="status" aria-live="polite">
       <img src="icon.svg" alt="" width="180" height="180" />
       <div class="splash-title">Mancala · מנקלה</div>
-      <div class="splash-bar" aria-label="Loading"></div>
+      <div class="splash-bar" role="progressbar" aria-label="Loading"></div>
     </div>
 
     <main id="stage" data-i18n-attr="aria-label:boardLabel"></main>
@@ -100,7 +111,6 @@
         <span class="dot" aria-hidden="true"></span><span class="name" dir="auto"></span><span class="score">0</span>
       </div>
       <div class="tools">
-        <button class="icon" id="restart" data-i18n-attr="title:newGame;aria-label:newGame">↻</button>
         <button class="icon" id="sound" aria-expanded="false" data-i18n-attr="title:sound;aria-label:sound">🔊</button>
         <button class="icon" id="menu-btn" aria-expanded="false" data-i18n-attr="title:menu;aria-label:menu">☰</button>
       </div>
@@ -112,12 +122,23 @@
     </div>
 
     <nav class="panel menu hidden" id="menu" data-i18n-attr="aria-label:menu">
+      <button id="m-new"><span aria-hidden="true">↻</span> <span data-i18n="newGame"></span></button>
       <button id="m-settings"><span aria-hidden="true">⚙</span> <span data-i18n="settings"></span></button>
       <button id="m-camera"><span aria-hidden="true">⌖</span> <span data-i18n="resetCamera"></span></button>
       <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
       <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
       <label class="menu-lang"><span aria-hidden="true">🌐</span> <span data-i18n="language"></span><select class="lang-select"></select></label>
+      <label class="menu-lang">
+        <span aria-hidden="true">◐</span> <span data-i18n="theme"></span>
+        <select id="m-theme">
+          <option value="system" data-i18n="themeSystem"></option>
+          <option value="light" data-i18n="themeLight"></option>
+          <option value="dark" data-i18n="themeDark"></option>
+        </select>
+      </label>
+      <label class="switch menu-switch"><input type="checkbox" id="toggle-motion" /><span data-i18n="reduceMotion"></span></label>
       <hr />
+      <button data-page="fame"><span aria-hidden="true">🏆</span> <span data-i18n="fame"></span></button>
       <button data-page="rules"><span aria-hidden="true">?</span> <span data-i18n="rules"></span></button>
       <button data-page="terms"><span aria-hidden="true">§</span> <span data-i18n="terms"></span></button>
       <button data-page="accessibility"><span aria-hidden="true">♿</span> <span data-i18n="accessibility"></span></button>
@@ -130,6 +151,26 @@
 
     <!-- Keyboard / screen-reader controls for the 3D board: appear when focused with Tab. -->
     <div class="pit-keys" id="pit-keys" role="group" data-i18n-attr="aria-label:yourPits"></div>
+
+    <!-- Magic mode: the local player's card, with its explanation. -->
+    <aside class="magic-card hidden" id="card" aria-labelledby="card-heading">
+      <p class="card-owner" id="card-heading"></p>
+      <div class="card-face">
+        <span class="card-icon" id="card-icon" aria-hidden="true"></span>
+        <div>
+          <h2 id="card-title"></h2>
+          <p id="card-text"></p>
+        </div>
+      </div>
+      <p class="card-hint" id="card-hint"></p>
+      <button class="primary" id="card-use"></button>
+    </aside>
+    <p class="opp-card hidden" id="opp-card"></p>
+
+    <div class="update hidden" id="update" role="status">
+      <span data-i18n="updateAvailable"></span>
+      <button class="primary" id="update-now" data-i18n="updateNow"></button>
+    </div>
 
     <div class="overlay" id="setup">
       <form class="card setup" id="setup-form">
@@ -145,6 +186,13 @@
             <button type="button" data-value="online" data-i18n="modeOnline" id="mode-online"></button>
           </div>
           <p class="note hidden" id="offline-note" data-i18n="offlineNote"></p>
+        </div>
+        <div class="field">
+          <span class="field-label" data-i18n="gameType"></span>
+          <div class="segmented" data-name="variant">
+            <button type="button" data-value="classic" data-i18n="classic"></button>
+            <button type="button" data-value="magic" data-i18n="magic"></button>
+          </div>
         </div>
         <div class="field" id="difficulty-field">
           <span class="field-label" data-i18n="difficulty"></span>
@@ -164,6 +212,7 @@
         </label>
         <button type="submit" class="primary" id="start"></button>
         <nav class="footer-links">
+          <button type="button" data-page="fame" data-i18n="fame"></button>
           <button type="button" data-page="rules" data-i18n="rules"></button>
           <button type="button" data-page="terms" data-i18n="terms"></button>
           <button type="button" data-page="accessibility" data-i18n="accessibility"></button>
@@ -195,6 +244,7 @@
         </div>
         <h1 data-i18n="appName"></h1>
         <p class="lead" id="join-lead"></p>
+        <p class="lead hidden" id="join-magic" data-i18n="magicGame"></p>
         <label class="field" id="join-name-field">
           <span class="field-label"><span class="dot p2-dot"></span> <span data-i18n="yourNameIce"></span></span>
           <input id="join-name" maxlength="14" autocomplete="nickname" dir="auto" />
@@ -209,11 +259,28 @@
         <h1 id="result"></h1>
         <p id="final" dir="ltr"></p>
         <p class="lead hidden" id="rematch-note"></p>
+        <p class="lead hidden" id="fame-note"></p>
+        <section class="magic-offer hidden" id="magic-offer" aria-labelledby="magic-offer-title">
+          <h2 id="magic-offer-title" data-i18n="magicOfferTitle"></h2>
+          <p data-i18n="magicOfferText"></p>
+          <div class="actions">
+            <button class="primary" id="magic-yes" data-i18n="magicOfferYes"></button>
+            <button class="secondary" id="magic-no" data-i18n="magicOfferNo"></button>
+          </div>
+        </section>
         <div class="actions">
           <button id="again" class="primary" data-i18n="newGame"></button>
           <button id="rematch" class="primary" data-i18n="rematch"></button>
           <button id="to-settings" class="secondary" data-i18n="settings"></button>
         </div>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="magic-intro">
+      <div class="card setup" role="dialog" aria-modal="true" aria-labelledby="magic-intro-title">
+        <h1 id="magic-intro-title" data-i18n="magicIntroTitle"></h1>
+        <div id="magic-intro-cards"></div>
+        <button class="primary" id="magic-intro-ok" data-i18n="gotIt"></button>
       </div>
     </div>
 
