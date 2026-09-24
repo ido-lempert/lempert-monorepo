@@ -1172,3 +1172,50 @@ button:disabled {
     translate: 0 -8px;
   }
 }
+
+/* --- Camera buttons: a small pill in the bottom corner ------------------------------------------------- */
+
+.cam {
+  position: fixed;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  inset-inline-start: max(12px, env(safe-area-inset-left));
+  z-index: 9;
+  display: grid;
+  grid-template-columns: repeat(2, 48px);
+  gap: 6px;
+  padding: 6px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: var(--lift);
+}
+
+.cam-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 3px 0 var(--line);
+}
+
+.cam-btn:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+@media (max-width: 520px) {
+  .cam {
+    grid-template-columns: 44px;
+    gap: 4px;
+    padding: 4px;
+    bottom: calc(max(22px, env(safe-area-inset-bottom)) + 70px);
+  }
+  .cam-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+  }
+}
