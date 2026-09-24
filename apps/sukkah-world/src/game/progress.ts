@@ -6,7 +6,7 @@
 export type SpeciesId = 'etrog' | 'lulav' | 'hadas' | 'arava';
 export const SPECIES: SpeciesId[] = ['etrog', 'lulav', 'hadas', 'arava'];
 
-export type DecorationId = 'lantern' | 'star' | 'chain' | 'pomegranates' | 'rug' | 'table' | 'chair';
+export type DecorationId = 'lantern' | 'star' | 'chain' | 'pomegranates' | 'rug' | 'table' | 'chair' | 'waterJug';
 
 export interface DecorationDef {
   id: DecorationId;
@@ -23,6 +23,7 @@ export const DECORATIONS: DecorationDef[] = [
   { id: 'chair', price: 15, mount: 'floor' },
   { id: 'rug', price: 25, mount: 'floor' },
   { id: 'table', price: 30, mount: 'floor' },
+  { id: 'waterJug', price: 20, mount: 'floor' },
 ];
 
 export const decoration = (id: DecorationId) => DECORATIONS.find((d) => d.id === id)!;
@@ -89,12 +90,13 @@ export interface Placed {
  * The Ushpizin arrive one after another, each with a quest:
  *   Abraham – collect the four species in the garden;
  *   Isaac   – light every lantern on the forest trail before time runs out;
- *   Jacob   – find his lost lambs in the hedge maze and lead them back to the pen.
+ *   Jacob   – find his lost lambs in the hedge maze and lead them back to the pen;
+ *   Moses   – ride a raft down the river and collect the floating water jugs.
  * A quest goes locked → notStarted (the guest has arrived) → active → returning (all found) → done,
  * and finishing one brings the next guest.
  */
-export type GuestId = 'abraham' | 'isaac' | 'jacob';
-export const GUESTS: GuestId[] = ['abraham', 'isaac', 'jacob'];
+export type GuestId = 'abraham' | 'isaac' | 'jacob' | 'moses';
+export const GUESTS: GuestId[] = ['abraham', 'isaac', 'jacob', 'moses'];
 export type QuestStage = 'locked' | 'notStarted' | 'active' | 'returning' | 'done';
 
 export interface Quest {
@@ -105,7 +107,8 @@ export interface Quest {
 
 export const LANTERN_COUNT = 6;
 export const LAMB_COUNT = 3;
-export const QUEST_ITEMS: Record<GuestId, number> = { abraham: SPECIES.length, isaac: LANTERN_COUNT, jacob: LAMB_COUNT };
+export const JUG_COUNT = 5;
+export const QUEST_ITEMS: Record<GuestId, number> = { abraham: SPECIES.length, isaac: LANTERN_COUNT, jacob: LAMB_COUNT, moses: JUG_COUNT };
 
 export type PetId = 'lamb';
 
@@ -120,6 +123,7 @@ export const QUEST_REWARDS: Record<GuestId, QuestReward> = {
   abraham: { coins: 50, decoration: 'lantern' },
   isaac: { coins: 60, wear: 'hadasWreath' },
   jacob: { coins: 80, pet: 'lamb' },
+  moses: { coins: 70, decoration: 'waterJug' },
 };
 
 export interface Progress {
@@ -147,7 +151,12 @@ export function newProgress(): Progress {
     coins: 0,
     owned: {},
     placed: [],
-    quests: { abraham: { stage: 'notStarted', found: [] }, isaac: { stage: 'locked', found: [] }, jacob: { stage: 'locked', found: [] } },
+    quests: {
+      abraham: { stage: 'notStarted', found: [] },
+      isaac: { stage: 'locked', found: [] },
+      jacob: { stage: 'locked', found: [] },
+      moses: { stage: 'locked', found: [] },
+    },
     pets: [],
     achievements: [],
     bestHunt: 0,
@@ -220,8 +229,8 @@ const withQuest = (p: Progress, guest: GuestId, q: Partial<Quest>): Progress => 
   quests: { ...p.quests, [guest]: { ...p.quests[guest], ...q } },
 });
 
-const MET: Record<GuestId, string> = { abraham: 'metAbraham', isaac: 'metIsaac', jacob: 'metJacob' };
-const FOUND_ALL: Record<GuestId, string> = { abraham: 'fourSpecies', isaac: 'lanternTrail', jacob: 'lambsHome' };
+const MET: Record<GuestId, string> = { abraham: 'metAbraham', isaac: 'metIsaac', jacob: 'metJacob', moses: 'metMoses' };
+const FOUND_ALL: Record<GuestId, string> = { abraham: 'fourSpecies', isaac: 'lanternTrail', jacob: 'lambsHome', moses: 'allJugs' };
 
 /** The guest whose quest is in progress or waiting to start, if any. */
 export function currentGuest(p: Progress): GuestId | null {

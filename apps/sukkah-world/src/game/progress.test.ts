@@ -3,6 +3,7 @@ import {
   currentGuest,
   findItem,
   type GuestId,
+  GUESTS,
   QUEST_ITEMS,
   QUEST_REWARDS,
   resetItems,
@@ -60,8 +61,11 @@ describe('Ushpizin quests', () => {
     expect(currentGuest(p)).toBe('jacob');
     p = finish(p, 'jacob');
     expect(p.pets).toEqual(['lamb']);
+    expect(currentGuest(p)).toBe('moses');
+    p = finish(p, 'moses');
+    expect(p.owned.waterJug).toBe(1);
     expect(currentGuest(p)).toBeNull();
-    expect(p.coins).toBe(QUEST_REWARDS.abraham.coins + QUEST_REWARDS.isaac.coins + QUEST_REWARDS.jacob.coins);
+    expect(p.coins).toBe(GUESTS.reduce((sum, g) => sum + QUEST_REWARDS[g].coins, 0));
   });
 
   it('ignores items before the quest starts and duplicates', () => {

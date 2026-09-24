@@ -75,6 +75,8 @@ export const he = {
   rival: 'שושי הכבשה',
   isaac: 'יצחק',
   jacob: 'יעקב',
+  moses: 'משה',
+  river: 'הנהר',
   forest: 'יער האושפיזין',
   maze: 'המבוך של יעקב',
 
@@ -111,10 +113,25 @@ export const he = {
   jacobAccept: 'בטח, נמצא אותם!',
   jacobWaiting: 'הטלאים מתחבאים בפינות הכי רחוקות של המבוך. הכניסה כאן, לידי. חסרים עוד {n}.',
   jacobThanks: 'כל הטלאים בבית! תודה רבה, {name}. קבלו {coins} מטבעות – וגם טלה קטן משלכם, שילך אתכם לכל מקום.',
-  jacobDone: 'הטלה שלכם מאוד אוהב אתכם. עוד אושפיזין יגיעו בקרוב!',
+  jacobDone: 'משה כבר הגיע לכפר! הוא מחכה ליד הנהר, מאחורי הסוכה הגדולה.',
   lambFound: 'מצאתם טלה! הוא הולך אחריכם',
   lambHome: 'טלה חזר לדיר! {n}/3',
   allLambs: 'כל הטלאים בדיר! חזרו ליעקב',
+
+  // Moses' quest
+  mosesIntro:
+    'שלום {name}! אני משה. בסוכות שואבים מים בשמחה גדולה – שמחת בית השואבה! אבל כדי המים שלי נסחפו בנהר. תעלו על הרפסודה שלי ותאספו את חמשת הכדים?',
+  mosesAccept: 'יוצאים לשייט!',
+  mosesWaiting: 'עוד {n} כדים שטים בנהר. רוצים לצאת שוב לשייט?',
+  mosesThanks: 'כל הכדים כאן! עכשיו אפשר לשמוח בשמחת בית השואבה. קבלו {coins} מטבעות וכד מים מקושט לסוכה שלכם.',
+  mosesDone: 'אהרן כבר בדרך לכפר. בינתיים הרפסודה שלכם – אפשר לשוט בנהר סתם בשביל הכיף!',
+  rideAgain: 'יוצאים לשייט!',
+  rideForFun: 'לשוט בשביל הכיף',
+  raftHint: 'הזיזו ימינה ושמאלה כדי לשוט אל הכדים ולהתחמק מהסלעים',
+  jugFound: 'תפסתם כד מים! {n}/5',
+  rockBump: 'בום! סלע',
+  rideOver: 'סוף השייט!',
+  allJugs: 'כל הכדים אצלכם! חזרו למשה',
   ok: 'אוקיי',
   thanks: 'תודה!',
   foundSpecies: 'מצאתם {item}!',
@@ -131,12 +148,16 @@ export const he = {
   questTalkJacob: 'דברו עם יעקב ליד המבוך',
   questLambs: 'טלאים בדיר: {n}/3',
   questReturnJacob: 'חזרו ליעקב',
+  questTalkMoses: 'דברו עם משה ליד הנהר',
+  questJugs: 'כדי מים: {n}/5',
+  questReturnMoses: 'חזרו למשה',
   questAllDone: 'עוד אושפיזין בדרך…',
 
   // Contextual action button
   talkAbraham: 'לדבר עם אברהם',
   talkIsaac: 'לדבר עם יצחק',
   talkJacob: 'לדבר עם יעקב',
+  talkMoses: 'לדבר עם משה',
   playHunt: 'לשחק בציד אתרוגים',
   decorate: 'לקשט את הסוכה',
 
@@ -158,6 +179,7 @@ export const he = {
   chair: 'כיסא',
   rug: 'שטיח',
   table: 'שולחן',
+  waterJug: 'כד מים',
 
   // Etrog hunt
   huntTitle: 'ציד אתרוגים',
@@ -188,6 +210,8 @@ export const he = {
   ach_lanternTrail: 'הדלקתם את שביל הפנסים',
   ach_metJacob: 'פגשתם את יעקב',
   ach_lambsHome: 'החזרתם את כל הטלאים',
+  ach_metMoses: 'פגשתם את משה',
+  ach_allJugs: 'אספתם את כל כדי המים',
 
   // HUD, menu, app
   coins: 'מטבעות',

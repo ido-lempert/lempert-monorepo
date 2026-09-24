@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SPECIES } from '../game/progress';
-import { buildMaze, GRAND_SUKKAH, huntCandidates, isFree, ISAAC, JACOB, LAMB_SPOTS, MAZE, MY_SUKKAH, PEN, resolve, SPAWN, SPECIES_SPOTS, WORLD_RADIUS } from './layout';
+import { buildMaze, MOSES, RIDE_END, riverPoint, GRAND_SUKKAH, huntCandidates, isFree, ISAAC, JACOB, LAMB_SPOTS, MAZE, MY_SUKKAH, PEN, resolve, SPAWN, SPECIES_SPOTS, WORLD_RADIUS } from './layout';
 
 describe('village layout', () => {
   it('spawns the player and places the four species on open ground', () => {
@@ -40,5 +40,13 @@ describe('village layout', () => {
     }
     // Deterministic: the same maze every visit.
     expect(buildMaze().walls).toEqual(buildMaze().walls);
+  });
+
+  it('keeps walkers out of the river but lets them stand next to Moses', () => {
+    const middle = riverPoint(30);
+    const p = resolve(middle);
+    expect(Math.hypot(p.x - middle.x, p.z - middle.z)).toBeGreaterThan(2);
+    expect(isFree(MOSES, 0) || isFree({ x: MOSES.x, z: MOSES.z + 1 }, 0.4)).toBe(true);
+    expect(isFree(RIDE_END, 0.4)).toBe(true);
   });
 });

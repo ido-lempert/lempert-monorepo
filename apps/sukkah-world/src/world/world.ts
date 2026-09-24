@@ -12,6 +12,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Hunt, Vec } from '../game/hunt';
+import { JUG_SPOTS, type Raft, RIVER_LENGTH, ROCKS } from '../game/raft';
 import { type Avatar, decoration, type GuestId, type Placed, SPECIES, type SpeciesId } from '../game/progress';
 import { type StringKey, t } from '../i18n';
 import {
@@ -23,6 +24,10 @@ import {
   LANTERNS,
   MAZE,
   MAZE_LAYOUT,
+  MOSES,
+  RIVER,
+  RIVER_TO,
+  riverPoint,
   PEN,
   GARDEN,
   GRAND_SUKKAH,
@@ -50,6 +55,12 @@ import {
   LANTERN_UNLIT,
   lanternPost,
   mushroom,
+  dock,
+  moses,
+  raft as raftModel,
+  reeds,
+  rock,
+  waterJug,
   pen,
   animateWalk,
   bush,
@@ -71,7 +82,7 @@ import {
   tree,
 } from './models';
 
-export type CameraMode = 'walk' | 'creator' | 'build';
+export type CameraMode = 'walk' | 'creator' | 'build' | 'raft';
 
 export const WALK_SPEED = 5.2;
 /** Height of a sukkah's floor; characters step up onto it. */
@@ -136,6 +147,10 @@ export class World {
   private lambs: Walker[] = [];
   lambStates: LambState[] = ['lost', 'lost', 'lost'];
   private pet: Walker | null = null;
+  private river: THREE.ShaderMaterial | null = null;
+  private raftObj!: THREE.Group;
+  private jugs: THREE.Group[] = [];
+  private riding: Raft | null = null;
   /** The player's recent path, for followers to walk along. */
   private trail: Vec[] = [];
   private speciesItems = new Map<SpeciesId, THREE.Group>();
@@ -213,8 +228,10 @@ export class World {
     this.addGuest('abraham', abraham(), ABRAHAM, -0.6);
     this.addGuest('isaac', isaac(), ISAAC, 1.2);
     this.addGuest('jacob', jacob(), JACOB, -1.3);
+    this.addGuest('moses', moses(), MOSES, Math.PI);
     this.buildForest();
     this.buildMaze();
+    this.buildRiver();
 
     this.player = this.walker(character({ name: '', shirt: '#2a9d8f', skin: '#f1c7a0', hat: 'kippah' }), SPAWN, WALK_SPEED);
     this.player.heading = Math.PI;
@@ -346,6 +363,9 @@ export class World {
       if (HOUSES.some((h) => Math.hypot(x - h.x, z - h.z) < 3)) return false;
       if (x > MAZE.x - 0.8 && x < MAZE.x + MAZE.cells * MAZE.cell + 0.8 && z > MAZE.z - 0.8 && z < MAZE.z + MAZE.cells * MAZE.cell + 0.8) return false;
       if (Math.hypot(x - PEN.x, z - PEN.z) < PEN.r + 0.5) return false;
+      let angle = Math.atan2(z, x);
+      if (angle < 0) angle += Math.PI * 2;
+      if (angle > RIVER.from - 0.03 && angle < RIVER_TO + 0.03 && Math.abs(Math.hypot(x, z) - RIVER.r) < RIVER.halfWidth + 1) return false;
       return Math.hypot(x - HUB.x, z - HUB.z) > 3;
     };
     const spots = (count: number) => {
@@ -635,7 +655,114 @@ export class World {
         lamb.moving *= 0.5;
       } else lamb.moving = 0;
     });
-    if (this.pet) goTo(this.pet, behind(k), WALK_SPEED * 1.15);
+    if (this.pet && !this.riding) goTo(this.pet, behind(k), WALK_SPEED * 1.15);
+  }
+
+  /** Moses' river: flowing water between sandy banks, reeds, rocks, floating jugs and a raft at the jetty. */
+  private buildRiver() {
+    const flat = (inner: number, outer: number, material: THREE.Material, y: number) => {
+      const g = new THREE.RingGeometry(inner, outer, 96, 1, -RIVER_TO, RIVER_TO - RIVER.from);
+      g.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(g, material);
+      m.position.y = y;
+      m.receiveShadow = true;
+      this.scene.add(m);
+    };
+    const hw = RIVER.halfWidth;
+    flat(RIVER.r - hw - 0.9, RIVER.r + hw + 0.9, mat('#e8d3a0', { rim: 0 }), 0.012);
+    this.river = new THREE.ShaderMaterial({
+      transparent: true,
+      uniforms: { time: { value: 0 }, radius: { value: RIVER.r }, halfWidth: { value: hw } },
+      vertexShader: 'varying vec3 vPos; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vPos = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: `uniform float time; uniform float radius; uniform float halfWidth; varying vec3 vPos;
+        void main() {
+          float r = length(vPos.xz);
+          float across = (r - radius) / halfWidth;
+          float along = atan(vPos.z, vPos.x) * radius;
+          vec3 deep = vec3(0.13, 0.52, 0.9);
+          vec3 shallow = vec3(0.45, 0.82, 1.0);
+          vec3 c = mix(deep, shallow, smoothstep(0.4, 1.0, abs(across)));
+          float wave = sin(along * 1.3 - time * 4.0 + sin(across * 4.0 + time) * 1.5);
+          float wave2 = sin(along * 0.7 - time * 2.6 + across * 6.0);
+          c += vec3(1.0) * smoothstep(0.82, 1.0, wave * wave2) * 0.55;
+          c += vec3(1.0) * smoothstep(0.85, 1.0, abs(across)) * 0.35;
+          gl_FragColor = vec4(c, 0.93);
+          #include <colorspace_fragment>
+        }`,
+    });
+    flat(RIVER.r - hw, RIVER.r + hw, this.river, 0.05);
+
+    for (let s = 1; s < RIVER_LENGTH; s += 3.2)
+      for (const side of [-1, 1]) {
+        if ((Math.round(s) + side) % 3 === 0) continue;
+        const p = riverPoint(s + side * 0.8, side * (hw + 0.5));
+        this.add(reeds(Math.round(s * 7 + side)), p.x, p.z);
+      }
+    for (const r of ROCKS) {
+      const p = riverPoint(r.s, r.offset);
+      this.add(rock(0.55), p.x, p.z, 0.1);
+    }
+    this.jugs = JUG_SPOTS.map((j) => {
+      const g = new THREE.Group();
+      const jug = waterJug();
+      g.add(jug, marker('#7fd6ff', 0.55, true));
+      const p = riverPoint(j.s, j.offset);
+      this.add(g, p.x, p.z, 0.05);
+      g.visible = false;
+      return g;
+    });
+
+    const jetty = dock(2.2);
+    this.add(jetty, MOSES.x, MOSES.z - 1.2);
+    this.raftObj = raftModel();
+    this.docked();
+    this.scene.add(this.raftObj);
+    this.label('river', 0, 2.5, -RIVER.r + 0.5, 'zone');
+  }
+
+  /** Puts the raft back at the jetty, ready for the next ride. */
+  private docked() {
+    const p = { x: MOSES.x + 1.6, z: MOSES.z - 2.9 };
+    this.raftObj.position.set(p.x, 0.05, p.z);
+    this.raftObj.rotation.y = Math.PI / 2;
+  }
+
+  /** Shows the jugs still floating in the river. */
+  setJugs(visible: boolean[]) {
+    this.jugs.forEach((j, i) => (j.visible = visible[i]));
+  }
+
+  startRide(raft: Raft) {
+    this.riding = raft;
+    this.setMode('raft');
+    this.syncRide(raft);
+    this.snapCamera();
+  }
+
+  /** Moves the raft (with the player and their pet on it) to where the ride says. */
+  syncRide(raft: Raft) {
+    this.riding = raft;
+    const p = riverPoint(raft.s, raft.offset);
+    // Facing downstream: the tangent of the arc at this angle.
+    const heading = Math.atan2(-Math.sin(p.angle), Math.cos(p.angle));
+    const bob = Math.sin(this.timer.getElapsed() * 3) * 0.04;
+    this.raftObj.position.set(p.x, 0.05 + bob, p.z);
+    this.raftObj.rotation.set(Math.sin(this.timer.getElapsed() * 2.2) * 0.04 + (raft.bump > 0 ? Math.sin(raft.bump * 30) * 0.12 : 0), heading, 0);
+    this.player.pos = { x: p.x, z: p.z };
+    this.player.heading = heading;
+    this.player.moving = 0;
+    if (this.pet) {
+      const back = riverPoint(raft.s - 0.6, raft.offset + 0.3);
+      this.pet.pos = { x: back.x, z: back.z };
+      this.pet.heading = heading;
+    }
+  }
+
+  endRide() {
+    this.riding = null;
+    this.docked();
+    this.trail = [];
+    this.setMode('walk');
   }
 
   // --- Quality ----------------------------------------------------------------------------------
@@ -822,7 +949,8 @@ export class World {
       const g = w.char.group;
       const onFloor = inside(w.pos, MY_SUKKAH, -0.1) || inside(w.pos, GRAND_SUKKAH, -0.1);
       const hop = w === this.player ? Math.sin(this.hop * Math.PI) * 0.6 : 0;
-      g.position.set(w.pos.x, (onFloor ? FLOOR_Y : 0) + hop, w.pos.z);
+      const onRaft = this.riding && (w === this.player || w === this.pet) ? this.raftObj.position.y + 0.22 : 0;
+      g.position.set(w.pos.x, (onFloor ? FLOOR_Y : 0) + hop + onRaft, w.pos.z);
       g.rotation.y = turnTowards(g.rotation.y, w.heading, dt * 12);
       animateWalk(w.char, w.phase, w.moving, still ? 0 : time);
     }
@@ -848,6 +976,11 @@ export class World {
         g.children[0].position.y = 0.95 + Math.sin(time * 3 + i) * 0.12;
       });
       (this.hubDisc.material as THREE.ShaderMaterial).uniforms.time.value = time;
+      if (this.river) this.river.uniforms.time.value = time;
+      this.jugs.forEach((j, i) => {
+        j.children[0].position.y = Math.sin(time * 2 + i) * 0.06;
+        j.children[0].rotation.z = Math.sin(time * 1.3 + i) * 0.12;
+      });
       for (const [i, c] of this.clouds.entries()) {
         c.position.x += dt * (0.4 + (i % 3) * 0.2);
         if (c.position.x > 90) c.position.x = -90;
@@ -922,6 +1055,17 @@ export class World {
       return {
         pos: new THREE.Vector3(s.x, portrait ? 13 : 9, s.z + (portrait ? 3.5 : 4.5)),
         look: new THREE.Vector3(s.x, 0, s.z + (portrait ? 1 : 0.3)),
+      };
+    }
+    if (this.mode === 'raft') {
+      // A chase camera behind the raft, looking downstream.
+      const a = Math.atan2(p.z, p.x);
+      const tx = -Math.sin(a);
+      const tz = Math.cos(a);
+      const back = portrait ? 8.5 : 7;
+      return {
+        pos: new THREE.Vector3(p.x - tx * back - Math.cos(a) * 1.5, portrait ? 6 : 4.6, p.z - tz * back - Math.sin(a) * 1.5),
+        look: new THREE.Vector3(p.x + tx * 5, 0.5, p.z + tz * 5),
       };
     }
     const back = portrait ? 11 : 9.5;

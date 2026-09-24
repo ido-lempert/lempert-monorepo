@@ -4,6 +4,7 @@
  */
 import type { SpeciesId } from '../game/progress';
 import type { Vec } from '../game/hunt';
+import { RIVER_HALF_WIDTH, RIVER_LENGTH } from '../game/raft';
 
 export interface Box {
   minX: number;
@@ -236,6 +237,23 @@ export function buildMaze(seed = 5): Maze {
 export const MAZE_LAYOUT = buildMaze();
 export const LAMB_SPOTS: Vec[] = MAZE_LAYOUT.deadEnds.slice(0, 3);
 
+// --- Moses' river ----------------------------------------------------------------------------------
+
+/** The river runs in an arc around the north of the village (angles measured from +x towards +z). */
+export const RIVER = { r: 36, from: (235 / 180) * Math.PI, halfWidth: RIVER_HALF_WIDTH };
+export const RIVER_TO = RIVER.from + RIVER_LENGTH / RIVER.r;
+
+/** A point on the river: `s` metres downstream, `offset` metres out from the middle (positive = outer bank). */
+export function riverPoint(s: number, offset = 0): Vec & { angle: number } {
+  const angle = RIVER.from + s / RIVER.r;
+  return { x: Math.cos(angle) * (RIVER.r + offset), z: Math.sin(angle) * (RIVER.r + offset), angle };
+}
+
+const bankPoint = (angle: number, r: number): Vec => ({ x: Math.cos(angle) * r, z: Math.sin(angle) * r });
+/** Moses waits on the near bank, behind the Grand Sukkah; the ride ends further down the river. */
+export const MOSES: Vec = bankPoint((270 / 180) * Math.PI, RIVER.r - RIVER.halfWidth - 2.2);
+export const RIDE_END: Vec = bankPoint(RIVER_TO - 0.04, RIVER.r - RIVER.halfWidth - 1.5);
+
 export const WALL = 0.3;
 
 /** The walls of a sukkah (the open side has none). */
@@ -263,6 +281,7 @@ export const CIRCLES: Circle[] = [
   { ...ABRAHAM, r: 0.5 },
   { ...ISAAC, r: 0.5 },
   { ...JACOB, r: 0.5 },
+  { ...MOSES, r: 0.5 },
   ...LANTERNS.map((l) => ({ ...l, r: 0.25 })),
   ...FOREST_TREES.map((p) => ({ ...p, r: 0.7 })),
   // The two pillars of the Game Hub arch.
@@ -309,6 +328,19 @@ export function resolve(p: Vec, radius = PLAYER_RADIUS): Vec {
     if (d < min && d > 1e-6) {
       x = c.x + (dx / d) * min;
       z = c.z + (dz / d) * min;
+    }
+  }
+  // Nobody walks on water: push out of the river to the nearer bank.
+  const fromCentre = Math.hypot(x, z);
+  let angle = Math.atan2(z, x);
+  if (angle < 0) angle += Math.PI * 2;
+  if (angle >= RIVER.from && angle <= RIVER_TO) {
+    const inner = RIVER.r - RIVER.halfWidth - radius;
+    const outer = RIVER.r + RIVER.halfWidth + radius;
+    if (fromCentre > inner && fromCentre < outer) {
+      const k = (fromCentre < RIVER.r ? inner : outer) / fromCentre;
+      x *= k;
+      z *= k;
     }
   }
   const d = Math.hypot(x, z);

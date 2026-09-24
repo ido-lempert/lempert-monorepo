@@ -730,6 +730,75 @@ export const isaac = () =>
 export const jacob = () =>
   guest({ robe: '#d9b27a', band: '#2a9d8f', sash: '#6b4a2a', skin: '#d99d73', beard: '#4a3226', cloth: '#e9f5e1', clothStripe: '#2a9d8f' });
 
+/** Moses: a deep-blue robe, a long white beard and his staff. */
+export const moses = () =>
+  guest({ robe: '#3d5a9e', band: '#ffd23f', sash: '#8a5a36', skin: '#e0a57a', beard: '#f4f4f4', cloth: '#f4f1ea', clothStripe: '#6c4bd1' });
+
+/** A clay water jug with a blue painted band (floats in the river, and decorates the sukkah). */
+export function waterJug(): THREE.Group {
+  const g = new THREE.Group();
+  const profile = [
+    [0, 0],
+    [0.16, 0.02],
+    [0.24, 0.16],
+    [0.25, 0.32],
+    [0.18, 0.48],
+    [0.1, 0.56],
+    [0.12, 0.64],
+    [0.1, 0.66],
+  ].map(([x, y]) => new THREE.Vector2(x, y));
+  g.add(mesh(new THREE.LatheGeometry(profile, 20), mat('#d9884e', { rough: 0.7 })));
+  g.add(mesh(new THREE.TorusGeometry(0.245, 0.02, 6, 24), mat('#3a86ff'), 0, 0.3, 0).rotateX(Math.PI / 2));
+  const handle = mesh(new THREE.TorusGeometry(0.1, 0.025, 6, 12, Math.PI), mat('#c9763f'), 0.2, 0.45, 0);
+  handle.rotation.z = -Math.PI / 2;
+  g.add(handle);
+  g.add(ball(0.07, '#7fd6ff', 0, 0.63, 0, { emissive: 0.4, rough: 0.1 }));
+  return g;
+}
+
+/** The raft: logs lashed together, a little mast with a striped flag. */
+export function raft(): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = -2; i <= 2; i++) {
+    const log = mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.9, 10), mat(i % 2 ? '#a57345' : '#b8844f'), i * 0.29, 0.1, 0);
+    log.rotation.x = Math.PI / 2;
+    g.add(log);
+  }
+  for (const z of [-0.65, 0.65]) g.add(rbox(1.5, 0.06, 0.12, '#6b4a2a', 0, 0.24, z, 0.02));
+  g.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.4, 8), mat('#6b4a2a'), 0.55, 0.9, -0.6));
+  const flag = mesh(new THREE.PlaneGeometry(0.5, 0.32), new THREE.MeshStandardMaterial({ map: fabricTexture(['#ffffff', '#3a86ff']), side: THREE.DoubleSide }), 0.3, 1.4, -0.6);
+  g.add(flag);
+  return g;
+}
+
+export function rock(size: number): THREE.Mesh {
+  const r = mesh(new THREE.IcosahedronGeometry(size, 1), mat('#8d93a3', { rough: 0.9, rim: 0.3 }));
+  r.scale.set(1.2, 0.7, 1);
+  return r;
+}
+
+export function reeds(seed: number): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const h = 0.7 + ((seed + i) % 3) * 0.25;
+    const x = Math.cos(i * 2.3 + seed) * 0.25;
+    const z = Math.sin(i * 2.3 + seed) * 0.25;
+    const stalk = mesh(new THREE.CylinderGeometry(0.015, 0.025, h, 5), mat('#6a9a3a'), x, h / 2, z);
+    stalk.rotation.z = Math.sin(i + seed) * 0.15;
+    g.add(stalk);
+    if (i % 2 === 0) g.add(mesh(new THREE.CapsuleGeometry(0.04, 0.16, 4, 6), mat('#7a5634'), x, h, z));
+  }
+  return g;
+}
+
+/** A small wooden jetty reaching into the river. */
+export function dock(len: number): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = 0; i < Math.round(len / 0.4); i++) g.add(rbox(1.3, 0.08, 0.36, i % 2 ? '#b8844f' : '#a57345', 0, 0.25, -i * 0.4, 0.02));
+  for (const x of [-0.6, 0.6]) for (const z of [0, -len + 0.3]) g.add(mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.7, 8), mat('#6b4a2a'), x, 0.1, z));
+  return g;
+}
+
 /** A wooden post with a lantern on top; `glow` is swapped between lit and unlit materials. */
 export function lanternPost(): { group: THREE.Group; glow: THREE.Mesh } {
   const group = new THREE.Group();
@@ -947,6 +1016,11 @@ export function decorationModel(id: DecorationId): THREE.Group {
       const rug = mesh(new RoundedBoxGeometry(1.7, 0.03, 1.15, 2, 0.012), new THREE.MeshStandardMaterial({ map: tex, roughness: 1 }), 0, 0.02, 0);
       rug.castShadow = false;
       g.add(rug);
+      return g;
+    }
+    case 'waterJug': {
+      const g = waterJug();
+      g.scale.setScalar(1.1);
       return g;
     }
     case 'table': {

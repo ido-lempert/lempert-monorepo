@@ -18,6 +18,8 @@ export type Sfx =
   | 'lose';
 
 const KEY = 'sukkahWorld.sound';
+/** Quiet enough to play under the game without getting in the way. */
+const MUSIC_VOLUME = 0.11;
 
 interface Prefs {
   music: boolean;
@@ -66,9 +68,23 @@ export class Sound {
     // A gentle compressor keeps sudden fanfares from clipping.
     const comp = this.ctx.createDynamicsCompressor();
     this.master.connect(comp).connect(this.ctx.destination);
+    // Music is kept soft and in the background: rounded off by a low-pass filter, with a light echo.
     this.musicBus = this.ctx.createGain();
-    this.musicBus.gain.value = this.prefs.music ? 0.16 : 0;
-    this.musicBus.connect(this.master);
+    this.musicBus.gain.value = this.prefs.music ? MUSIC_VOLUME : 0;
+    const soft = this.ctx.createBiquadFilter();
+    soft.type = 'lowpass';
+    soft.frequency.value = 2200;
+    const echo = this.ctx.createDelay();
+    echo.delayTime.value = 0.33;
+    const feedback = this.ctx.createGain();
+    feedback.gain.value = 0.25;
+    const wet = this.ctx.createGain();
+    wet.gain.value = 0.22;
+    this.musicBus.connect(soft);
+    soft.connect(this.master);
+    soft.connect(echo);
+    echo.connect(feedback).connect(echo);
+    echo.connect(wet).connect(this.master);
     this.sfxBus = this.ctx.createGain();
     this.sfxBus.gain.value = this.prefs.sfx ? 0.55 : 0;
     this.sfxBus.connect(this.master);
@@ -82,7 +98,7 @@ export class Sound {
   setMusic(on: boolean) {
     this.prefs.music = on;
     this.save();
-    if (this.ctx) this.musicBus.gain.setTargetAtTime(on ? 0.16 : 0, this.ctx.currentTime, 0.2);
+    if (this.ctx) this.musicBus.gain.setTargetAtTime(on ? MUSIC_VOLUME : 0, this.ctx.currentTime, 0.2);
   }
 
   setSfx(on: boolean) {
@@ -150,27 +166,57 @@ export class Sound {
 
   // --- Music ------------------------------------------------------------------------------------------
 
-  /** A cheerful loop in D major: eight bars of melody over a bouncing bass, with a soft shaker. */
-  private static readonly MELODY: (number | null)[] = [
-    0, 4, 7, 4, 9, 7, 4, 2, 0, 2, 4, 7, 4, null, 2, null, 5, 4, 2, 4, 7, 9, 7, null, 4, 2, 0, 2, 4, null, null, null,
-    7, 9, 12, 9, 7, 4, 7, null, 5, 7, 9, 7, 5, 4, 2, null, 4, 5, 7, 4, 2, 0, 2, 4, 0, null, -3, null, 0, null, null, null,
+  /**
+   * Original, gentle tunes in a festive Sukkot mood, played in turn with a short breath between them.
+   * Melodies are semitones above D5 (null = rest), one entry per eighth note; bass is one root per bar.
+   */
+  private static readonly TUNES: { melody: (number | null)[]; bass: number[] }[] = [
+    {
+      melody: [
+        0, 4, 7, 4, 9, 7, 4, 2, 0, 2, 4, 7, 4, null, 2, null, 5, 4, 2, 4, 7, 9, 7, null, 4, 2, 0, 2, 4, null, null, null,
+        7, 9, 12, 9, 7, 4, 7, null, 5, 7, 9, 7, 5, 4, 2, null, 4, 5, 7, 4, 2, 0, 2, 4, 0, null, -3, null, 0, null, null, null,
+      ],
+      bass: [0, 0, 5, 7, 0, 5, 7, 0],
+    },
+    {
+      melody: [
+        7, null, 5, 4, 2, null, 4, null, 5, 4, 2, 0, 2, null, null, null, 7, 9, 10, 9, 7, 5, 4, 5, 7, null, null, null, 5, null, 4, null,
+        2, 4, 5, 7, 9, 7, 5, 4, 5, null, 4, 2, 0, null, 2, null, 4, 5, 7, 5, 4, 2, 0, 2, 0, null, null, null, null, null, null, null,
+      ],
+      bass: [0, -5, -2, 0, 5, -2, -5, 0],
+    },
+    {
+      melody: [
+        0, 2, 4, null, 7, null, 4, 2, 0, null, -3, null, 0, null, null, null, 4, 7, 9, null, 7, 4, 2, 4, 7, null, null, null, null, null, null, null,
+        9, 7, 4, 7, 9, 12, 9, 7, 4, null, 2, 4, 7, null, null, null, 4, 2, 0, 2, 4, 7, 4, 2, 0, null, null, null, null, null, null, null,
+      ],
+      bass: [0, -3, 5, 7, 5, 0, 7, 0],
+    },
   ];
-  private static readonly BASS = [0, 0, 5, 7, 0, 5, 7, 0];
+  /** Eighth notes of silence between tunes. */
+  private static readonly BREATH = 16;
+  private tune = 0;
 
   private schedule() {
     const ctx = this.ctx!;
-    const eighth = 60 / 104 / 2;
+    const eighth = 60 / 92 / 2;
     while (this.nextNote < ctx.currentTime + 0.25) {
-      const i = this.step % Sound.MELODY.length;
-      const note = Sound.MELODY[i];
-      if (this.prefs.music) {
-        if (note !== null) this.pluck(midi(74 + note), this.nextNote, 0.45, 0.5, this.musicBus);
-        if (i % 4 === 0) this.pluck(midi(50 + Sound.BASS[Math.floor(i / 8)]), this.nextNote, 0.6, 0.7, this.musicBus);
-        if (i % 4 === 2) this.pluck(midi(57 + Sound.BASS[Math.floor(i / 8)]), this.nextNote, 0.3, 0.3, this.musicBus);
-        this.shaker(this.nextNote, i % 2 ? 0.08 : 0.16);
+      const { melody, bass } = Sound.TUNES[this.tune];
+      const i = this.step;
+      if (this.prefs.music && i < melody.length) {
+        const note = melody[i];
+        const root = bass[Math.floor(i / 8)];
+        if (note !== null) this.pluck(midi(74 + note), this.nextNote, 0.7, 0.34, this.musicBus);
+        if (i % 8 === 0) this.pluck(midi(50 + root), this.nextNote, 1.2, 0.5, this.musicBus);
+        if (i % 8 === 4) this.pluck(midi(57 + root), this.nextNote, 0.6, 0.2, this.musicBus);
+        if (i % 4 === 2) this.shaker(this.nextNote, 0.035);
       }
       this.nextNote += eighth;
       this.step++;
+      if (this.step >= melody.length + Sound.BREATH) {
+        this.step = 0;
+        this.tune = (this.tune + 1) % Sound.TUNES.length;
+      }
     }
   }
 

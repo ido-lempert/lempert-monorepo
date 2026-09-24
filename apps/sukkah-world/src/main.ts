@@ -49,7 +49,8 @@ import { canFullscreen, canInstall, install, isFullscreen, onPwaChange, toggleFu
 import './style.css';
 import { WalkInput } from './world/input';
 import type { Vec } from './game/hunt';
-import { ABRAHAM, HUB, huntCandidates, inside, ISAAC, JACOB, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
+import { JUG_SPOTS, type Raft, startRaft, stepRaft } from './game/raft';
+import { ABRAHAM, MOSES, RIDE_END, HUB, huntCandidates, inside, ISAAC, JACOB, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
 import { World } from './world/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -76,19 +77,20 @@ const world = new World($('#stage'));
 const input = new WalkInput(world.canvas);
 applyDocument();
 
-type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt';
+type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft';
 let scene: Scene = 'walk';
 
 function setScene(next: Scene) {
   scene = next;
   input.reset();
-  input.walking = next === 'walk' || next === 'hunt';
-  world.setMode(next === 'creator' ? 'creator' : next === 'build' ? 'build' : 'walk');
+  input.walking = next === 'walk' || next === 'hunt' || next === 'raft';
+  if (next !== 'raft') world.setMode(next === 'creator' ? 'creator' : next === 'build' ? 'build' : 'walk');
   $('#hud').classList.toggle('hidden', next === 'creator');
   $('#creator').classList.toggle('hidden', next !== 'creator');
   $('#build').classList.toggle('hidden', next !== 'build');
   $('#hunt-hud').classList.toggle('hidden', next !== 'hunt');
   $('#quest').classList.toggle('hidden', next === 'hunt');
+  if (next !== 'walk') $('#hint').classList.add('gone');
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
   if (next !== 'huntCard') $('#hunt-card').classList.add('hidden');
   closeMenu();
@@ -121,6 +123,8 @@ function refresh() {
     ),
   );
   world.setPet(progress.pets.includes('lamb'));
+  const moses = progress.quests.moses;
+  world.setJugs(JUG_SPOTS.map((_, i) => moses.stage === 'active' && !moses.found.includes(String(i))));
   world.setDecorations(progress.placed, scene === 'build' ? selectedPlaced : -1);
   if (scene === 'build') renderPalette();
 }
@@ -186,14 +190,15 @@ function say(face: string, name: string, text: string, choices: Choice[]) {
 
 const playerName = () => progress.avatar?.name || t('defaultName');
 
-const GUEST_FACE: Record<GuestId, string> = { abraham: '👴🏻', isaac: '🧔🏻', jacob: '🧔🏽' };
-const GUEST_SPOT: Record<GuestId, Vec> = { abraham: ABRAHAM, isaac: ISAAC, jacob: JACOB };
+const GUEST_FACE: Record<GuestId, string> = { abraham: '👴🏻', isaac: '🧔🏻', jacob: '🧔🏽', moses: '👴🏼' };
+const GUEST_SPOT: Record<GuestId, Vec> = { abraham: ABRAHAM, isaac: ISAAC, jacob: JACOB, moses: MOSES };
 
 /** Everything a guest says, in the order of their quest. */
 const LINES: Record<GuestId, { intro: StringKey; accept: StringKey; waiting: StringKey; thanks: StringKey; done: StringKey }> = {
   abraham: { intro: 'abrahamIntro', accept: 'abrahamAccept', waiting: 'abrahamWaiting', thanks: 'abrahamThanks', done: 'abrahamDone' },
   isaac: { intro: 'isaacIntro', accept: 'isaacAccept', waiting: 'isaacWaiting', thanks: 'isaacThanks', done: 'isaacDone' },
   jacob: { intro: 'jacobIntro', accept: 'jacobAccept', waiting: 'jacobWaiting', thanks: 'jacobThanks', done: 'jacobDone' },
+  moses: { intro: 'mosesIntro', accept: 'mosesAccept', waiting: 'mosesWaiting', thanks: 'mosesThanks', done: 'mosesDone' },
 };
 
 function talkTo(guest: GuestId) {
@@ -205,12 +210,24 @@ function talkTo(guest: GuestId) {
   switch (q.stage) {
     case 'notStarted':
       say(face, name, t(lines.intro, params), [
-        { label: t(lines.accept), primary: true, onClick: () => commit(startQuest(progress, guest)) },
+        {
+          label: t(lines.accept),
+          primary: true,
+          onClick: () => {
+            commit(startQuest(progress, guest));
+            if (guest === 'moses') startRide();
+          },
+        },
         { label: t('abrahamLater') },
       ]);
       break;
     case 'active':
-      say(face, name, t(lines.waiting, params), [{ label: t('ok'), primary: true }]);
+      say(
+        face,
+        name,
+        t(lines.waiting, params),
+        guest === 'moses' ? [{ label: t('rideAgain'), primary: true, onClick: startRide }, { label: t('abrahamLater') }] : [{ label: t('ok'), primary: true }],
+      );
       break;
     case 'returning':
       say(face, name, t(lines.thanks, params), [
@@ -227,7 +244,12 @@ function talkTo(guest: GuestId) {
       ]);
       break;
     default:
-      say(face, name, t(lines.done, params), [{ label: t('ok'), primary: true }]);
+      say(
+        face,
+        name,
+        t(lines.done, params),
+        guest === 'moses' ? [{ label: t('rideForFun'), primary: true, onClick: startRide }, { label: t('ok') }] : [{ label: t('ok'), primary: true }],
+      );
   }
 }
 
@@ -239,13 +261,15 @@ function renderQuest() {
   let text = t('questAllDone');
   if (guest) {
     const q = progress.quests[guest];
-    icon = q.stage === 'returning' ? GUEST_FACE[guest] : { abraham: '🌿', isaac: '🏮', jacob: '🐑' }[guest];
-    if (q.stage === 'notStarted') text = t(({ abraham: 'questTalk', isaac: 'questTalkIsaac', jacob: 'questTalkJacob' } as const)[guest]);
-    else if (q.stage === 'returning') text = t(({ abraham: 'questReturn', isaac: 'questReturnIsaac', jacob: 'questReturnJacob' } as const)[guest]);
+    icon = q.stage === 'returning' ? GUEST_FACE[guest] : { abraham: '🌿', isaac: '🏮', jacob: '🐑', moses: '🏺' }[guest];
+    if (q.stage === 'notStarted') text = t(({ abraham: 'questTalk', isaac: 'questTalkIsaac', jacob: 'questTalkJacob', moses: 'questTalkMoses' } as const)[guest]);
+    else if (q.stage === 'returning')
+      text = t(({ abraham: 'questReturn', isaac: 'questReturnIsaac', jacob: 'questReturnJacob', moses: 'questReturnMoses' } as const)[guest]);
     else if (guest === 'abraham') text = t('questCollect', { n: q.found.length });
     else if (guest === 'isaac')
       text = lanternDeadline ? t('questLanternsTimer', { n: q.found.length, s: Math.ceil(lanternLeft()) }) : t('questLanterns', { n: q.found.length });
-    else text = t('questLambs', { n: q.found.length });
+    else if (guest === 'jacob') text = t('questLambs', { n: q.found.length });
+    else text = t('questJugs', { n: q.found.length });
   }
   $('#quest-icon').textContent = icon;
   $('#quest-text').textContent = text;
@@ -254,8 +278,8 @@ function renderQuest() {
 
 // --- Contextual action (talk / play / decorate) -----------------------------------------------
 
-type Action = 'talkAbraham' | 'talkIsaac' | 'talkJacob' | 'playHunt' | 'decorate';
-const TALK: Record<GuestId, Action> = { abraham: 'talkAbraham', isaac: 'talkIsaac', jacob: 'talkJacob' };
+type Action = 'talkAbraham' | 'talkIsaac' | 'talkJacob' | 'talkMoses' | 'playHunt' | 'decorate';
+const TALK: Record<GuestId, Action> = { abraham: 'talkAbraham', isaac: 'talkIsaac', jacob: 'talkJacob', moses: 'talkMoses' };
 let action: Action | null = null;
 
 function nearbyAction(): Action | null {
@@ -369,6 +393,53 @@ function checkQuestItems() {
     });
 }
 
+// --- Moses' raft ride ---------------------------------------------------------------------------
+
+let ride: Raft | null = null;
+/** Jugs already collected on earlier rides (or all of them once the quest is done) stay out of the river. */
+const jugsTaken = () => {
+  const q = progress.quests.moses;
+  return JUG_SPOTS.map((_, i) => i).filter((i) => q.stage !== 'active' || q.found.includes(String(i)));
+};
+
+function startRide() {
+  ride = startRaft();
+  world.setJugs(JUG_SPOTS.map((_, i) => !jugsTaken().includes(i)));
+  world.startRide(ride);
+  setScene('raft');
+  toast(`🛶 ${t('raftHint')}`);
+  sound.play('pop');
+}
+
+function tickRide(dt: number) {
+  if (!ride) return;
+  // Screen-right steers towards the inner bank (the chase camera looks downstream).
+  const steer = -input.vector()[0];
+  for (const e of stepRaft(ride, dt, steer, jugsTaken())) {
+    const spot = e.type === 'jug' ? JUG_SPOTS[e.index] : null;
+    if (spot) {
+      world.sparkle(world.player.pos, '#7fd6ff', 1.2);
+      world.celebrate();
+      sound.play('pickup');
+      const next = findItem(progress, 'moses', String(e.index));
+      commit(next);
+      world.setJugs(JUG_SPOTS.map((_, i) => !jugsTaken().includes(i)));
+      toast(next.quests.moses.stage === 'returning' ? `🏺 ${t('allJugs')}` : `🏺 ${t('jugFound', { n: next.quests.moses.found.length })}`);
+    } else {
+      sound.play('blip');
+      toast(`💥 ${t('rockBump')}`);
+    }
+  }
+  world.syncRide(ride);
+  if (ride.over) {
+    ride = null;
+    world.endRide();
+    world.teleport(RIDE_END, Math.PI * 0.4);
+    setScene('walk');
+    if (progress.quests.moses.stage === 'active') toast(`🛶 ${t('rideOver')}`);
+  }
+}
+
 // --- Decorating --------------------------------------------------------------------------------
 
 const ICONS: Record<DecorationId, string> = {
@@ -379,6 +450,7 @@ const ICONS: Record<DecorationId, string> = {
   chair: '🪑',
   rug: '🟥',
   table: '🍽️',
+  waterJug: '🏺',
 };
 let placing: DecorationId | null = null;
 let selectedPlaced = -1;
@@ -792,8 +864,10 @@ function renderMenu() {
   $('#m-sfx').setAttribute('aria-pressed', String(sound.prefs.sfx));
   $('#m-sfx-icon').textContent = sound.prefs.sfx ? '🔊' : '🔇';
   // Travelling away mid-hunt would be cheating the race.
-  $('#m-home').toggleAttribute('disabled', scene === 'hunt');
-  $('#m-plaza').toggleAttribute('disabled', scene === 'hunt');
+  const busy = scene === 'hunt' || scene === 'raft';
+  $('#m-home').toggleAttribute('disabled', busy);
+  $('#m-plaza').toggleAttribute('disabled', busy);
+  $('#m-avatar').toggleAttribute('disabled', busy);
 }
 
 $('#menu-btn').addEventListener('click', (e) => {
@@ -811,7 +885,7 @@ document.addEventListener('click', (e) => {
 onPwaChange(renderMenu);
 
 $('#m-avatar').addEventListener('click', () => {
-  if (scene !== 'hunt') openCreator();
+  if (scene !== 'hunt' && scene !== 'raft') openCreator();
 });
 $('#m-home').addEventListener('click', () => {
   world.teleport({ x: MY_SUKKAH.x - MY_SUKKAH.w / 2 - 2, z: MY_SUKKAH.z }, Math.PI / 2);
@@ -856,7 +930,8 @@ function showHint() {
 
 function loop() {
   const dt = world.frame();
-  if (scene === 'walk' || scene === 'hunt') {
+  if (scene === 'raft') tickRide(dt);
+  else if (scene === 'walk' || scene === 'hunt') {
     const moved = world.walk(dt, input.vector());
     if (moved > 0 && hintShown) {
       hintShown = false;
