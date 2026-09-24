@@ -33,8 +33,8 @@ export default defineConfig({
         scope: './',
         display: 'standalone',
         orientation: 'any',
-        background_color: '#16324a',
-        theme_color: '#16324a',
+        background_color: '#3aa0ff',
+        theme_color: '#3aa0ff',
         categories: ['games', 'kids', 'education'],
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -45,7 +45,7 @@ export default defineConfig({
       },
       workbox: {
         // Everything is procedural, so precaching the bundle makes the whole world playable offline.
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
         skipWaiting: true,

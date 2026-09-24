@@ -33,6 +33,8 @@ export interface Avatar {
   name: string;
   shirt: string;
   skin: string;
+  /** Added after the first release, so older saves may not have it. */
+  hair?: string;
   hat: HatId;
 }
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#16324a" />
+    <meta name="theme-color" content="#3aa0ff" />
     <meta name="description" content="עולם הסוכה – עולם תלת־ממדי לילדים: בונים סוכה, פוגשים אושפיזין ומשחקים בכפר הסוכות." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -17,9 +17,9 @@
       body {
         margin: 0;
         height: 100%;
-        background: #16324a;
-        color: #fffaf0;
-        font-family: system-ui, -apple-system, 'Segoe UI', Rubik, sans-serif;
+        background: #3aa0ff;
+        color: #1d2b53;
+        font-family: 'Rubik Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
       }
       body:not(.ready) > :not(#splash):not(script) {
         visibility: hidden;
@@ -33,7 +33,7 @@
         align-items: center;
         justify-content: center;
         gap: 18px;
-        background: radial-gradient(circle at 50% 40%, #245a80, #16324a 70%);
+        background: linear-gradient(180deg, #3aa0ff 0%, #8fd3ff 70%, #bff0a0 100%);
         transition: opacity 0.45s ease;
       }
       #splash.done {
@@ -43,10 +43,26 @@
       #splash img {
         width: min(36vmin, 190px);
         height: auto;
+        filter: drop-shadow(0 10px 18px rgba(29, 43, 83, 0.35));
+        animation: splash-bounce 0.9s ease-in-out infinite alternate;
       }
       #splash .splash-title {
+        padding: 6px 22px;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: 0 5px 0 rgba(29, 43, 83, 0.2);
         font-size: clamp(24px, 6vmin, 38px);
-        font-weight: 800;
+        font-weight: 900;
+      }
+      @keyframes splash-bounce {
+        to {
+          transform: translateY(-14px) scale(1.03);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img {
+          animation: none;
+        }
       }
     </style>
   </head>
@@ -54,14 +70,14 @@
     <div id="splash" role="status" aria-live="polite">
       <img src="icon.svg" alt="" width="190" height="190" />
       <div class="splash-title">עולם הסוכה</div>
-      <div data-i18n="loading">טוען…</div>
+      <div data-i18n="loading" style="font-weight: 700">טוען…</div>
     </div>
 
     <main id="stage" data-i18n-attr="aria-label:sceneLabel"></main>
 
     <header class="hud" id="hud">
-      <div class="coins" id="coins" role="status"><span aria-hidden="true">🪙</span> <b id="coin-count">0</b> <span class="sr-only" data-i18n="coins"></span></div>
-      <div class="quest" id="quest" role="status" dir="auto"></div>
+      <div class="coins" id="coins" role="status"><span class="coin" aria-hidden="true"></span><b id="coin-count">0</b><span class="sr-only" data-i18n="coins"></span></div>
+      <div class="quest" id="quest" role="status"><span class="quest-icon" id="quest-icon" aria-hidden="true"></span><span id="quest-text" dir="auto"></span></div>
       <button class="icon" id="menu-btn" aria-expanded="false" aria-controls="menu" data-i18n-attr="title:menu;aria-label:menu">☰</button>
     </header>
 
@@ -126,6 +142,10 @@
         <fieldset class="field">
           <legend class="field-label" data-i18n="skin"></legend>
           <div class="swatches" id="skin-swatches"></div>
+        </fieldset>
+        <fieldset class="field">
+          <legend class="field-label" data-i18n="hair"></legend>
+          <div class="swatches" id="hair-swatches"></div>
         </fieldset>
         <fieldset class="field">
           <legend class="field-label" data-i18n="hat"></legend>

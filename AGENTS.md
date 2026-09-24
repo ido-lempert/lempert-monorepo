@@ -30,6 +30,8 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - developed in vertical slices; the plan and the product concept live in `_bmad-output/planning-artifacts/sukkah-world/`
   - game rules are pure and tested (`src/game/`: progress/economy/quest, etrog hunt); `src/world/layout.ts` holds all positions and collisions; `src/world/` renders; `src/main.ts` wires UI to both
   - every model is procedural (`src/world/models.ts`), so there are no assets and the game works offline
+  - the visual style (rim-lit toy materials, cartoon outlines, sky, wind, textures) lives in `src/world/look.ts`; bloom only catches emissive ≥ ~5 (bulbs, lanterns, sparkles), and `World` drops to low quality (no bloom, lower pixel ratio) on slow devices
+  - deployed as a Render static site (`sukkah-world` in `render.yaml`, from the `sukkah-world` branch)
   - UI text is Hebrew only for now, in `src/i18n/strings.ts`; address kids in the plural and use infinitives on buttons
 
 ## Conventions that differ from defaults

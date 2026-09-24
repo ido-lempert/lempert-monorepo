@@ -75,7 +75,14 @@ function setScene(next: Scene) {
 }
 
 function refresh() {
-  $('#coin-count').textContent = String(progress.coins);
+  const coinCount = $('#coin-count');
+  if (coinCount.textContent !== String(progress.coins)) {
+    coinCount.textContent = String(progress.coins);
+    // Restart the little bump animation on every change.
+    $('#coins').classList.remove('bump');
+    void $('#coins').offsetWidth;
+    $('#coins').classList.add('bump');
+  }
   const q = progress.quest;
   const quest =
     q.stage === 'notStarted'
@@ -85,7 +92,8 @@ function refresh() {
         : q.stage === 'returning'
           ? t('questReturn')
           : t('questDone');
-  $('#quest').textContent = `${q.stage === 'done' ? '⏳' : '🌿'} ${quest}`;
+  $('#quest-icon').textContent = q.stage === 'done' ? '⏳' : q.stage === 'returning' ? '👴🏻' : '🌿';
+  $('#quest-text').textContent = quest;
   world.setSpecies(q.stage === 'collecting', q.found);
   world.setAbrahamMark(q.stage === 'notStarted' ? '!' : q.stage === 'returning' ? '?' : '');
   world.setDecorations(progress.placed, scene === 'build' ? selectedPlaced : -1);
@@ -234,6 +242,7 @@ function checkSpecies() {
     const s = SPECIES_SPOTS[id];
     if (Math.hypot(p.x - s.x, p.z - s.z) > 1.4) continue;
     world.sparkle(s, '#b8f28c', 1.2);
+    world.celebrate();
     const next = findSpecies(progress, id);
     commit(next);
     toast(next.quest.stage === 'returning' ? `🌿 ${t('allFound')}` : `✨ ${t('foundSpecies', { item: t(id) })}`);
@@ -372,7 +381,10 @@ function updateHuntHud() {
 function tickHunt(dt: number) {
   if (!hunt) return;
   const events = stepHunt(hunt, dt, world.player.pos, (p) => resolve(p, 0.45));
-  for (const e of events) world.sparkle(hunt.etrogs[e.index], e.by === 'me' ? '#ffe066' : '#ffffff', 1);
+  for (const e of events) {
+    world.sparkle(hunt.etrogs[e.index], e.by === 'me' ? '#ffe066' : '#ffffff', 1);
+    if (e.by === 'me') world.celebrate();
+  }
   world.syncHunt(hunt);
   updateHuntHud();
   if (hunt.over) {
@@ -392,13 +404,14 @@ $('#hunt-card-back').addEventListener('click', () => {
 
 const SHIRTS = ['#2a9d8f', '#e76f51', '#457b9d', '#f4a261', '#9b5de5', '#ef476f', '#06d6a0', '#ffd166'];
 const SKINS = ['#f8d5b8', '#f1c7a0', '#d9a47a', '#b57d52', '#8d5a3b', '#5e3b26'];
+const HAIRS = ['#2b1d14', '#5a3825', '#a0522d', '#e8b04a', '#d9534f', '#6c4bd1'];
 const HATS: { id: HatId; key: StringKey }[] = [
   { id: 'none', key: 'hatNone' },
   { id: 'kippah', key: 'hatKippah' },
   { id: 'cap', key: 'hatCap' },
   { id: 'crown', key: 'hatCrown' },
 ];
-let draft: Avatar = progress.avatar ?? { name: '', shirt: SHIRTS[0], skin: SKINS[1], hat: 'kippah' };
+let draft: Avatar = progress.avatar ?? { name: '', shirt: SHIRTS[0], skin: SKINS[1], hair: HAIRS[1], hat: 'kippah' };
 
 function pickDraft(change: Partial<Avatar>) {
   draft = { ...draft, ...change };
@@ -407,7 +420,7 @@ function pickDraft(change: Partial<Avatar>) {
 }
 
 function renderCreator() {
-  const swatches = (el: HTMLElement, colors: string[], key: 'shirt' | 'skin') =>
+  const swatches = (el: HTMLElement, colors: string[], key: 'shirt' | 'skin' | 'hair') =>
     el.replaceChildren(
       ...colors.map((c, i) => {
         const b = document.createElement('button');
@@ -415,7 +428,7 @@ function renderCreator() {
         b.className = 'swatch';
         b.style.background = c;
         b.setAttribute('aria-label', `${t(key)} ${i + 1}`);
-        b.setAttribute('aria-pressed', String(draft[key] === c));
+        b.setAttribute('aria-pressed', String((draft[key] ?? HAIRS[1]) === c));
         b.addEventListener('click', () => {
           pickDraft({ [key]: c });
           (el.children[i] as HTMLElement | undefined)?.focus();
@@ -425,6 +438,7 @@ function renderCreator() {
     );
   swatches($('#shirt-swatches'), SHIRTS, 'shirt');
   swatches($('#skin-swatches'), SKINS, 'skin');
+  swatches($('#hair-swatches'), HAIRS, 'hair');
   const hats = $('#hat-choices');
   hats.replaceChildren(
     ...HATS.map((h, i) => {

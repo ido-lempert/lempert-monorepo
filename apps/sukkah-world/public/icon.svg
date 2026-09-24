@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#16324a"/>
-  <circle cx="256" cy="230" r="170" fill="#245a80"/>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3aa0ff"/><stop offset="1" stop-color="#9fdcff"/></linearGradient></defs>
+  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <circle cx="256" cy="230" r="170" fill="#ffffff" opacity="0.35"/>
   <!-- ground -->
   <ellipse cx="256" cy="408" rx="190" ry="36" fill="#8cc56a"/>
   <!-- sukkah walls -->
