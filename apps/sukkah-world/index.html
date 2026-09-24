@@ -105,6 +105,14 @@
 
     <button class="action primary hidden" id="action"></button>
 
+    <!-- Camera: turn around the player and zoom -->
+    <div class="cam" id="cam" role="group" data-i18n-attr="aria-label:camera">
+      <button class="cam-btn" id="cam-left" data-i18n-attr="aria-label:camLeft;title:camLeft">↺</button>
+      <button class="cam-btn" id="cam-in" data-i18n-attr="aria-label:camIn;title:camIn">＋</button>
+      <button class="cam-btn" id="cam-out" data-i18n-attr="aria-label:camOut;title:camOut">－</button>
+      <button class="cam-btn" id="cam-right" data-i18n-attr="aria-label:camRight;title:camRight">↻</button>
+    </div>
+
     <!-- Talking to characters -->
     <div class="dialog hidden" id="dialog" role="dialog" aria-modal="false" aria-labelledby="dialog-name">
       <div class="dialog-face" id="dialog-face" aria-hidden="true"></div>

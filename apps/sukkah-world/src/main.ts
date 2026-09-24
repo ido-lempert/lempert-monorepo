@@ -93,6 +93,8 @@ function setScene(next: Scene) {
   $('#creator').classList.toggle('hidden', next !== 'creator');
   $('#build').classList.toggle('hidden', next !== 'build');
   $('#hunt-hud').classList.toggle('hidden', next !== 'hunt');
+  // The camera can be turned and zoomed while walking around (and during the etrog hunt).
+  $('#cam').classList.toggle('hidden', next !== 'walk' && next !== 'hunt');
   $('#quest').classList.toggle('hidden', next === 'hunt');
   if (next !== 'walk') $('#hint').classList.add('gone');
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
@@ -1083,6 +1085,15 @@ function openCreator() {
   setScene('creator');
   world.snapCamera();
 }
+
+input.onCamera = (turn, zoom) => world.turnCamera(turn, zoom);
+for (const [id, turn, zoom] of [
+  ['#cam-left', -Math.PI / 4, 1],
+  ['#cam-right', Math.PI / 4, 1],
+  ['#cam-in', 0, 0.75],
+  ['#cam-out', 0, 1.33],
+] as const)
+  $(id).addEventListener('click', () => world.turnCamera(turn, zoom));
 
 input.onDrag = (dx) => {
   if (scene === 'creator') world.spin(dx * 0.012);

@@ -102,6 +102,8 @@ import {
 export type CameraMode = 'walk' | 'creator' | 'build' | 'raft';
 
 export const WALK_SPEED = 5.2;
+const ZOOM_MIN = 0.45;
+const ZOOM_MAX = 1.5;
 /** Height of a sukkah's floor; characters step up onto it. */
 const FLOOR_Y = 0.09;
 
@@ -196,6 +198,11 @@ export class World {
   private faded = new Set<THREE.Object3D>();
 
   mode: CameraMode = 'walk';
+  /** Camera angle around the player (0 = looking north) and distance factor, with the goals they ease to. */
+  private yaw = 0;
+  private yawGoal = 0;
+  private zoom = 1;
+  private zoomGoal = 1;
   private creatorAngle = 0;
   private camTarget = new THREE.Vector3();
   private camPos = new THREE.Vector3();
@@ -1095,10 +1102,14 @@ export class World {
       p.moving = 0;
       return 0;
     }
-    const want = resolve({ x: p.pos.x + ix * p.speed * dt, z: p.pos.z - iy * p.speed * dt });
+    // Screen directions follow the camera: "up" is always away from it, whichever way it faces.
+    const yaw = this.yaw;
+    const dx = ix * Math.cos(yaw) - iy * Math.sin(yaw);
+    const dz = -ix * Math.sin(yaw) - iy * Math.cos(yaw);
+    const want = resolve({ x: p.pos.x + dx * p.speed * dt, z: p.pos.z + dz * p.speed * dt });
     const moved = Math.hypot(want.x - p.pos.x, want.z - p.pos.z);
     p.pos = want;
-    p.heading = Math.atan2(ix, -iy);
+    p.heading = Math.atan2(dx, dz);
     p.phase += moved * 2.6;
     p.moving = Math.min(1, amount * 1.3);
     return moved;
@@ -1252,12 +1263,22 @@ export class World {
         look: new THREE.Vector3(p.x + tx * 5, 0.5, p.z + tz * 5),
       };
     }
-    const back = portrait ? 11 : 9.5;
-    const up = portrait ? 10 : 7.2;
-    return { pos: new THREE.Vector3(p.x, up, p.z + back), look: new THREE.Vector3(p.x, 1.2, p.z - 2) };
+    // Orbit around the player at the chosen angle and distance; zooming in also lowers the camera a little.
+    const back = (portrait ? 11 : 9.5) * this.zoom;
+    const up = (portrait ? 10 : 7.2) * this.zoom ** 1.15;
+    const sin = Math.sin(this.yaw);
+    const cos = Math.cos(this.yaw);
+    return {
+      pos: new THREE.Vector3(p.x + sin * back, up, p.z + cos * back),
+      look: new THREE.Vector3(p.x - sin * 2 * this.zoom, 1.2, p.z - cos * 2 * this.zoom),
+    };
   }
 
   private updateCamera(dt: number) {
+    // Turn and zoom ease towards what the player asked for, along the shorter way round.
+    const ease = 1 - Math.exp(-dt * 8);
+    this.yaw = turnTowards(this.yaw, this.yawGoal, ease);
+    this.zoom += (this.zoomGoal - this.zoom) * ease;
     const goal = this.cameraGoal();
     const k = 1 - Math.exp(-dt * 6);
     this.camPos.lerp(goal.pos, k);
@@ -1289,14 +1310,28 @@ export class World {
     if (this.mode === 'walk')
       for (const o of this.occluders) {
         const at = o.getWorldPosition(scratch);
-        if (at.z > this.player.pos.z + 2 && Math.abs(at.x - this.player.pos.x) < 7 && o.parent === this.scene) hiding.add(o);
+        const rx = at.x - this.player.pos.x;
+        const rz = at.z - this.player.pos.z;
+        // Towards the camera (along its horizontal direction) and not too far to the side.
+        const along = rx * Math.sin(this.yaw) + rz * Math.cos(this.yaw);
+        const side = Math.abs(rx * Math.cos(this.yaw) - rz * Math.sin(this.yaw));
+        if (along > 2 && along < 11 * this.zoom && side < 7 && o.parent === this.scene) hiding.add(o);
       }
     for (const o of hiding) if (!this.faded.has(o)) setFaded(o, true);
     for (const o of this.faded) if (!hiding.has(o)) setFaded(o, false);
     this.faded = hiding;
   }
 
+  /** Turns the camera around the player (radians) and/or zooms (factor; > 1 is further away). */
+  turnCamera(turn: number, zoom = 1) {
+    if (this.mode !== 'walk') return;
+    this.yawGoal += turn;
+    this.zoomGoal = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, this.zoomGoal * zoom));
+  }
+
   snapCamera() {
+    this.yaw = this.yawGoal;
+    this.zoom = this.zoomGoal;
     const goal = this.cameraGoal();
     this.camPos.copy(goal.pos);
     this.camTarget.copy(goal.look);
