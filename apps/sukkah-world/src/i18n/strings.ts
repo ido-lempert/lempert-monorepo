@@ -320,6 +320,15 @@ export const he = {
   buildAuto: 'לשים בסוכה',
   buildPickFirst: 'קודם בוחרים קישוט מהרשימה',
 
+  // Legal pages
+  terms: 'תנאי שימוש',
+  privacy: 'פרטיות',
+  accessibilityStatement: 'הצהרת נגישות',
+  agreeIntro: 'כשנכנסים למשחק מסכימים ל',
+  termsInline: 'תנאי השימוש',
+  agreeAnd: ' ול',
+  privacyInline: 'מדיניות הפרטיות',
+
   // Sharing and installing
   share: 'לשתף את המשחק',
   shareText: 'בואו לשחק איתי בעולם הסוכה – משחק חינם לחג הסוכות! 🍋',

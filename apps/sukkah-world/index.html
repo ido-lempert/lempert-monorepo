@@ -124,6 +124,10 @@
       <button id="m-bigtext" aria-pressed="false"><span aria-hidden="true">🔠</span> <span data-i18n="bigText"></span></button>
       <button id="m-motion" aria-pressed="false"><span aria-hidden="true">🌙</span> <span data-i18n="lessMotion"></span></button>
       <hr />
+      <button data-page="terms"><span aria-hidden="true">📜</span> <span data-i18n="terms"></span></button>
+      <button data-page="privacy"><span aria-hidden="true">🔒</span> <span data-i18n="privacy"></span></button>
+      <button data-page="accessibility"><span aria-hidden="true">♿</span> <span data-i18n="accessibilityStatement"></span></button>
+      <hr />
       <button id="m-reset"><span aria-hidden="true">↺</span> <span data-i18n="reset"></span></button>
       <p class="version"><span data-i18n="version"></span> <span id="app-version" dir="ltr"></span></p>
     </nav>
@@ -191,6 +195,7 @@
         </div>
         <p class="drag-hint" data-i18n="dragToTurn"></p>
         <button type="submit" class="primary big" id="creator-submit"></button>
+        <p class="legal-note"><span data-i18n="agreeIntro"></span><button type="button" class="inline-link" data-page="terms" data-i18n="termsInline"></button><span data-i18n="agreeAnd"></span><button type="button" class="inline-link" data-page="privacy" data-i18n="privacyInline"></button></p>
       </form>
     </div>
 
@@ -246,6 +251,17 @@
         <button class="primary" id="install-yes" data-i18n="installNow"></button>
         <button class="link-btn" id="install-no" data-i18n="installLater"></button>
       </div>
+    </div>
+
+    <!-- Terms, privacy and the accessibility statement -->
+    <div class="overlay hidden" id="page">
+      <article class="card page" role="dialog" aria-modal="true" aria-labelledby="page-title">
+        <header class="page-head">
+          <h2 id="page-title"></h2>
+          <button class="icon" id="page-close" data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <div class="page-body" id="page-body"></div>
+      </article>
     </div>
 
     <div class="update hidden" id="update" role="status">

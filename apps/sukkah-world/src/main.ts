@@ -49,6 +49,7 @@ import {
 } from './game/progress';
 import { Sound } from './audio';
 import { applyDocument, type StringKey, t } from './i18n';
+import { PAGE_TITLES, type PageId, PAGES } from './i18n/pages';
 import { canFullscreen, canInstall, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
 import './style.css';
 import { WalkInput } from './world/input';
@@ -1351,6 +1352,35 @@ $('#m-motion').addEventListener('click', () => {
   applyA11y();
 });
 applyA11y();
+
+// --- Terms, privacy and accessibility pages ---------------------------------------------------------
+
+let pageOpener: HTMLElement | null = null;
+
+function openPage(id: PageId) {
+  closeMenu();
+  pageOpener = document.activeElement as HTMLElement | null;
+  $('#page-title').textContent = PAGE_TITLES[id];
+  $('#page-body').innerHTML = PAGES[id];
+  $('#page').classList.remove('hidden');
+  input.reset();
+  input.walking = false;
+  $('#page-close').focus();
+}
+
+function closePage() {
+  if ($('#page').classList.contains('hidden')) return false;
+  $('#page').classList.add('hidden');
+  input.walking = scene === 'walk' || scene === 'hunt' || scene === 'raft';
+  pageOpener?.focus();
+  return true;
+}
+
+document.querySelectorAll<HTMLElement>('[data-page]').forEach((b) => b.addEventListener('click', () => openPage(b.dataset.page as PageId)));
+$('#page-close').addEventListener('click', closePage);
+addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && closePage()) e.stopImmediatePropagation();
+}, true);
 
 // --- Sharing ------------------------------------------------------------------------------------
 
