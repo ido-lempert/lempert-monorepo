@@ -65,4 +65,14 @@ describe('raft ride', () => {
     expect(events.filter((e) => e.type === 'rock')).toEqual([]);
     expect(raft.s).toBeGreaterThan(ROCKS[0].s);
   });
+
+  it('floats more slowly in the calm pace', () => {
+    const fast = startRaft();
+    const calm = startRaft();
+    for (let i = 0; i < 20; i++) {
+      stepRaft(fast, 0.1, 0);
+      stepRaft(calm, 0.1, 0, [], 0.6);
+    }
+    expect(calm.s).toBeLessThan(fast.s * 0.7);
+  });
 });

@@ -54,7 +54,7 @@ import './style.css';
 import { WalkInput } from './world/input';
 import type { Vec } from './game/hunt';
 import { JUG_SPOTS, jumpRaft, type Raft, startRaft, stepRaft } from './game/raft';
-import { RIVER, riverPoint, GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RIDE_END, SHEAF_SPOTS, VILLAGERS, HUB, huntCandidates, inside, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
+import { GARDEN, RIVER, riverPoint, GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RIDE_END, SHEAF_SPOTS, VILLAGERS, HUB, huntCandidates, inside, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
 import { World } from './world/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -235,7 +235,7 @@ function talkTo(guest: GuestId) {
   const lines = LINES[guest];
   const face = GUEST_FACE[guest];
   const name = t(guest);
-  const params = { name: playerName(), coins: QUEST_REWARDS[guest].coins, seconds: LANTERN_SECONDS, n: QUEST_ITEMS[guest] - q.found.length };
+  const params = { name: playerName(), coins: QUEST_REWARDS[guest].coins, seconds: lanternSeconds(), n: QUEST_ITEMS[guest] - q.found.length };
   switch (q.stage) {
     case 'notStarted':
       say(face, name, t(lines.intro, params), [
@@ -319,6 +319,11 @@ function sheafTemperature(): string {
   return t(d < 5 ? 'tempHot' : d < 11 ? 'tempWarm' : d < 20 ? 'tempMild' : 'tempCold');
 }
 
+let lastStep = '';
+
+/** Shoshi's etrog hunt is easy to miss, so once Abraham's quest is done we keep reminding until it's played. */
+const showHuntNudge = () => progress.quests.abraham.stage === 'done' && !progress.achievements.includes('firstHunt') && scene === 'walk';
+
 function renderQuest() {
   const guest = currentGuest(progress);
   let icon = '🎉';
@@ -339,6 +344,13 @@ function renderQuest() {
   }
   $('#quest-icon').textContent = icon;
   if ($('#quest-text').textContent !== text) $('#quest-text').textContent = text;
+  // Screen readers hear about a new step, not every tick of a timer or meter.
+  const step = `${guest}:${guest ? progress.quests[guest].stage : readyForGrandEvent(progress)}`;
+  if (step !== lastStep) {
+    lastStep = step;
+    $('#live').textContent = text;
+  }
+  $('#side-quest').classList.toggle('hidden', !showHuntNudge());
   $('#quest').classList.toggle('urgent', !!lanternDeadline && lanternLeft() < 10);
 }
 
@@ -431,7 +443,7 @@ function checkQuestItems() {
     if (lanternBlocked >= 0 && !near(LANTERNS[lanternBlocked], 2)) lanternBlocked = -1;
     LANTERNS.forEach((l, i) => {
       if (progress.quests.isaac.found.includes(String(i)) || i === lanternBlocked || !near(l, 1.4)) return;
-      if (!lanternDeadline) lanternDeadline = performance.now() + LANTERN_SECONDS * 1000;
+      if (!lanternDeadline) lanternDeadline = performance.now() + lanternSeconds() * 1000;
       world.sparkle(l, '#ffb347', 1.6);
       sound.play('chime');
       const next = findItem(progress, 'isaac', String(i));
@@ -592,12 +604,13 @@ function playTune(delay: number) {
   tuneListening = true;
   tuneAt = 0;
   $('#tune-status').textContent = t('tuneListen');
-  tuneTimers = tuneSeq.map((n, k) => window.setTimeout(() => flashPad(n), delay + k * 620));
+  const gap = a11y.calm ? 900 : 620;
+  tuneTimers = tuneSeq.map((n, k) => window.setTimeout(() => flashPad(n), delay + k * gap));
   tuneTimers.push(
     window.setTimeout(() => {
       tuneListening = false;
       $('#tune-status').textContent = t('tuneYourTurn');
-    }, delay + tuneSeq.length * 620),
+    }, delay + tuneSeq.length * gap),
   );
 }
 
@@ -670,7 +683,7 @@ function tickRide(dt: number) {
   if (!ride) return;
   // Screen-right steers towards the inner bank (the chase camera looks downstream).
   const steer = -input.vector()[0];
-  for (const e of stepRaft(ride, dt, steer, jugsTaken())) {
+  for (const e of stepRaft(ride, dt, steer, jugsTaken(), a11y.calm ? 0.65 : 1)) {
     const spot = e.type === 'jug' ? JUG_SPOTS[e.index] : null;
     if (spot) {
       world.sparkle(world.player.pos, '#7fd6ff', 1.2);
@@ -787,6 +800,29 @@ input.onTap = (x, y) => {
   refresh();
 };
 
+/** Puts the chosen decoration in the first free spot – for keyboards, switches and anyone who'd rather not aim. */
+$('#build-auto').addEventListener('click', () => {
+  if (!placing || available(progress, placing) <= 0) {
+    toast(t('buildPickFirst'));
+    return;
+  }
+  const mount = decoration(placing).mount;
+  const taken = progress.placed.filter((p) => decoration(p.id).mount === mount);
+  const hw = MY_SUKKAH.w / 2 - 0.6;
+  const hd = MY_SUKKAH.d / 2 - 0.6;
+  for (let z = -hd; z <= hd + 0.01; z += 0.85)
+    for (let x = -hw; x <= hw + 0.01; x += 0.9)
+      if (taken.every((p) => Math.hypot(p.x - x, p.z - z) > 0.8)) {
+        const before = progress.placed.length;
+        commit(place(progress, { id: placing, x: Math.round(x * 4) / 4, z: Math.round(z * 4) / 4, rot: 0 }));
+        if (progress.placed.length > before) sound.play('pop');
+        if (available(progress, placing) === 0) placing = null;
+        refresh();
+        return;
+      }
+  toast(t('sukkahFull'));
+});
+
 $('#build-rotate').addEventListener('click', () => commit(rotatePlaced(progress, selectedPlaced)));
 $('#build-remove').addEventListener('click', () => {
   const index = selectedPlaced;
@@ -851,7 +887,7 @@ function updateHuntHud() {
 
 function tickHunt(dt: number) {
   if (!hunt) return;
-  const events = stepHunt(hunt, dt, world.player.pos, (p) => resolve(p, 0.45));
+  const events = stepHunt(hunt, dt, world.player.pos, (p) => resolve(p, 0.45), a11y.calm ? 0.7 : 1);
   for (const e of events) {
     world.sparkle(hunt.etrogs[e.index], e.by === 'me' ? '#ffe066' : '#ffffff', 1);
     sound.play(e.by === 'me' ? 'pickup' : 'blip');
@@ -1215,6 +1251,107 @@ $('#m-reset').addEventListener('click', () => {
   location.reload();
 });
 
+// --- Guidance: the arrow and "take me there" ------------------------------------------------------
+
+/** Set by the Shoshi reminder: the arrow then points to the hunt until the player gets there. */
+let headingToHunt = false;
+
+const nearestTo = (list: Vec[]): Vec | undefined => {
+  const p = world.player.pos;
+  return [...list].sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+};
+
+/** Where the story continues from here (null: nothing to point at, e.g. during Joseph's treasure hunt). */
+function objectiveTarget(): Vec | null {
+  if (headingToHunt) return HUB;
+  const g = currentGuest(progress);
+  if (!g) return readyForGrandEvent(progress) ? GRAND_SUKKAH : !progress.achievements.includes('firstHunt') ? HUB : null;
+  const q = progress.quests[g];
+  if (q.stage !== 'active') return world.guestSpot(g);
+  switch (g) {
+    case 'abraham':
+      return nearestTo(SPECIES.filter((id) => !q.found.includes(id)).map((id) => SPECIES_SPOTS[id])) ?? null;
+    case 'isaac':
+      return LANTERNS.find((_, i) => !q.found.includes(String(i))) ?? null;
+    case 'jacob':
+      return world.lambStates.includes('following') ? PEN : (nearestTo(LAMB_SPOTS.filter((_, i) => world.lambStates[i] === 'lost')) ?? null);
+    case 'aaron':
+      if (carrying) return VILLAGERS.find((v, i) => v.needs === carrying && !q.found.includes(String(i))) ?? null;
+      return nearestTo(VILLAGERS.filter((_, i) => !q.found.includes(String(i))).map((v) => HELP_ITEMS[v.needs])) ?? null;
+    case 'joseph':
+      return null;
+    default:
+      return world.guestSpot(g);
+  }
+}
+
+/** A safe place to arrive at for "take me there": the area's landmark rather than right on top of a challenge. */
+function arrivalFor(target: Vec): Vec {
+  const g = currentGuest(progress);
+  const q = g ? progress.quests[g] : null;
+  let anchor = target;
+  // Landmarks (the hunt, the Grand Sukkah) are arrived at directly; quest challenges from their entrance.
+  if (g && q?.stage === 'active' && target !== HUB && target !== GRAND_SUKKAH) {
+    if (g === 'abraham') anchor = { x: GARDEN.x + GARDEN.w / 2 + 1.5, z: GARDEN.z };
+    if (g === 'isaac' || g === 'jacob') anchor = world.guestSpot(g);
+  }
+  // Stand a couple of metres from it, on the side facing the village centre.
+  const len = Math.hypot(anchor.x, anchor.z) || 1;
+  return resolve({ x: anchor.x - (anchor.x / len) * 2.2, z: anchor.z - (anchor.z / len) * 2.2 });
+}
+
+$('#m-goto').addEventListener('click', () => {
+  closeMenu();
+  const target = objectiveTarget() ?? (currentGuest(progress) ? world.guestSpot(currentGuest(progress)!) : null);
+  if (!target || (scene !== 'walk' && scene !== 'hunt')) return;
+  world.teleport(arrivalFor(target), world.player.heading);
+  world.sparkle(world.player.pos, '#ffd23f', 1);
+  sound.play('pop');
+});
+$('#side-quest').addEventListener('click', () => {
+  headingToHunt = true;
+  toast(`🍋 ${t('sideHuntGo')}`);
+});
+
+// --- Accessibility settings -------------------------------------------------------------------------
+
+const A11Y_KEY = 'sukkahWorld.a11y';
+const a11y: { calm: boolean; bigText: boolean; lessMotion: boolean | null } = {
+  calm: false,
+  bigText: false,
+  lessMotion: null,
+  ...JSON.parse(localStorage.getItem(A11Y_KEY) ?? '{}'),
+};
+/** Isaac's lantern challenge: twice as long in the calm game. */
+const lanternSeconds = () => LANTERN_SECONDS * (a11y.calm ? 2 : 1);
+
+function applyA11y() {
+  localStorage.setItem(A11Y_KEY, JSON.stringify(a11y));
+  const less = a11y.lessMotion ?? matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.documentElement.classList.toggle('big-text', a11y.bigText);
+  document.documentElement.classList.toggle('reduce-motion', less);
+  world.setReducedMotion(a11y.lessMotion);
+  $('#m-calm').setAttribute('aria-pressed', String(a11y.calm));
+  $('#m-bigtext').setAttribute('aria-pressed', String(a11y.bigText));
+  $('#m-motion').setAttribute('aria-pressed', String(less));
+}
+
+$('#m-calm').addEventListener('click', () => {
+  a11y.calm = !a11y.calm;
+  applyA11y();
+  toast(t(a11y.calm ? 'calmOn' : 'calmOff'));
+});
+$('#m-bigtext').addEventListener('click', () => {
+  a11y.bigText = !a11y.bigText;
+  applyA11y();
+});
+$('#m-motion').addEventListener('click', () => {
+  const now = a11y.lessMotion ?? matchMedia('(prefers-reduced-motion: reduce)').matches;
+  a11y.lessMotion = !now;
+  applyA11y();
+});
+applyA11y();
+
 // --- Sharing ------------------------------------------------------------------------------------
 
 const shareUrl = () => location.origin + location.pathname;
@@ -1291,6 +1428,8 @@ function showHint() {
 
 function loop() {
   const dt = world.frame();
+  if (headingToHunt && Math.hypot(world.player.pos.x - HUB.x, world.player.pos.z - HUB.z) < 4) headingToHunt = false;
+  world.setGuide(scene === 'walk' ? objectiveTarget() : null);
   if (scene === 'raft') tickRide(dt);
   else if (scene === 'walk' || scene === 'hunt') {
     const moved = world.walk(dt, input.vector(), input.running());

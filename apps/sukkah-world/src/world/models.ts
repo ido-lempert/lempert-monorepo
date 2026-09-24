@@ -1012,6 +1012,21 @@ export function dock(len: number): THREE.Group {
   return g;
 }
 
+/** A chunky glowing arrow that floats over the player and points the way (along +z). */
+export function guideArrow(): THREE.Group {
+  const g = new THREE.Group();
+  const m = mat('#ffd23f', { emissive: 0.6, rim: 0.4 });
+  const head = mesh(new THREE.ConeGeometry(0.3, 0.45, 20), m, 0, 0, 0.55);
+  head.rotation.x = Math.PI / 2;
+  const shaft = mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.55, 14), m, 0, 0, 0.1);
+  shaft.rotation.x = Math.PI / 2;
+  g.add(head, shaft);
+  g.traverse((o) => (o.castShadow = false));
+  outline(g);
+  g.visible = false;
+  return g;
+}
+
 /** A wooden post with a lantern on top; `glow` is swapped between lit and unlit materials. */
 export function lanternPost(): { group: THREE.Group; glow: THREE.Mesh } {
   const group = new THREE.Group();

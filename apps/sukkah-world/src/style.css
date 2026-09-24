@@ -1113,7 +1113,8 @@ button:disabled {
   animation: pulse 0.6s ease-in-out infinite;
 }
 
-.menu button[aria-pressed='false'] {
+#m-music[aria-pressed='false'],
+#m-sfx[aria-pressed='false'] {
   color: var(--ink-soft);
   text-decoration: line-through;
 }
@@ -1344,4 +1345,69 @@ a.share-link {
 
 .install-actions .link-btn {
   margin: 0;
+}
+
+/* --- Guidance ------------------------------------------------------------------------------------------ */
+
+.side-quest {
+  position: fixed;
+  top: calc(max(12px, env(safe-area-inset-top)) + 62px);
+  inset-inline-start: max(12px, env(safe-area-inset-left));
+  z-index: 8;
+  min-height: var(--target);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #fff6d6;
+  color: var(--sun-ink);
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow:
+    0 3px 0 var(--sun-edge),
+    inset 0 0 0 2px var(--sun-2);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.menu-heading {
+  margin: 4px 12px 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+.menu button[aria-pressed='true'] {
+  background: #efe9ff;
+  color: var(--grape);
+  font-weight: 800;
+}
+
+.build-auto {
+  margin-top: 8px;
+  min-height: var(--target);
+}
+
+/* --- Accessibility settings ------------------------------------------------------------------------------ */
+
+html.big-text .hud,
+html.big-text .dialog,
+html.big-text .card,
+html.big-text .menu,
+html.big-text .build,
+html.big-text .toast,
+html.big-text .hint,
+html.big-text .install,
+html.big-text .side-quest,
+html.big-text .labels .label {
+  zoom: 1.2;
+}
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+.menu {
+  max-height: calc(100dvh - 90px - env(safe-area-inset-top));
+  overflow-y: auto;
 }

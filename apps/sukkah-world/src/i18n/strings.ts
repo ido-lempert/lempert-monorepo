@@ -307,6 +307,19 @@ export const he = {
   raftExit: 'לרדת מהרפסודה',
   raftLeft: 'ירדתם מהרפסודה. אפשר לחזור למשה ולצאת שוב!',
 
+  // Guidance and accessibility
+  takeMeThere: 'קחו אותי לשם',
+  sideHunt: 'עוד לא שיחקתם בציד של שושי!',
+  sideHuntGo: 'עקבו אחרי החץ – שושי מחכה לכם!',
+  accessibilityTitle: 'נגישות',
+  calmMode: 'משחק רגוע (יותר זמן)',
+  calmOn: 'משחק רגוע: יותר זמן לפנסים, שושי והנהר לאט יותר 🐢',
+  calmOff: 'חזרה לקצב הרגיל!',
+  bigText: 'טקסט גדול',
+  lessMotion: 'פחות תנועה',
+  buildAuto: 'לשים בסוכה',
+  buildPickFirst: 'קודם בוחרים קישוט מהרשימה',
+
   // Sharing and installing
   share: 'לשתף את המשחק',
   shareText: 'בואו לשחק איתי בעולם הסוכה – משחק חינם לחג הסוכות! 🍋',

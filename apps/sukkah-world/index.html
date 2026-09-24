@@ -94,9 +94,12 @@
 
     <header class="hud" id="hud">
       <div class="coins" id="coins" role="status"><span class="coin" aria-hidden="true"></span><b id="coin-count">0</b><span class="sr-only" data-i18n="coins"></span></div>
-      <div class="quest" id="quest" role="status"><span class="quest-icon" id="quest-icon" aria-hidden="true"></span><span id="quest-text" dir="auto"></span></div>
+      <div class="quest" id="quest"><span class="quest-icon" id="quest-icon" aria-hidden="true"></span><span id="quest-text" dir="auto"></span></div>
       <button class="icon" id="menu-btn" aria-expanded="false" aria-controls="menu" data-i18n-attr="title:menu;aria-label:menu">☰</button>
     </header>
+
+    <button class="side-quest hidden" id="side-quest"><span aria-hidden="true">🍋</span> <span data-i18n="sideHunt"></span></button>
+    <div class="sr-only" id="live" aria-live="polite"></div>
 
     <div class="hunt-hud hidden" id="hunt-hud" role="status">
       <div class="hunt-score me"><span data-i18n="huntYou"></span> <b id="hunt-me">0</b></div>
@@ -113,6 +116,13 @@
       <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
       <button id="m-share"><span aria-hidden="true">📣</span> <span data-i18n="share"></span></button>
       <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
+      <hr />
+      <button id="m-goto"><span aria-hidden="true">🧭</span> <span data-i18n="takeMeThere"></span></button>
+      <hr />
+      <p class="menu-heading" data-i18n="accessibilityTitle"></p>
+      <button id="m-calm" aria-pressed="false"><span aria-hidden="true">🐢</span> <span data-i18n="calmMode"></span></button>
+      <button id="m-bigtext" aria-pressed="false"><span aria-hidden="true">🔠</span> <span data-i18n="bigText"></span></button>
+      <button id="m-motion" aria-pressed="false"><span aria-hidden="true">🌙</span> <span data-i18n="lessMotion"></span></button>
       <hr />
       <button id="m-reset"><span aria-hidden="true">↺</span> <span data-i18n="reset"></span></button>
       <p class="version"><span data-i18n="version"></span> <span id="app-version" dir="ltr"></span></p>
@@ -159,6 +169,7 @@
         <button class="secondary" id="build-remove"><span aria-hidden="true">✕</span> <span data-i18n="remove"></span></button>
       </div>
       <div class="palette" id="palette" role="listbox" data-i18n-attr="aria-label:buildTitle"></div>
+      <button class="secondary build-auto" id="build-auto"><span aria-hidden="true">✨</span> <span data-i18n="buildAuto"></span></button>
     </section>
 
     <!-- Character creator -->

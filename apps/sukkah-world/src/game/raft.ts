@@ -70,13 +70,15 @@ export const raftHeight = (raft: Raft) => (raft.air > 0 ? Math.sin((1 - raft.air
  * Advances the ride by `dt` seconds (mutates `raft`). `steer` is −1..1 (towards negative / positive
  * offset); `skip` lists jugs already collected on earlier rides, which are not in the river any more.
  */
-export function stepRaft(raft: Raft, dt: number, steer: number, skip: number[] = []): RaftEvent[] {
+export function stepRaft(raft: Raft, dt: number, steer: number, skip: number[] = [], pace = 1): RaftEvent[] {
   if (raft.over) return [];
   const events: RaftEvent[] = [];
   raft.bump = Math.max(0, raft.bump - dt);
   raft.air = Math.max(0, raft.air - dt);
   // Hitting a rock slows the raft for a moment, then the current picks it up again.
-  raft.speed = raft.bump > 0 ? CURRENT * 0.35 : Math.min(CURRENT, raft.speed + dt * 2);
+  // `pace` < 1 slows the current for a calmer ride (accessibility setting).
+  const current = CURRENT * pace;
+  raft.speed = raft.bump > 0 ? current * 0.35 : Math.min(current, raft.speed + dt * 2);
   raft.s = Math.min(RIVER_LENGTH, raft.s + raft.speed * dt);
   const limit = RIVER_HALF_WIDTH - RAFT_HALF_WIDTH;
   raft.offset = Math.max(-limit, Math.min(limit, raft.offset + Math.max(-1, Math.min(1, steer)) * STEER_SPEED * dt));

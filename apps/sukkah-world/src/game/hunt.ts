@@ -87,7 +87,10 @@ function nearestFree(h: Hunt, from: Vec, skip = -1): number {
  * Advances the hunt by `dt` seconds (mutates `h`). `resolve` lets the world push the rival out of
  * buildings; it gets the desired position and returns the allowed one.
  */
-export function stepHunt(h: Hunt, dt: number, player: Vec, resolve: (p: Vec) => Vec = (p) => p): HuntEvent[] {
+/**
+ * `pace` slows the rival for a calmer game (accessibility setting); 1 is the normal speed.
+ */
+export function stepHunt(h: Hunt, dt: number, player: Vec, resolve: (p: Vec) => Vec = (p) => p, pace = 1): HuntEvent[] {
   if (h.over) return [];
   const events: HuntEvent[] = [];
   const collect = (i: number, by: Collector) => {
@@ -114,7 +117,7 @@ export function stepHunt(h: Hunt, dt: number, player: Vec, resolve: (p: Vec) => 
       const dx = t.x - r.x;
       const dz = t.z - r.z;
       const d = Math.hypot(dx, dz);
-      const step = Math.min(d, RIVAL_SPEED * dt);
+      const step = Math.min(d, RIVAL_SPEED * pace * dt);
       if (d > 0) {
         r.heading = Math.atan2(dx, dz);
         const next = resolve({ x: r.x + (dx / d) * step, z: r.z + (dz / d) * step });

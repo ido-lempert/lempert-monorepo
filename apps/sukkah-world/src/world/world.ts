@@ -85,6 +85,7 @@ import {
   character,
   decorationModel,
   flowerPot,
+  guideArrow,
   hill,
   house,
   marker,
@@ -218,7 +219,15 @@ export class World {
   private creatorAngle = 0;
   private camTarget = new THREE.Vector3();
   private camPos = new THREE.Vector3();
-  private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  private motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+  /** The player's own "less motion" choice; null follows the device setting. */
+  private motionChoice: boolean | null = null;
+  private get reducedMotion() {
+    return { matches: this.motionChoice ?? this.motionQuery.matches };
+  }
+  /** Floating arrow over the player's head, pointing to where the quest continues. */
+  private guide = guideArrow();
+  private guideTarget: Vec | null = null;
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -290,6 +299,7 @@ export class World {
     this.selection.visible = false;
     this.mySukkah.group.add(this.decorations, this.selection);
     this.scene.add(this.huntGroup);
+    this.scene.add(this.guide);
 
     this.applyQuality();
     new ResizeObserver(() => this.resize()).observe(host);
@@ -1075,6 +1085,26 @@ export class World {
     return true;
   }
 
+  setReducedMotion(on: boolean | null) {
+    this.motionChoice = on;
+  }
+
+  /** Points the guide arrow at a spot, or hides it (null). */
+  setGuide(target: Vec | null) {
+    this.guideTarget = target;
+  }
+
+  private updateGuide(time: number) {
+    const t = this.guideTarget;
+    const p = this.player.pos;
+    const far = !!t && Math.hypot(t.x - p.x, t.z - p.z) > 4;
+    this.guide.visible = far && this.mode === 'walk';
+    if (!this.guide.visible || !t) return;
+    const bob = this.reducedMotion.matches ? 0 : Math.sin(time * 4) * 0.12;
+    this.guide.position.set(p.x, 2.75 + this.airY + bob, p.z);
+    this.guide.rotation.y = Math.atan2(t.x - p.x, t.z - p.z);
+  }
+
   /** A happy little jump, e.g. when picking something up. */
   celebrate() {
     this.hop = 1;
@@ -1183,6 +1213,7 @@ export class World {
       g.char.limbs.armL.rotation.z = d < 6 && !still ? -2.3 + Math.sin(time * 8) * 0.35 : -0.15;
     }
     this.updateLambs(dt, time);
+    this.updateGuide(time);
     this.updateHelpers(dt, time, still);
 
     if (!still) {
