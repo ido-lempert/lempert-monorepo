@@ -34,6 +34,10 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - deployed as a Render static site (`sukkah-world` in `render.yaml`), from `main` like mancala: work on the `sukkah-world` branch, merge to `main` to release
   - in dev, `window.__game` (world, progress, goTo/walkTo) lets Playwright drive the game; it is not in production builds
   - UI text is Hebrew only for now, in `src/i18n/strings.ts`; address kids in the plural and use infinitives on buttons
+  - music (`src/audio.ts`, all synthesised): calm village tunes, and each quest gets its own faster theme while it is active (`Theme`, chosen in `updateMusic` in `main.ts`); quest-find sounds climb a major scale as the quest fills up (`lift`)
+  - heat and battery: `World.setPace`/`due` cap drawing at 60 fps while moving and 30 when idle (120 Hz screens would otherwise double the work), pixel ratio is capped at 1.5, shadows redraw every other frame, and the menu has a battery saver
+  - on touch screens the camera pad is hidden (two fingers turn and zoom); the accessibility menu can switch it back on
+  - `World.photoSukkah` renders the player's sukkah off-screen for the shareable greeting card (`sukkahCard` in `main.ts`)
 
 ## Conventions that differ from defaults
 

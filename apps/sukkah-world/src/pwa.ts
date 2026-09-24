@@ -57,3 +57,13 @@ export async function toggleFullscreen() {
   if (isFullscreen()) await document.exitFullscreen();
   else await document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
 }
+
+/** iPhones and iPads can't install from a prompt; the user adds the game from Safari's share menu. */
+export function isIos(): boolean {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/** Whether we can help with installing at all: a browser prompt, or instructions on iOS. */
+export function installable(): boolean {
+  return !isStandalone() && (canInstall() || isIos());
+}

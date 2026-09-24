@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 /** Short commit id shown in the menu, so it's easy to tell which version is running. */
@@ -13,10 +13,21 @@ function appVersion(): string {
   }
 }
 
+/**
+ * The public address, for link previews (Open Graph needs absolute URLs). Render provides it while
+ * building; SITE_URL can override it. Without either, the tags fall back to relative paths.
+ */
+const siteUrl = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+const siteUrlInHtml = (): Plugin => ({
+  name: 'site-url',
+  transformIndexHtml: (html) => html.replaceAll('%SITE_URL%', siteUrl),
+});
+
 export default defineConfig({
   base: './',
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
+    siteUrlInHtml(),
     VitePWA({
       // A new version takes over as soon as it is installed; main.ts offers an "Update" button instead of reloading mid-play.
       registerType: 'prompt',

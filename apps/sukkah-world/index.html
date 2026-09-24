@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#3aa0ff" />
     <meta name="description" content="עולם הסוכה – עולם תלת־ממדי לילדים: בונים סוכה, פוגשים אושפיזין ומשחקים בכפר הסוכות." />
+    <!-- Link previews (WhatsApp, Facebook, X…) -->
+    <link rel="canonical" href="%SITE_URL%/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="עולם הסוכה" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:title" content="עולם הסוכה 🍋 משחק חינם לחג הסוכות" />
+    <meta property="og:description" content="בונים סוכה, פוגשים את שבעת האושפיזין, שטים בנהר, מוצאים אוצרות וחוגגים! משחק תלת־ממד לילדים, בדפדפן ובלי התקנה." />
+    <meta property="og:image" content="%SITE_URL%/og-image.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="דמות עם כתר כוכבים וטלה ליד הסוכה הגדולה בכפר הסוכות" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="עולם הסוכה 🍋 משחק חינם לחג הסוכות" />
+    <meta name="twitter:description" content="בונים סוכה, פוגשים את שבעת האושפיזין וחוגגים! משחק תלת־ממד לילדים, בדפדפן." />
+    <meta name="twitter:image" content="%SITE_URL%/og-image.jpg" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="עולם הסוכה" />
@@ -77,9 +94,12 @@
 
     <header class="hud" id="hud">
       <div class="coins" id="coins" role="status"><span class="coin" aria-hidden="true"></span><b id="coin-count">0</b><span class="sr-only" data-i18n="coins"></span></div>
-      <div class="quest" id="quest" role="status"><span class="quest-icon" id="quest-icon" aria-hidden="true"></span><span id="quest-text" dir="auto"></span></div>
+      <div class="quest" id="quest"><span class="quest-icon" id="quest-icon" aria-hidden="true"></span><span id="quest-text" dir="auto"></span></div>
       <button class="icon" id="menu-btn" aria-expanded="false" aria-controls="menu" data-i18n-attr="title:menu;aria-label:menu">☰</button>
     </header>
+
+    <button class="side-quest hidden" id="side-quest"><span aria-hidden="true" id="side-icon"></span> <span id="side-text"></span></button>
+    <div class="sr-only" id="live" aria-live="polite"></div>
 
     <div class="hunt-hud hidden" id="hunt-hud" role="status">
       <div class="hunt-score me"><span data-i18n="huntYou"></span> <b id="hunt-me">0</b></div>
@@ -94,7 +114,22 @@
       <button id="m-music" aria-pressed="true"><span aria-hidden="true" id="m-music-icon">🎵</span> <span data-i18n="music"></span></button>
       <button id="m-sfx" aria-pressed="true"><span aria-hidden="true" id="m-sfx-icon">🔊</span> <span data-i18n="sfx"></span></button>
       <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
+      <button id="m-share"><span aria-hidden="true">📣</span> <span data-i18n="share"></span></button>
       <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
+      <hr />
+      <button id="m-party" class="hidden"><span aria-hidden="true">🎉</span> <span data-i18n="partyAgain"></span></button>
+      <button id="m-goto"><span aria-hidden="true">🧭</span> <span data-i18n="takeMeThere"></span></button>
+      <hr />
+      <p class="menu-heading" data-i18n="accessibilityTitle"></p>
+      <button id="m-calm" aria-pressed="false"><span aria-hidden="true">🐢</span> <span data-i18n="calmMode"></span></button>
+      <button id="m-bigtext" aria-pressed="false"><span aria-hidden="true">🔠</span> <span data-i18n="bigText"></span></button>
+      <button id="m-motion" aria-pressed="false"><span aria-hidden="true">🌙</span> <span data-i18n="lessMotion"></span></button>
+      <button id="m-campad" class="touch-only" aria-pressed="false"><span aria-hidden="true">🎥</span> <span data-i18n="cameraButtons"></span></button>
+      <button id="m-battery" aria-pressed="false"><span aria-hidden="true">🔋</span> <span data-i18n="batterySaver"></span></button>
+      <hr />
+      <button data-page="terms"><span aria-hidden="true">📜</span> <span data-i18n="terms"></span></button>
+      <button data-page="privacy"><span aria-hidden="true">🔒</span> <span data-i18n="privacy"></span></button>
+      <button data-page="accessibility"><span aria-hidden="true">♿</span> <span data-i18n="accessibilityStatement"></span></button>
       <hr />
       <button id="m-reset"><span aria-hidden="true">↺</span> <span data-i18n="reset"></span></button>
       <p class="version"><span data-i18n="version"></span> <span id="app-version" dir="ltr"></span></p>
@@ -111,7 +146,13 @@
       <button class="cam-btn" id="cam-in" data-i18n-attr="aria-label:camIn;title:camIn">＋</button>
       <button class="cam-btn" id="cam-out" data-i18n-attr="aria-label:camOut;title:camOut">－</button>
       <button class="cam-btn" id="cam-right" data-i18n-attr="aria-label:camRight;title:camRight">↻</button>
+      <button class="cam-btn" id="cam-up" data-i18n-attr="aria-label:camUp;title:camUp">⤒</button>
+      <button class="cam-btn" id="cam-down" data-i18n-attr="aria-label:camDown;title:camDown">⤓</button>
     </div>
+
+    <!-- Jump (and, on the raft, jump off) -->
+    <button class="jump hidden" id="jump" data-i18n-attr="aria-label:jump;title:jump">⤴</button>
+    <button class="secondary raft-exit hidden" id="raft-exit" data-i18n="raftExit"></button>
 
     <!-- Talking to characters -->
     <div class="dialog hidden" id="dialog" role="dialog" aria-modal="false" aria-labelledby="dialog-name">
@@ -135,6 +176,8 @@
         <button class="secondary" id="build-remove"><span aria-hidden="true">✕</span> <span data-i18n="remove"></span></button>
       </div>
       <div class="palette" id="palette" role="listbox" data-i18n-attr="aria-label:buildTitle"></div>
+      <button class="secondary build-auto" id="build-auto"><span aria-hidden="true">✨</span> <span data-i18n="buildAuto"></span></button>
+      <button class="secondary build-auto hidden" id="build-share"><span aria-hidden="true">📸</span> <span data-i18n="photoShare"></span></button>
     </section>
 
     <!-- Character creator -->
@@ -156,6 +199,7 @@
         </div>
         <p class="drag-hint" data-i18n="dragToTurn"></p>
         <button type="submit" class="primary big" id="creator-submit"></button>
+        <p class="legal-note"><span data-i18n="agreeIntro"></span><button type="button" class="inline-link" data-page="terms" data-i18n="termsInline"></button><span data-i18n="agreeAnd"></span><button type="button" class="inline-link" data-page="privacy" data-i18n="privacyInline"></button></p>
       </form>
     </div>
 
@@ -169,6 +213,7 @@
         <div class="actions">
           <button class="primary" id="hunt-card-go"></button>
           <button class="secondary" id="hunt-card-back"></button>
+          <button class="secondary hidden" id="hunt-card-share" data-i18n="shareScore"></button>
         </div>
       </div>
     </div>
@@ -183,6 +228,65 @@
         <div class="pads" id="tune-pads"></div>
         <button class="secondary" id="tune-close" data-i18n="close"></button>
       </div>
+    </div>
+
+    <!-- Sharing, when the device has no share sheet -->
+    <div class="overlay hidden" id="share">
+      <div class="card" role="dialog" aria-modal="true" aria-labelledby="share-title">
+        <div class="card-art" aria-hidden="true">📣</div>
+        <h1 id="share-title" data-i18n="shareTitle"></h1>
+        <p class="lead" data-i18n="shareLead"></p>
+        <div class="actions">
+          <a class="primary share-link" id="share-whatsapp" target="_blank" rel="noopener">WhatsApp</a>
+          <button class="secondary" id="share-copy" data-i18n="shareCopy"></button>
+        </div>
+        <button class="link-btn" id="share-close" data-i18n="close"></button>
+      </div>
+    </div>
+
+    <!-- Nudge to install the game -->
+    <div class="install hidden" id="install-nudge" role="dialog" aria-labelledby="install-title">
+      <img src="icon.svg" alt="" width="64" height="64" />
+      <div class="install-text">
+        <h2 id="install-title"></h2>
+        <p id="install-lead"></p>
+      </div>
+      <div class="install-actions">
+        <button class="primary" id="install-yes" data-i18n="installNow"></button>
+        <button class="link-btn" id="install-no" data-i18n="installLater"></button>
+      </div>
+    </div>
+
+    <!-- The grand finale's greeting card -->
+    <div class="overlay finale hidden" id="finale">
+      <div class="card finale-card" role="dialog" aria-modal="true" aria-labelledby="finale-title">
+        <div class="card-art" aria-hidden="true">🛖</div>
+        <h1 id="finale-title" data-i18n="finaleTitle"></h1>
+        <blockquote class="verse">
+          <p data-i18n="finaleVerse"></p>
+          <cite data-i18n="finaleVerseRef"></cite>
+        </blockquote>
+        <p class="lead" id="finale-text"></p>
+        <p class="finale-reward" id="finale-reward"></p>
+        <p class="lead finale-hunt hidden" id="finale-hunt" data-i18n="finaleHunt"></p>
+        <p class="lead finale-hunt hidden" id="finale-decorate" data-i18n="finaleDecorate"></p>
+        <div class="actions">
+          <button class="primary" id="finale-share" data-i18n="finaleShare"></button>
+          <button class="secondary" id="finale-dance" data-i18n="finaleDance"></button>
+          <button class="secondary" id="finale-back" data-i18n="backToVillage"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terms, privacy and the accessibility statement -->
+    <div class="overlay hidden" id="page">
+      <article class="card page" role="dialog" aria-modal="true" aria-labelledby="page-title">
+        <header class="page-head">
+          <h2 id="page-title"></h2>
+          <button class="icon" id="page-close" data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <div class="page-body" id="page-body"></div>
+      </article>
     </div>
 
     <div class="update hidden" id="update" role="status">

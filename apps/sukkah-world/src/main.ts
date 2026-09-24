@@ -47,14 +47,15 @@ import {
   SPECIES,
   startQuest,
 } from './game/progress';
-import { Sound } from './audio';
+import { Sound, type Theme } from './audio';
 import { applyDocument, type StringKey, t } from './i18n';
-import { canFullscreen, canInstall, install, isFullscreen, onPwaChange, toggleFullscreen } from './pwa';
+import { PAGE_TITLES, type PageId, PAGES } from './i18n/pages';
+import { canFullscreen, canInstall, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
 import './style.css';
 import { WalkInput } from './world/input';
 import type { Vec } from './game/hunt';
-import { JUG_SPOTS, type Raft, startRaft, stepRaft } from './game/raft';
-import { GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RIDE_END, SHEAF_SPOTS, VILLAGERS, HUB, huntCandidates, inside, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
+import { JUG_SPOTS, jumpRaft, type Raft, startRaft, stepRaft } from './game/raft';
+import { GARDEN, RIVER, riverPoint, GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RIDE_END, SHEAF_SPOTS, VILLAGERS, HUB, huntCandidates, inside, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
 import { World } from './world/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -81,20 +82,23 @@ const world = new World($('#stage'));
 const input = new WalkInput(world.canvas);
 applyDocument();
 
-type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune';
+type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune' | 'finale';
 let scene: Scene = 'walk';
 
 function setScene(next: Scene) {
   scene = next;
   input.reset();
   input.walking = next === 'walk' || next === 'hunt' || next === 'raft';
-  if (next !== 'raft') world.setMode(next === 'creator' ? 'creator' : next === 'build' ? 'build' : 'walk');
+  if (next !== 'raft' && next !== 'finale') world.setMode(next === 'creator' ? 'creator' : next === 'build' ? 'build' : 'walk');
+  if (next !== 'finale') $('#finale').classList.add('hidden');
   $('#hud').classList.toggle('hidden', next === 'creator');
   $('#creator').classList.toggle('hidden', next !== 'creator');
   $('#build').classList.toggle('hidden', next !== 'build');
   $('#hunt-hud').classList.toggle('hidden', next !== 'hunt');
   // The camera can be turned and zoomed while walking around (and during the etrog hunt).
   $('#cam').classList.toggle('hidden', next !== 'walk' && next !== 'hunt');
+  $('#jump').classList.toggle('hidden', next !== 'walk' && next !== 'hunt' && next !== 'raft');
+  $('#raft-exit').classList.toggle('hidden', next !== 'raft');
   $('#quest').classList.toggle('hidden', next === 'hunt');
   if (next !== 'walk') $('#hint').classList.add('gone');
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
@@ -102,6 +106,25 @@ function setScene(next: Scene) {
   if (next !== 'tune') $('#tune').classList.add('hidden');
   closeMenu();
   updateAction();
+  updateMusic();
+}
+
+/** The music follows the game: calm in the village, each quest's own quicker tune while it is on. */
+function updateMusic() {
+  const guest = currentGuest(progress);
+  const on = guest && ['active', 'returning'].includes(progress.quests[guest].stage);
+  const theme: Theme =
+    scene === 'tune' ? 'quiet' : scene === 'hunt' ? 'hunt' : scene === 'finale' ? 'finale' : scene === 'raft' ? 'moses' : on ? guest : 'village';
+  sound.setTheme(theme);
+}
+
+/** A major scale over an octave: quest finds climb it, higher with every one. */
+const SCALE = [0, 2, 4, 5, 7, 9, 11, 12];
+
+/** How far up the scale a quest's sounds go when `found` of its items are in (the last one at the top). */
+function lift(guest: GuestId, found: number): number {
+  const total = QUEST_ITEMS[guest];
+  return SCALE[Math.round((Math.max(0, found - 1) / Math.max(1, total - 1)) * (SCALE.length - 1))];
 }
 
 function refresh() {
@@ -115,6 +138,7 @@ function refresh() {
     $('#coins').classList.add('bump');
   }
   renderQuest();
+  updateMusic();
   const abraham = progress.quests.abraham;
   world.setSpecies(abraham.stage === 'active', abraham.found as SpeciesId[]);
   for (const g of GUESTS) {
@@ -233,7 +257,7 @@ function talkTo(guest: GuestId) {
   const lines = LINES[guest];
   const face = GUEST_FACE[guest];
   const name = t(guest);
-  const params = { name: playerName(), coins: QUEST_REWARDS[guest].coins, seconds: LANTERN_SECONDS, n: QUEST_ITEMS[guest] - q.found.length };
+  const params = { name: playerName(), coins: QUEST_REWARDS[guest].coins, seconds: lanternSeconds(), n: QUEST_ITEMS[guest] - q.found.length };
   switch (q.stage) {
     case 'notStarted':
       say(face, name, t(lines.intro, params), [
@@ -268,6 +292,8 @@ function talkTo(guest: GuestId) {
           primary: true,
           onClick: () => {
             commit(completeQuest(progress, guest));
+            // A good moment to suggest installing: the kid just finished something and is having fun.
+            setTimeout(() => nudgeInstall(), 3000);
             sound.play('fanfare');
             world.sparkle(world.guestSpot(guest), '#ffd166', 2);
             world.celebrate();
@@ -315,6 +341,24 @@ function sheafTemperature(): string {
   return t(d < 5 ? 'tempHot' : d < 11 ? 'tempWarm' : d < 20 ? 'tempMild' : 'tempCold');
 }
 
+let lastStep = '';
+
+/**
+ * The side activities are easy to miss, so once Abraham's quest is done a little reminder stays up until
+ * they have been tried: first decorating your own sukkah (Abraham's gift is a lantern for it), then Shoshi's hunt.
+ */
+type SideGoal = 'decorate' | 'hunt';
+function sideGoal(): SideGoal | null {
+  if (progress.quests.abraham.stage !== 'done' || scene !== 'walk') return null;
+  if (!progress.achievements.includes('firstDecoration')) return 'decorate';
+  if (!progress.achievements.includes('firstHunt')) return 'hunt';
+  return null;
+}
+const SIDE: Record<SideGoal, { icon: string; text: StringKey; go: StringKey }> = {
+  decorate: { icon: '🛖', text: 'sideDecorate', go: 'sideDecorateGo' },
+  hunt: { icon: '🍋', text: 'sideHunt', go: 'sideHuntGo' },
+};
+
 function renderQuest() {
   const guest = currentGuest(progress);
   let icon = '🎉';
@@ -335,6 +379,19 @@ function renderQuest() {
   }
   $('#quest-icon').textContent = icon;
   if ($('#quest-text').textContent !== text) $('#quest-text').textContent = text;
+  // Screen readers hear about a new step, not every tick of a timer or meter.
+  const step = `${guest}:${guest ? progress.quests[guest].stage : readyForGrandEvent(progress)}`;
+  if (step !== lastStep) {
+    lastStep = step;
+    $('#live').textContent = text;
+  }
+  const side = sideGoal();
+  $('#side-quest').classList.toggle('hidden', !side);
+  if (side && $('#side-quest').dataset.goal !== side) {
+    $('#side-quest').dataset.goal = side;
+    $('#side-icon').textContent = SIDE[side].icon;
+    $('#side-text').textContent = t(SIDE[side].text);
+  }
   $('#quest').classList.toggle('urgent', !!lanternDeadline && lanternLeft() < 10);
 }
 
@@ -383,10 +440,16 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     if (!$('#menu').classList.contains('hidden')) closeMenu();
     else if (scene === 'build' || scene === 'dialog') setScene('walk');
+    else if (scene === 'finale') showFinaleCard();
     return;
   }
   const onPage = document.activeElement === document.body || document.activeElement === null;
-  if (action && (e.code === 'KeyE' || (onPage && (e.code === 'Enter' || e.code === 'Space')))) {
+  if (e.code === 'Space' && onPage && (scene === 'walk' || scene === 'hunt' || scene === 'raft')) {
+    e.preventDefault();
+    jump();
+    return;
+  }
+  if (action && (e.code === 'KeyE' || (onPage && e.code === 'Enter'))) {
     e.preventDefault();
     runAction();
   }
@@ -411,9 +474,9 @@ function checkQuestItems() {
     for (const id of SPECIES) {
       if (progress.quests.abraham.found.includes(id) || !near(SPECIES_SPOTS[id], 1.4)) continue;
       world.sparkle(SPECIES_SPOTS[id], '#b8f28c', 1.2);
-      sound.play('pickup');
       world.celebrate();
       const next = findItem(progress, 'abraham', id);
+      sound.play('pickup', lift('abraham', next.quests.abraham.found.length));
       commit(next);
       toast(next.quests.abraham.stage === 'returning' ? `🌿 ${t('allFound')}` : `✨ ${t('foundSpecies', { item: t(id) })}`);
     }
@@ -422,10 +485,10 @@ function checkQuestItems() {
     if (lanternBlocked >= 0 && !near(LANTERNS[lanternBlocked], 2)) lanternBlocked = -1;
     LANTERNS.forEach((l, i) => {
       if (progress.quests.isaac.found.includes(String(i)) || i === lanternBlocked || !near(l, 1.4)) return;
-      if (!lanternDeadline) lanternDeadline = performance.now() + LANTERN_SECONDS * 1000;
+      if (!lanternDeadline) lanternDeadline = performance.now() + lanternSeconds() * 1000;
       world.sparkle(l, '#ffb347', 1.6);
-      sound.play('chime');
       const next = findItem(progress, 'isaac', String(i));
+      sound.play('chime', lift('isaac', next.quests.isaac.found.length));
       commit(next);
       if (next.quests.isaac.stage === 'returning') {
         lanternDeadline = 0;
@@ -451,14 +514,15 @@ function checkQuestItems() {
         world.sparkle(world.lambPosition(i), '#ffffff', 0.8);
         world.celebrate();
         toast(`🐑 ${t('lambFound')}`);
-        sound.play('baa');
+        sound.play('baa', lift('jacob', progress.quests.jacob.found.length + world.lambStates.filter((s) => s === 'following').length));
       } else if (state === 'following') {
         const l = world.lambPosition(i);
         if (Math.hypot(l.x - PEN.x, l.z - PEN.z) < PEN.r + 0.4) {
           world.sparkle(PEN, '#ffd166', 1);
-          sound.play('baa');
-          setTimeout(() => sound.play('pickup'), 250);
           const next = findItem(progress, 'jacob', String(i));
+          const up = lift('jacob', next.quests.jacob.found.length);
+          sound.play('baa', up);
+          setTimeout(() => sound.play('pickup', up), 250);
           commit(next);
           toast(next.quests.jacob.stage === 'returning' ? `🐑 ${t('allLambs')}` : `🐑 ${t('lambHome', { n: next.quests.jacob.found.length })}`);
         }
@@ -486,7 +550,7 @@ function checkAaron(near: (v: Vec, r: number) => boolean) {
       if (needed.includes(id) && near(HELP_ITEMS[id], 1.4)) {
         carrying = id;
         world.setCarrying(id);
-        sound.play('pickup');
+        sound.play('pickup', lift('aaron', q.found.length));
         toast(`${NEED_ICON[id]} ${t('pickedUp', { item: t(id) })}`);
         refresh();
       }
@@ -501,8 +565,8 @@ function checkAaron(near: (v: Vec, r: number) => boolean) {
       world.setCarrying(null);
       world.sparkle(v, '#ff8fc7', 1.5);
       world.celebrate();
-      sound.play('achievement');
       const next = findItem(progress, 'aaron', String(i));
+      sound.play('achievement', lift('aaron', next.quests.aaron.found.length));
       commit(next);
       toast(`💛 ${t('helped', { n: next.quests.aaron.found.length })}`);
     } else if (!besideVillager[i]) {
@@ -522,8 +586,8 @@ function checkJoseph(near: (v: Vec, r: number) => boolean) {
     if (q.found.includes(String(i)) || !near(spot, 1.4)) return;
     world.sparkle(spot, '#ffd23f', 1.2);
     world.celebrate();
-    sound.play('chime');
     const next = findItem(progress, 'joseph', String(i));
+    sound.play('chime', lift('joseph', next.quests.joseph.found.length));
     commit(next);
     toast(next.quests.joseph.stage === 'returning' ? `🌾 ${t('allSheaves')}` : `🌾 ${t('sheafFound', { n: next.quests.joseph.found.length })}`);
   });
@@ -583,12 +647,13 @@ function playTune(delay: number) {
   tuneListening = true;
   tuneAt = 0;
   $('#tune-status').textContent = t('tuneListen');
-  tuneTimers = tuneSeq.map((n, k) => window.setTimeout(() => flashPad(n), delay + k * 620));
+  const gap = a11y.calm ? 900 : 620;
+  tuneTimers = tuneSeq.map((n, k) => window.setTimeout(() => flashPad(n), delay + k * gap));
   tuneTimers.push(
     window.setTimeout(() => {
       tuneListening = false;
       $('#tune-status').textContent = t('tuneYourTurn');
-    }, delay + tuneSeq.length * 620),
+    }, delay + tuneSeq.length * gap),
   );
 }
 
@@ -606,7 +671,7 @@ function pressPad(i: number) {
   tuneListening = true;
   const next = findItem(progress, 'david', String(progress.quests.david.found.length));
   commit(next);
-  sound.play('achievement');
+  sound.play('achievement', lift('david', next.quests.david.found.length));
   $('#tune-status').textContent = t('tuneGood');
   if (next.quests.david.stage === 'returning')
     tuneTimers.push(
@@ -633,11 +698,58 @@ world.onFirework = () => sound.play('firework');
 function checkGrandEvent() {
   if (!readyForGrandEvent(progress) || !inside(world.player.pos, GRAND_SUKKAH, -0.5)) return;
   commit(celebrateGrandEvent(progress));
-  world.fireworks(GRAND_SUKKAH, 12);
-  world.celebrate();
-  sound.play('fanfare');
-  say(GUEST_FACE.abraham, t('abraham'), t('grandEventText', { name: playerName(), coins: GRAND_EVENT_REWARD.coins }), [{ label: t('grandEventOk'), primary: true }]);
+  startFinale(true);
 }
+
+/** In front of the Grand Sukkah, where the hora is danced. */
+const FINALE_CENTER = { x: GRAND_SUKKAH.x, z: GRAND_SUKKAH.z + GRAND_SUKKAH.d / 2 + 3.6 };
+let finaleTimers: number[] = [];
+
+/** `first`: the celebration that ends the game (with its rewards), rather than a replay from the menu. */
+let finaleFirst = false;
+
+function startFinale(first = false) {
+  finaleFirst = first;
+  setScene('finale');
+  world.startFinale(FINALE_CENTER);
+  sound.play('fanfare');
+  finaleTimers.forEach(clearTimeout);
+  finaleTimers = [
+    window.setTimeout(() => sound.play('achievement'), 1600),
+    window.setTimeout(showFinaleCard, 4500),
+  ];
+}
+
+function showFinaleCard() {
+  if (scene !== 'finale') return;
+  $('#finale-text').textContent = t('finaleText', { name: playerName() });
+  $('#finale-hunt').classList.toggle('hidden', progress.achievements.includes('firstHunt'));
+  $('#finale-decorate').classList.toggle('hidden', progress.placed.length > 0);
+  $('#finale-reward').textContent = finaleFirst ? t('finaleReward', { coins: GRAND_EVENT_REWARD.coins }) : '';
+  $('#finale').classList.remove('hidden');
+  $('#finale-share').focus();
+}
+
+function endFinale() {
+  finaleTimers.forEach(clearTimeout);
+  world.endFinale();
+  setScene('walk');
+  refresh();
+}
+
+$('#finale-share').addEventListener('click', () =>
+  progress.placed.length ? void shareSukkah(t('finaleShareText')) : void shareGame(t('finaleShareText')),
+);
+$('#finale-dance').addEventListener('click', () => {
+  $('#finale').classList.add('hidden');
+  // Bring the card back after a while, so there's always a way out of the party.
+  finaleTimers.push(window.setTimeout(showFinaleCard, 12000));
+});
+$('#finale-back').addEventListener('click', endFinale);
+$('#m-party').addEventListener('click', () => {
+  closeMenu();
+  if (scene === 'walk') startFinale(false);
+});
 
 // --- Moses' raft ride ---------------------------------------------------------------------------
 
@@ -661,13 +773,13 @@ function tickRide(dt: number) {
   if (!ride) return;
   // Screen-right steers towards the inner bank (the chase camera looks downstream).
   const steer = -input.vector()[0];
-  for (const e of stepRaft(ride, dt, steer, jugsTaken())) {
+  for (const e of stepRaft(ride, dt, steer, jugsTaken(), a11y.calm ? 0.65 : 1)) {
     const spot = e.type === 'jug' ? JUG_SPOTS[e.index] : null;
     if (spot) {
       world.sparkle(world.player.pos, '#7fd6ff', 1.2);
       world.celebrate();
-      sound.play('pickup');
       const next = findItem(progress, 'moses', String(e.index));
+      sound.play('pickup', lift('moses', next.quests.moses.found.length));
       commit(next);
       world.setJugs(JUG_SPOTS.map((_, i) => !jugsTaken().includes(i)));
       toast(next.quests.moses.stage === 'returning' ? `🏺 ${t('allJugs')}` : `🏺 ${t('jugFound', { n: next.quests.moses.found.length })}`);
@@ -677,13 +789,27 @@ function tickRide(dt: number) {
     }
   }
   world.syncRide(ride);
-  if (ride.over) {
-    ride = null;
-    world.endRide();
-    world.teleport(RIDE_END, Math.PI * 0.4);
-    setScene('walk');
-    if (progress.quests.moses.stage === 'active') toast(`🛶 ${t('rideOver')}`);
-  }
+  if (ride.over) endRide(false);
+}
+
+/** Ends the ride: at the end of the river, or wherever the raft is when the player jumps off. */
+function endRide(early: boolean) {
+  if (!ride) return;
+  const s = ride.s;
+  ride = null;
+  world.endRide();
+  // Step off onto the near bank, right beside where the raft was.
+  const bank = early ? resolve(riverPoint(s, -(RIVER.halfWidth + 1.4))) : RIDE_END;
+  world.teleport(bank, Math.PI * 0.4);
+  setScene('walk');
+  if (progress.quests.moses.stage === 'active') toast(`🛶 ${t(early ? 'raftLeft' : 'rideOver')}`);
+}
+
+/** Space or the jump button: the player hops, or the raft leaps over rocks. */
+function jump() {
+  if (scene === 'raft' && ride) {
+    if (jumpRaft(ride)) sound.play('pop');
+  } else if ((scene === 'walk' || scene === 'hunt') && world.jump()) sound.play('pop');
 }
 
 // --- Decorating --------------------------------------------------------------------------------
@@ -727,6 +853,7 @@ function renderPalette() {
     }),
   );
   $('#build-selected').classList.toggle('hidden', selectedPlaced < 0);
+  $('#build-share').classList.toggle('hidden', !progress.placed.length);
   $('#build-hint').textContent =
     selectedPlaced >= 0 ? t('buildSelected') : progress.placed.length >= MAX_PLACED ? t('sukkahFull') : t('buildHint');
 }
@@ -764,6 +891,29 @@ input.onTap = (x, y) => {
   refresh();
 };
 
+/** Puts the chosen decoration in the first free spot – for keyboards, switches and anyone who'd rather not aim. */
+$('#build-auto').addEventListener('click', () => {
+  if (!placing || available(progress, placing) <= 0) {
+    toast(t('buildPickFirst'));
+    return;
+  }
+  const mount = decoration(placing).mount;
+  const taken = progress.placed.filter((p) => decoration(p.id).mount === mount);
+  const hw = MY_SUKKAH.w / 2 - 0.6;
+  const hd = MY_SUKKAH.d / 2 - 0.6;
+  for (let z = -hd; z <= hd + 0.01; z += 0.85)
+    for (let x = -hw; x <= hw + 0.01; x += 0.9)
+      if (taken.every((p) => Math.hypot(p.x - x, p.z - z) > 0.8)) {
+        const before = progress.placed.length;
+        commit(place(progress, { id: placing, x: Math.round(x * 4) / 4, z: Math.round(z * 4) / 4, rot: 0 }));
+        if (progress.placed.length > before) sound.play('pop');
+        if (available(progress, placing) === 0) placing = null;
+        refresh();
+        return;
+      }
+  toast(t('sukkahFull'));
+});
+
 $('#build-rotate').addEventListener('click', () => commit(rotatePlaced(progress, selectedPlaced)));
 $('#build-remove').addEventListener('click', () => {
   const index = selectedPlaced;
@@ -791,6 +941,7 @@ function showHuntCard(mode: 'intro' | 'result') {
     $('#hunt-card-text').textContent = t('huntIntro', { per: COINS_PER_ETROG, bonus: HUNT_WIN_BONUS });
     go.textContent = t('huntStart');
     $('#hunt-card-back').textContent = t('notNow');
+    $('#hunt-card-share').classList.add('hidden');
   } else {
     const h = hunt!;
     const won = h.mine > h.rivals;
@@ -800,6 +951,8 @@ function showHuntCard(mode: 'intro' | 'result') {
     $('#hunt-card-text').textContent = t('huntResult', { mine: h.mine, rival: h.rivals, coins: huntReward(h.mine, h.rivals) });
     go.textContent = t('playAgain');
     $('#hunt-card-back').textContent = t('backToVillage');
+    $('#hunt-card-share').classList.remove('hidden');
+    $('#hunt-card-share').onclick = () => void shareGame(t('shareHunt', { n: h.mine }));
   }
   $('#hunt-card-best').textContent = progress.bestHunt ? t('huntBest', { best: progress.bestHunt }) : '';
   $('#hunt-card').classList.remove('hidden');
@@ -825,10 +978,11 @@ function updateHuntHud() {
 
 function tickHunt(dt: number) {
   if (!hunt) return;
-  const events = stepHunt(hunt, dt, world.player.pos, (p) => resolve(p, 0.45));
+  const events = stepHunt(hunt, dt, world.player.pos, (p) => resolve(p, 0.45), a11y.calm ? 0.7 : 1);
   for (const e of events) {
     world.sparkle(hunt.etrogs[e.index], e.by === 'me' ? '#ffe066' : '#ffffff', 1);
-    sound.play(e.by === 'me' ? 'pickup' : 'blip');
+    // Every two etrogs the pickup sound climbs a step, up to an octave.
+    sound.play(e.by === 'me' ? 'pickup' : 'blip', e.by === 'me' ? SCALE[Math.min(SCALE.length - 1, Math.floor((hunt.mine - 1) / 2))] : 0);
     if (e.by === 'me') world.celebrate();
   }
   world.syncHunt(hunt);
@@ -1086,7 +1240,10 @@ function openCreator() {
   world.snapCamera();
 }
 
-input.onCamera = (turn, zoom) => world.turnCamera(turn, zoom);
+input.onCamera = (turn, zoom, tilt) => {
+  lastMoved = performance.now();
+  world.turnCamera(turn, zoom, tilt);
+};
 for (const [id, turn, zoom] of [
   ['#cam-left', -Math.PI / 4, 1],
   ['#cam-right', Math.PI / 4, 1],
@@ -1094,6 +1251,10 @@ for (const [id, turn, zoom] of [
   ['#cam-out', 0, 1.33],
 ] as const)
   $(id).addEventListener('click', () => world.turnCamera(turn, zoom));
+$('#cam-up').addEventListener('click', () => world.turnCamera(0, 1, 0.3));
+$('#cam-down').addEventListener('click', () => world.turnCamera(0, 1, -0.3));
+$('#jump').addEventListener('click', jump);
+$('#raft-exit').addEventListener('click', () => endRide(true));
 
 input.onDrag = (dx) => {
   if (scene === 'creator') world.spin(dx * 0.012);
@@ -1122,7 +1283,7 @@ function closeMenu() {
 }
 
 function renderMenu() {
-  $('#m-install').classList.toggle('hidden', !canInstall());
+  $('#m-install').classList.toggle('hidden', !installable());
   $('#m-fullscreen').classList.toggle('hidden', !canFullscreen());
   $('#m-fullscreen-label').textContent = t(isFullscreen() ? 'exitFullscreen' : 'fullscreen');
   $('#m-music').setAttribute('aria-pressed', String(sound.prefs.music));
@@ -1130,7 +1291,9 @@ function renderMenu() {
   $('#m-sfx').setAttribute('aria-pressed', String(sound.prefs.sfx));
   $('#m-sfx-icon').textContent = sound.prefs.sfx ? '🔊' : '🔇';
   // Travelling away mid-hunt would be cheating the race.
-  const busy = scene === 'hunt' || scene === 'raft';
+  const busy = scene === 'hunt' || scene === 'raft' || scene === 'finale';
+  $('#m-party').classList.toggle('hidden', !progress.achievements.includes('grandEvent'));
+  $('#m-party').toggleAttribute('disabled', busy);
   $('#m-home').toggleAttribute('disabled', busy);
   $('#m-plaza').toggleAttribute('disabled', busy);
   $('#m-avatar').toggleAttribute('disabled', busy);
@@ -1174,12 +1337,281 @@ $('#m-sfx').addEventListener('click', () => {
 document.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('button')) sound.play('click');
 });
-$('#m-install').addEventListener('click', () => void install());
+$('#m-install').addEventListener('click', () => {
+  closeMenu();
+  if (canInstall()) void install();
+  else nudgeInstall(true);
+});
 $('#m-reset').addEventListener('click', () => {
   if (!confirm(t('resetConfirm'))) return;
   localStorage.removeItem(SAVE_KEY);
   location.reload();
 });
+
+// --- Guidance: the arrow and "take me there" ------------------------------------------------------
+
+/** Set by the side reminder: the arrow then points there (the hunt or your sukkah) until the player arrives. */
+let heading: Vec | null = null;
+
+const nearestTo = (list: Vec[]): Vec | undefined => {
+  const p = world.player.pos;
+  return [...list].sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+};
+
+/** Where the story continues from here (null: nothing to point at, e.g. during Joseph's treasure hunt). */
+function objectiveTarget(): Vec | null {
+  if (heading) return heading;
+  const g = currentGuest(progress);
+  if (!g) return readyForGrandEvent(progress) ? GRAND_SUKKAH : !progress.achievements.includes('firstHunt') ? HUB : null;
+  const q = progress.quests[g];
+  if (q.stage !== 'active') return world.guestSpot(g);
+  switch (g) {
+    case 'abraham':
+      return nearestTo(SPECIES.filter((id) => !q.found.includes(id)).map((id) => SPECIES_SPOTS[id])) ?? null;
+    case 'isaac':
+      return LANTERNS.find((_, i) => !q.found.includes(String(i))) ?? null;
+    case 'jacob':
+      return world.lambStates.includes('following') ? PEN : (nearestTo(LAMB_SPOTS.filter((_, i) => world.lambStates[i] === 'lost')) ?? null);
+    case 'aaron':
+      if (carrying) return VILLAGERS.find((v, i) => v.needs === carrying && !q.found.includes(String(i))) ?? null;
+      return nearestTo(VILLAGERS.filter((_, i) => !q.found.includes(String(i))).map((v) => HELP_ITEMS[v.needs])) ?? null;
+    case 'joseph':
+      return null;
+    default:
+      return world.guestSpot(g);
+  }
+}
+
+/** A safe place to arrive at for "take me there": the area's landmark rather than right on top of a challenge. */
+function arrivalFor(target: Vec): Vec {
+  const g = currentGuest(progress);
+  const q = g ? progress.quests[g] : null;
+  let anchor = target;
+  // Landmarks (the hunt, the Grand Sukkah) are arrived at directly; quest challenges from their entrance.
+  if (g && q?.stage === 'active' && target !== HUB && target !== GRAND_SUKKAH) {
+    if (g === 'abraham') anchor = { x: GARDEN.x + GARDEN.w / 2 + 1.5, z: GARDEN.z };
+    if (g === 'isaac' || g === 'jacob') anchor = world.guestSpot(g);
+  }
+  // Stand a couple of metres from it, on the side facing the village centre.
+  const len = Math.hypot(anchor.x, anchor.z) || 1;
+  return resolve({ x: anchor.x - (anchor.x / len) * 2.2, z: anchor.z - (anchor.z / len) * 2.2 });
+}
+
+$('#m-goto').addEventListener('click', () => {
+  closeMenu();
+  const target = objectiveTarget() ?? (currentGuest(progress) ? world.guestSpot(currentGuest(progress)!) : null);
+  if (!target || (scene !== 'walk' && scene !== 'hunt')) return;
+  world.teleport(arrivalFor(target), world.player.heading);
+  world.sparkle(world.player.pos, '#ffd23f', 1);
+  sound.play('pop');
+});
+$('#side-quest').addEventListener('click', () => {
+  const side = sideGoal();
+  if (!side) return;
+  heading = side === 'hunt' ? HUB : MY_SUKKAH;
+  toast(`${SIDE[side].icon} ${t(SIDE[side].go)}`);
+});
+
+// --- Accessibility settings -------------------------------------------------------------------------
+
+const A11Y_KEY = 'sukkahWorld.a11y';
+const a11y: { calm: boolean; bigText: boolean; lessMotion: boolean | null; camPad: boolean; battery: boolean } = {
+  calm: false,
+  bigText: false,
+  lessMotion: null,
+  camPad: false,
+  battery: false,
+  ...JSON.parse(localStorage.getItem(A11Y_KEY) ?? '{}'),
+};
+/** Isaac's lantern challenge: twice as long in the calm game. */
+const lanternSeconds = () => LANTERN_SECONDS * (a11y.calm ? 2 : 1);
+
+function applyA11y() {
+  localStorage.setItem(A11Y_KEY, JSON.stringify(a11y));
+  const less = a11y.lessMotion ?? matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.documentElement.classList.toggle('big-text', a11y.bigText);
+  document.documentElement.classList.toggle('reduce-motion', less);
+  world.setReducedMotion(a11y.lessMotion);
+  document.documentElement.classList.toggle('cam-pad', a11y.camPad);
+  world.setBatterySaver(a11y.battery);
+  $('#m-campad').setAttribute('aria-pressed', String(a11y.camPad));
+  $('#m-battery').setAttribute('aria-pressed', String(a11y.battery));
+  $('#m-calm').setAttribute('aria-pressed', String(a11y.calm));
+  $('#m-bigtext').setAttribute('aria-pressed', String(a11y.bigText));
+  $('#m-motion').setAttribute('aria-pressed', String(less));
+}
+
+$('#m-calm').addEventListener('click', () => {
+  a11y.calm = !a11y.calm;
+  applyA11y();
+  toast(t(a11y.calm ? 'calmOn' : 'calmOff'));
+});
+$('#m-bigtext').addEventListener('click', () => {
+  a11y.bigText = !a11y.bigText;
+  applyA11y();
+});
+$('#m-motion').addEventListener('click', () => {
+  const now = a11y.lessMotion ?? matchMedia('(prefers-reduced-motion: reduce)').matches;
+  a11y.lessMotion = !now;
+  applyA11y();
+});
+$('#m-campad').addEventListener('click', () => {
+  a11y.camPad = !a11y.camPad;
+  applyA11y();
+});
+$('#m-battery').addEventListener('click', () => {
+  a11y.battery = !a11y.battery;
+  applyA11y();
+  toast(t(a11y.battery ? 'batteryOn' : 'batteryOff'));
+});
+applyA11y();
+
+// --- Terms, privacy and accessibility pages ---------------------------------------------------------
+
+let pageOpener: HTMLElement | null = null;
+
+function openPage(id: PageId) {
+  closeMenu();
+  pageOpener = document.activeElement as HTMLElement | null;
+  $('#page-title').textContent = PAGE_TITLES[id];
+  $('#page-body').innerHTML = PAGES[id];
+  $('#page').classList.remove('hidden');
+  input.reset();
+  input.walking = false;
+  $('#page-close').focus();
+}
+
+function closePage() {
+  if ($('#page').classList.contains('hidden')) return false;
+  $('#page').classList.add('hidden');
+  input.walking = scene === 'walk' || scene === 'hunt' || scene === 'raft';
+  pageOpener?.focus();
+  return true;
+}
+
+document.querySelectorAll<HTMLElement>('[data-page]').forEach((b) => b.addEventListener('click', () => openPage(b.dataset.page as PageId)));
+$('#page-close').addEventListener('click', closePage);
+addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && closePage()) e.stopImmediatePropagation();
+}, true);
+
+// --- Sharing ------------------------------------------------------------------------------------
+
+const shareUrl = () => location.origin + location.pathname;
+
+/** The device's share sheet where there is one; otherwise WhatsApp or copying the link. */
+async function shareGame(text = t('shareText')) {
+  const url = shareUrl();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: t('appName'), text, url });
+      return;
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+    }
+  }
+  $<HTMLAnchorElement>('#share-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`;
+  $('#share').classList.remove('hidden');
+  $('#share-copy').focus();
+}
+
+/**
+ * A greeting card with a photo of the player's sukkah: the photo, their name and a holiday wish. Built
+ * synchronously (no awaits) so the share sheet still counts as a response to the tap on iPhones.
+ */
+function sukkahCard(): File {
+  const W = 1080;
+  const card = document.createElement('canvas');
+  card.width = W;
+  card.height = 1350;
+  const c = card.getContext('2d')!;
+  c.fillStyle = '#ffd23f';
+  c.fillRect(0, 0, W, card.height);
+  c.drawImage(world.photoSukkah(W), 0, 0);
+  c.fillStyle = '#fffaf0';
+  c.beginPath();
+  c.roundRect(40, W - 70, W - 80, 340, 48);
+  c.fill();
+  c.direction = 'rtl';
+  c.textAlign = 'center';
+  c.fillStyle = '#1d2b53';
+  const font = "'Rubik Variable', system-ui, sans-serif";
+  c.font = `900 76px ${font}`;
+  c.fillText(t('photoTitle', { name: playerName() }), W / 2, W + 40);
+  c.font = `800 56px ${font}`;
+  c.fillText(t('photoWish'), W / 2, W + 130);
+  c.font = `700 34px ${font}`;
+  c.fillStyle = '#4a5578';
+  c.fillText(t('appName'), W / 2, W + 215);
+  const data = atob(card.toDataURL('image/png').split(',')[1]);
+  const bytes = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i);
+  return new File([bytes], 'my-sukkah.png', { type: 'image/png' });
+}
+
+/** Shares the sukkah photo where the device can share pictures; otherwise saves it and offers the link. */
+async function shareSukkah(text: string) {
+  const file = sukkahCard();
+  sound.play('pop');
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: t('appName'), text: `${text} ${shareUrl()}` });
+    } catch {
+      /* closed the share sheet */
+    }
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast(`📸 ${t('photoSaved')}`);
+  void shareGame(text);
+}
+
+$('#build-share').addEventListener('click', () => void shareSukkah(t('photoShareText')));
+
+$('#m-share').addEventListener('click', () => {
+  closeMenu();
+  void shareGame();
+});
+$('#share-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(shareUrl());
+    toast(`🔗 ${t('shareCopied')}`);
+  } catch {
+    prompt(t('shareCopy'), shareUrl());
+  }
+  $('#share').classList.add('hidden');
+});
+$('#share-close').addEventListener('click', () => $('#share').classList.add('hidden'));
+
+// --- Install nudge --------------------------------------------------------------------------------
+
+const NUDGE_KEY = 'sukkahWorld.installNudge';
+
+/** Suggests installing the game, at most every couple of days and three times in all. */
+function nudgeInstall(force = false) {
+  if (!installable() || scene !== 'walk' || !$('#install-nudge').classList.contains('hidden')) return;
+  const seen = JSON.parse(localStorage.getItem(NUDGE_KEY) ?? '{"count":0,"at":0}') as { count: number; at: number };
+  if (!force && (seen.count >= 3 || Date.now() - seen.at < 2 * 24 * 3600 * 1000)) return;
+  localStorage.setItem(NUDGE_KEY, JSON.stringify({ count: seen.count + 1, at: Date.now() }));
+  const phone = matchMedia('(pointer: coarse)').matches;
+  $('#install-title').textContent = t(phone ? 'installTitleMobile' : 'installTitleDesktop');
+  $('#install-lead').textContent = t(isIos() && !canInstall() ? 'installIos' : 'installLead');
+  $('#install-yes').textContent = t(isIos() && !canInstall() ? 'installGotIt' : 'installNow');
+  $('#install-nudge').classList.remove('hidden');
+  sound.play('pop');
+}
+
+$('#install-yes').addEventListener('click', () => {
+  $('#install-nudge').classList.add('hidden');
+  if (canInstall()) void install();
+});
+$('#install-no').addEventListener('click', () => $('#install-nudge').classList.add('hidden'));
+// Also after a few minutes of play, for kids who haven't finished a quest yet.
+setTimeout(() => nudgeInstall(), 4 * 60 * 1000);
 
 // --- Hint --------------------------------------------------------------------------------------
 
@@ -1194,11 +1626,21 @@ function showHint() {
 
 // --- Main loop ---------------------------------------------------------------------------------
 
-function loop() {
+/** When the player last moved (ms); standing still for a while lets the world draw at a calmer pace. */
+let lastMoved = 0;
+
+function loop(now: number) {
+  requestAnimationFrame(loop);
+  const moving = scene === 'walk' ? now - lastMoved < 4000 : scene === 'hunt' || scene === 'raft' || scene === 'finale';
+  world.setPace(moving);
+  if (!world.due(now)) return;
   const dt = world.frame();
+  if (heading && Math.hypot(world.player.pos.x - heading.x, world.player.pos.z - heading.z) < 4) heading = null;
+  world.setGuide(scene === 'walk' ? objectiveTarget() : null);
   if (scene === 'raft') tickRide(dt);
   else if (scene === 'walk' || scene === 'hunt') {
-    const moved = world.walk(dt, input.vector());
+    const moved = world.walk(dt, input.vector(), input.running());
+    if (moved > 0) lastMoved = now;
     if (moved > 0 && hintShown) {
       hintShown = false;
       setTimeout(() => $('#hint').classList.add('gone'), 1200);
@@ -1208,7 +1650,6 @@ function loop() {
       updateAction();
     } else tickHunt(dt);
   }
-  requestAnimationFrame(loop);
 }
 
 // --- PWA ---------------------------------------------------------------------------------------
@@ -1255,8 +1696,8 @@ if (progress.avatar) {
 } else openCreator();
 refresh();
 world.snapCamera();
-requestAnimationFrame(() => {
-  loop();
+requestAnimationFrame((now) => {
+  loop(now);
   document.body.classList.add('ready');
   $('#splash').classList.add('done');
   setTimeout(() => $('#splash').remove(), 600);

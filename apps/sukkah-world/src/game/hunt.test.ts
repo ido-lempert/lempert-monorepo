@@ -64,4 +64,12 @@ describe('etrog hunt', () => {
     expect(spots).toHaveLength(8);
     for (const a of spots) for (const b of spots) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual(4);
   });
+
+  it('can slow the rival down for a calmer game', () => {
+    const a = createHunt([{ x: 20, z: 0 }], { x: 0, z: 0 });
+    const b = createHunt([{ x: 20, z: 0 }], { x: 0, z: 0 });
+    stepHunt(a, 1, far);
+    stepHunt(b, 1, far, (p) => p, 0.5);
+    expect(b.rival.x).toBeCloseTo(a.rival.x / 2);
+  });
 });
