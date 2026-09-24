@@ -1,11 +1,12 @@
 import type { Server } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { type ClientMsg, WS_PATH } from '../src/net/protocol.ts';
+import type { Fame } from './fame.ts';
 import { type Conn, Rooms } from './rooms.ts';
 
 /** Serves the game protocol over WebSocket on `WS_PATH` of an existing HTTP server. */
-export function attachGameServer(http: Server): Rooms {
-  const rooms = new Rooms();
+export function attachGameServer(http: Server, fame: Fame | null = null): Rooms {
+  const rooms = new Rooms(fame);
   const wss = new WebSocketServer({ noServer: true });
 
   // Other upgrade requests (e.g. Vite's HMR socket) are left for their own handlers.

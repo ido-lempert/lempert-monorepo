@@ -205,6 +205,15 @@ export class Sound {
     this.tone(midi(88), now + 0.12, 0.5, { gain: 0.07, wet: 0.5 });
   }
 
+  /** A magic card is played: rising shimmer. */
+  magic() {
+    const now = this.ready();
+    if (now === null) return;
+    this.noiseBurst(now, 0.6, 3000, 0.7, 0.12, 'highpass');
+    [74, 78, 81, 86, 90, 93].forEach((n, i) => this.tone(midi(n), now + i * 0.06, 0.7, { gain: 0.07, wet: 0.8 }));
+    this.tone(midi(50), now, 0.9, { type: 'triangle', gain: 0.12, attack: 0.05 });
+  }
+
   win() {
     const now = this.ready();
     if (now === null) return;

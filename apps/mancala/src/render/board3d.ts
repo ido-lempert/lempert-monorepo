@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { BOARD_SIZE, isStore, type MoveResult, ownerOf, type Player } from '../game/kalah';
-import { fireStyle, iceStyle, ParticleSystem } from './particles';
+import { BOARD_SIZE, isStore, type MoveResult, oppositePit, ownerOf, type Player, pitsOf, type Sweep } from '../game/kalah';
+import { fireStyle, iceStyle, magicStyle, ParticleSystem } from './particles';
 
 export const PLAYER_COLORS: Record<Player, string> = { 0: '#f5a524', 1: '#3fb8ff' };
 
@@ -119,7 +119,15 @@ export class Board3D {
   private lastFrame = performance.now();
   /** Player 1 sows with fire, player 2 with ice. */
   private trails: Record<Player, ParticleSystem> = { 0: new ParticleSystem(fireStyle()), 1: new ParticleSystem(iceStyle()) };
+  private magicTrail = new ParticleSystem(magicStyle());
   private stoneGeometry = new THREE.SphereGeometry(STONE_R, 20, 14);
+  private table!: THREE.Mesh;
+  /** Reduced motion: no particles, shorter and flatter animations. */
+  private reduced = false;
+  /** Pits locked by a Block card → their 3D seal. */
+  private seals = new Map<number, THREE.Group>();
+  /** Screen pixels at the bottom covered by UI (e.g. the magic card); the board is fitted above it. */
+  private bottomPx = 0;
   /** Animation hooks, e.g. for sound: a stone settled in a container / a pit was emptied into the hand. */
   onStoneLanded: ((container: number, element: Player) => void) | null = null;
   onLift: (() => void) | null = null;
@@ -176,7 +184,7 @@ export class Board3D {
     sun.shadow.bias = -0.0005;
     sun.shadow.normalBias = 0.02;
     this.scene.add(sun);
-    this.scene.add(this.trails[0].points, this.trails[1].points);
+    this.scene.add(this.trails[0].points, this.trails[1].points, this.magicTrail.points);
 
     const table = new THREE.Mesh(
       new THREE.CircleGeometry(30, 64),
@@ -186,6 +194,7 @@ export class Board3D {
     table.position.y = -BEVEL;
     table.receiveShadow = true;
     this.scene.add(table);
+    this.table = table;
 
     // Board: a rounded slab with pits and stores cut out as holes, extruded upwards.
     const shape = new THREE.Shape();
@@ -312,8 +321,7 @@ export class Board3D {
     this.camera.aspect = aspect;
     this.camera.fov = aspect < 1 ? 50 : 38;
     const scale = this.renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
-    this.trails[0].setScale(scale);
-    this.trails[1].setScale(scale);
+    for (const t of [this.trails[0], this.trails[1], this.magicTrail]) t.setScale(scale);
 
     // Keep the player's chosen viewing angle across resizes, unless the screen flips orientation.
     const portrait = aspect < 0.9;
@@ -341,6 +349,46 @@ export class Board3D {
     this.fitCamera(this.defaultDirection());
   }
 
+  /** Reserve space at the bottom of the screen (keeps the player's current viewing angle). */
+  setBottomInset(px: number) {
+    if (Math.abs(px - this.bottomPx) < 4) return;
+    this.bottomPx = px;
+    this.fitCamera(this.camera.position.clone().sub(this.target).normalize());
+  }
+
+  /** Keyboard camera control: rotate around the board by the given angles (radians). */
+  orbit(dAzimuth: number, dPolar: number) {
+    const offset = this.camera.position.clone().sub(this.target);
+    const sph = new THREE.Spherical().setFromVector3(offset);
+    sph.theta += dAzimuth;
+    sph.phi = THREE.MathUtils.clamp(sph.phi + dPolar, this.controls.minPolarAngle, this.controls.maxPolarAngle);
+    this.camera.position.copy(this.target).add(new THREE.Vector3().setFromSpherical(sph));
+    this.controls.update();
+  }
+
+  /** Keyboard zoom: factor < 1 moves closer. */
+  zoom(factor: number) {
+    const offset = this.camera.position.clone().sub(this.target);
+    const dist = THREE.MathUtils.clamp(offset.length() * factor, this.controls.minDistance, this.controls.maxDistance);
+    this.camera.position.copy(this.target).add(offset.setLength(dist));
+    this.controls.update();
+  }
+
+  setTheme(light: boolean) {
+    (this.scene.background as THREE.Color).set(light ? '#e7e0d2' : '#1b1e2b');
+    (this.table.material as THREE.MeshStandardMaterial).color.set(light ? '#d3c9b6' : '#2a2f45');
+  }
+
+  setReducedMotion(reduced: boolean) {
+    this.reduced = reduced;
+    this.controls.enableDamping = !reduced;
+  }
+
+  /** Animation duration, shortened when motion is reduced. */
+  private ms(duration: number): number {
+    return this.reduced ? duration * 0.35 : duration;
+  }
+
   /** Places the camera along `dir` at the distance where the whole board fits the screen, below the HUD. */
   private fitCamera(dir: THREE.Vector3) {
     const width = this.host.clientWidth;
@@ -356,7 +404,7 @@ export class Board3D {
         for (const z of [-extentZ, extentZ]) corners.push(new THREE.Vector3(x, y, z));
 
     const hudPx = Math.min(110, height * 0.2);
-    const halfY = 0.94 - hudPx / height;
+    const halfY = 0.94 - (hudPx + this.bottomPx) / height;
     const fits = (dist: number) => {
       this.camera.position.copy(this.target).addScaledVector(dir, dist);
       this.camera.lookAt(this.target);
@@ -377,8 +425,8 @@ export class Board3D {
     this.controls.minDistance = hi * 0.45;
     this.controls.maxDistance = hi * 1.5;
     this.controls.update();
-    // Shift the image down by half the HUD height so the board sits centred below it.
-    this.camera.setViewOffset(width, height, 0, -hudPx / 2, width, height);
+    // Shift the image so the board sits centred between the HUD and any bottom UI.
+    this.camera.setViewOffset(width, height, 0, (this.bottomPx - hudPx) / 2, width, height);
     this.camera.updateProjectionMatrix();
   }
 
@@ -389,6 +437,13 @@ export class Board3D {
     this.controls.update();
     this.trails[0].update(dt);
     this.trails[1].update(dt);
+    this.magicTrail.update(dt);
+    if (!this.reduced) {
+      for (const seal of this.seals.values()) {
+        seal.rotation.y += dt * 0.8;
+        (seal.userData.field as THREE.Mesh).scale.y = 1 + Math.sin(now / 400) * 0.08;
+      }
+    }
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   }
@@ -423,6 +478,10 @@ export class Board3D {
   /** Rebuilds all stones to match a board array (used on new game). */
   setBoard(board: number[]) {
     this.epoch++;
+    for (const pit of [...this.seals.keys()]) {
+      this.scene.remove(this.seals.get(pit)!);
+      this.seals.delete(pit);
+    }
     for (const c of this.containers) {
       for (const s of c.stones) this.scene.remove(s);
       c.stones = [];
@@ -437,7 +496,7 @@ export class Board3D {
   }
 
   private updateLabel(c: Container) {
-    c.label.textContent = String(c.stones.length);
+    c.label.textContent = `${this.seals.has(c.index) ? '🔒 ' : ''}${c.stones.length}`;
     c.label.classList.remove('bump');
     void c.label.offsetWidth;
     c.label.classList.add('bump');
@@ -472,19 +531,20 @@ export class Board3D {
     const from = stone.position.clone();
     const dest = this.slot(to, to.stones.length);
     to.stones.push(stone);
-    const height = 0.9 + from.distanceTo(dest) * 0.12;
+    const height = this.reduced ? 0.3 : 0.9 + from.distanceTo(dest) * 0.12;
     const prev = from.clone();
     const point = new THREE.Vector3();
-    await tween(duration, (t) => {
+    await tween(this.ms(duration), (t) => {
       const e = easeInOut(t);
       stone.position.lerpVectors(from, dest, e);
       stone.position.y += Math.sin(Math.PI * e) * height;
+      if (this.reduced) return;
       // Emit along the path travelled since the last frame so the trail stays continuous at any frame rate.
       const steps = Math.min(12, Math.ceil(prev.distanceTo(stone.position) / 0.035));
       for (let k = 1; k <= steps; k++) trail.trail(point.lerpVectors(prev, stone.position, k / steps));
       prev.copy(stone.position);
     });
-    trail.emit(dest, 14, 0.15, 1.8);
+    if (!this.reduced) trail.emit(dest, 14, 0.15, 1.8);
     this.updateLabel(to);
     this.onStoneLanded?.(to.index, trail === this.trails[0] ? 0 : 1);
   }
@@ -502,7 +562,7 @@ export class Board3D {
     await Promise.all(
       hand.map((s, k) => {
         const from = s.position.clone();
-        return tween(180, (t) => {
+        return tween(this.ms(180), (t) => {
           s.position.y = from.y + easeInOut(t) * (0.5 + k * 0.03);
         });
       }),
@@ -511,19 +571,93 @@ export class Board3D {
     const flights: Promise<void>[] = [];
     result.sown.forEach((target, k) => {
       const stone = hand.pop()!;
-      flights.push(wait(k * 150).then(() => this.flyStone(stone, this.containers[target], 380, epoch, trail)));
+      flights.push(wait(this.ms(k * 150)).then(() => this.flyStone(stone, this.containers[target], 380, epoch, trail)));
     });
     await Promise.all(flights);
 
+    if (result.unblocked !== null) this.breakSeal(result.unblocked);
     if (result.capture) {
-      await wait(250);
+      await wait(this.ms(250));
       await this.moveAll([result.capture.pit, result.capture.opposite], result.capture.store, epoch, trail);
     }
-    // Captures burn/freeze with the mover's element; end-game sweeps use the store owner's.
-    for (const sweep of result.sweeps) {
-      await wait(120);
+    await this.playSweeps(result.sweeps, epoch);
+  }
+
+  /** End-of-game sweeps into each owner's store (their element's trail). */
+  async playSweeps(sweeps: Sweep[], epoch = this.epoch) {
+    for (const sweep of sweeps) {
+      await wait(this.ms(120));
       await this.moveAll([sweep.from], sweep.store, epoch, this.trails[ownerOf(sweep.store)]);
     }
+  }
+
+  /** Mirror card: every pit trades stones with the pit facing it, all at once. */
+  async playMirror() {
+    const epoch = this.epoch;
+    const hands = new Map<number, THREE.Mesh[]>();
+    for (const i of [...pitsOf(0), ...pitsOf(1)]) {
+      hands.set(i, this.containers[i].stones.splice(0));
+      this.updateLabel(this.containers[i]);
+      if (!this.reduced) this.magicTrail.emit(this.containers[i].center.clone().setY(TOP + 0.2), 10, 0.5, 1.4);
+    }
+    await wait(this.ms(200));
+    const flights: Promise<void>[] = [];
+    for (const [i, stones] of hands) {
+      stones.forEach((stone, k) =>
+        flights.push(wait(this.ms(k * 40)).then(() => this.flyStone(stone, this.containers[oppositePit(i)], 700, epoch, this.magicTrail))),
+      );
+    }
+    await Promise.all(flights);
+  }
+
+  /** Shows the 3D seals for pits locked by Block cards (and removes seals that were broken). */
+  setBlocked(blocked: { pit: number; by: Player }[]) {
+    const keep = new Set(blocked.map((b) => b.pit));
+    for (const pit of [...this.seals.keys()]) if (!keep.has(pit)) this.breakSeal(pit);
+    for (const { pit, by } of blocked) {
+      if (this.seals.has(pit)) continue;
+      const c = this.containers[pit];
+      const color = PLAYER_COLORS[by];
+      const seal = new THREE.Group();
+      const field = new THREE.Mesh(
+        new THREE.CylinderGeometry(PIT_R + 0.1, PIT_R + 0.1, 0.45, 40, 1, true),
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.3,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      field.position.y = 0.22;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(PIT_R + 0.1, 0.035, 10, 48), new THREE.MeshBasicMaterial({ color }));
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.45;
+      // Four "rune" posts so the seal reads as a lock even without colour.
+      for (let k = 0; k < 4; k++) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.06), new THREE.MeshBasicMaterial({ color }));
+        const a = (k * Math.PI) / 2;
+        post.position.set(Math.cos(a) * (PIT_R + 0.1), 0.22, Math.sin(a) * (PIT_R + 0.1));
+        seal.add(post);
+      }
+      seal.add(field, ring);
+      seal.userData.field = field; // pulses while locked
+      seal.position.set(c.center.x, TOP, c.center.z);
+      this.scene.add(seal);
+      this.seals.set(pit, seal);
+      if (!this.reduced) this.magicTrail.emit(seal.position.clone().setY(TOP + 0.3), 30, 0.6, 1.8);
+      this.updateLabel(c);
+    }
+  }
+
+  private breakSeal(pit: number) {
+    const seal = this.seals.get(pit);
+    if (!seal) return;
+    this.scene.remove(seal);
+    this.seals.delete(pit);
+    if (!this.reduced) this.magicTrail.emit(seal.position.clone().setY(TOP + 0.3), 40, 0.6, 2.2);
+    this.updateLabel(this.containers[pit]);
   }
 
   private async moveAll(from: number[], to: number, epoch: number, trail: ParticleSystem) {
@@ -534,7 +668,7 @@ export class Board3D {
     for (const i of from) {
       const c = this.containers[i];
       for (const stone of c.stones.splice(0)) {
-        flights.push(wait(k++ * 60).then(() => this.flyStone(stone, target, 520, epoch, trail)));
+        flights.push(wait(this.ms(k++ * 60)).then(() => this.flyStone(stone, target, 520, epoch, trail)));
       }
       this.updateLabel(c);
     }
