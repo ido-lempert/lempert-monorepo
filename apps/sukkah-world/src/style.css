@@ -889,9 +889,16 @@ button:disabled {
   }
 }
 
+/* The quest wraps onto a second line rather than being cut off – on a phone every word matters. */
+.quest {
+  white-space: normal;
+  line-height: 1.25;
+  border-radius: 26px;
+  padding-block: 4px;
+}
+
 #quest-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .field legend.field-label {
@@ -1200,6 +1207,36 @@ button:disabled {
   font-weight: 900;
   line-height: 1;
   box-shadow: 0 3px 0 var(--line);
+}
+
+.cam-toggle {
+  display: none;
+}
+
+/* Touch screens: fold the pad into one button, so it doesn't cover the game or the hints. */
+@media (pointer: coarse) {
+  .cam {
+    grid-template-columns: 44px;
+  }
+  .cam-toggle {
+    display: block;
+  }
+  .cam:not(.open) .cam-btn:not(.cam-toggle) {
+    display: none;
+  }
+  .cam.open {
+    grid-template-columns: repeat(2, 44px);
+  }
+  .cam.open .cam-toggle {
+    grid-column: 1 / -1;
+    width: 100%;
+    background: #efe9ff;
+  }
+  .cam:not(.open) {
+    grid-template-columns: 44px;
+    background: transparent;
+    box-shadow: none;
+  }
 }
 
 .cam-btn:active {

@@ -293,6 +293,7 @@ export const he = {
 
   // Camera
   camera: 'מצלמה',
+  cameraButtons: 'כפתורי מצלמה',
   camLeft: 'לסובב שמאלה',
   camRight: 'לסובב ימינה',
   camIn: 'להתקרב',

@@ -1195,7 +1195,12 @@ function openCreator() {
   world.snapCamera();
 }
 
-input.onCamera = (turn, zoom) => world.turnCamera(turn, zoom);
+input.onCamera = (turn, zoom, tilt) => world.turnCamera(turn, zoom, tilt);
+// On touch screens the camera pad folds into one button (two fingers already turn, zoom and tilt).
+$('#cam-toggle').addEventListener('click', () => {
+  const open = $('#cam').classList.toggle('open');
+  $('#cam-toggle').setAttribute('aria-expanded', String(open));
+});
 for (const [id, turn, zoom] of [
   ['#cam-left', -Math.PI / 4, 1],
   ['#cam-right', Math.PI / 4, 1],
