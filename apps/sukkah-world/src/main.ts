@@ -43,6 +43,7 @@ import {
   SPECIES,
   startQuest,
 } from './game/progress';
+import { Sound } from './audio';
 import { applyDocument, type StringKey, t } from './i18n';
 import { canFullscreen, canInstall, install, isFullscreen, onPwaChange, toggleFullscreen } from './pwa';
 import './style.css';
@@ -55,6 +56,7 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 
 // --- Saved progress ---------------------------------------------------------------------------
 
+const sound = new Sound();
 const SAVE_KEY = 'sukkahWorld.progress';
 let progress: Progress = parseProgress(localStorage.getItem(SAVE_KEY));
 
@@ -64,6 +66,7 @@ function commit(next: Progress) {
   progress = next;
   localStorage.setItem(SAVE_KEY, JSON.stringify(progress));
   for (const a of fresh) toast(`🏆 ${t('newAchievement', { name: t(`ach_${a}` as StringKey) })}`);
+  if (fresh.length) setTimeout(() => sound.play('achievement'), 350);
   refresh();
 }
 
@@ -95,6 +98,7 @@ function setScene(next: Scene) {
 function refresh() {
   const coinCount = $('#coin-count');
   if (coinCount.textContent !== String(progress.coins)) {
+    if (Number(coinCount.textContent) < progress.coins) sound.play('coin');
     coinCount.textContent = String(progress.coins);
     // Restart the little bump animation on every change.
     $('#coins').classList.remove('bump');
@@ -177,6 +181,7 @@ function say(face: string, name: string, text: string, choices: Choice[]) {
   );
   $('#dialog').classList.remove('hidden');
   actions.querySelector('button')?.focus();
+  sound.play('pop');
 }
 
 const playerName = () => progress.avatar?.name || t('defaultName');
@@ -214,6 +219,7 @@ function talkTo(guest: GuestId) {
           primary: true,
           onClick: () => {
             commit(completeQuest(progress, guest));
+            sound.play('fanfare');
             world.sparkle(GUEST_SPOT[guest], '#ffd166', 2);
             world.celebrate();
           },
@@ -308,6 +314,7 @@ function checkQuestItems() {
     for (const id of SPECIES) {
       if (progress.quests.abraham.found.includes(id) || !near(SPECIES_SPOTS[id], 1.4)) continue;
       world.sparkle(SPECIES_SPOTS[id], '#b8f28c', 1.2);
+      sound.play('pickup');
       world.celebrate();
       const next = findItem(progress, 'abraham', id);
       commit(next);
@@ -320,6 +327,7 @@ function checkQuestItems() {
       if (progress.quests.isaac.found.includes(String(i)) || i === lanternBlocked || !near(l, 1.4)) return;
       if (!lanternDeadline) lanternDeadline = performance.now() + LANTERN_SECONDS * 1000;
       world.sparkle(l, '#ffb347', 1.6);
+      sound.play('chime');
       const next = findItem(progress, 'isaac', String(i));
       commit(next);
       if (next.quests.isaac.stage === 'returning') {
@@ -333,6 +341,7 @@ function checkQuestItems() {
       lanternBlocked = LANTERNS.findIndex((l) => near(l, 1.4));
       commit(resetItems(progress, 'isaac'));
       toast(`💨 ${t('lanternsOut')}`);
+      sound.play('fail');
     }
     renderQuest();
   }
@@ -345,10 +354,13 @@ function checkQuestItems() {
         world.sparkle(world.lambPosition(i), '#ffffff', 0.8);
         world.celebrate();
         toast(`🐑 ${t('lambFound')}`);
+        sound.play('baa');
       } else if (state === 'following') {
         const l = world.lambPosition(i);
         if (Math.hypot(l.x - PEN.x, l.z - PEN.z) < PEN.r + 0.4) {
           world.sparkle(PEN, '#ffd166', 1);
+          sound.play('baa');
+          setTimeout(() => sound.play('pickup'), 250);
           const next = findItem(progress, 'jacob', String(i));
           commit(next);
           toast(next.quests.jacob.stage === 'returning' ? `🐑 ${t('allLambs')}` : `🐑 ${t('lambHome', { n: next.quests.jacob.found.length })}`);
@@ -407,7 +419,11 @@ function chooseItem(id: DecorationId) {
   else if (canBuy(progress, id)) {
     placing = id;
     commit(buy(progress, id));
-  } else toast(t('notEnough', { n: decoration(id).price - progress.coins }));
+    sound.play('buy');
+  } else {
+    toast(t('notEnough', { n: decoration(id).price - progress.coins }));
+    sound.play('blip');
+  }
   refresh();
   $('#palette').querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
 }
@@ -421,7 +437,10 @@ input.onTap = (x, y) => {
   else if (placing && available(progress, placing) > 0) {
     const before = progress.placed.length;
     commit(place(progress, { id: placing, x: hit.x, z: hit.z, rot: 0 }));
-    if (progress.placed.length > before) world.sparkle({ x: MY_SUKKAH.x + hit.x, z: MY_SUKKAH.z + hit.z }, '#ffd166', 0.6);
+    if (progress.placed.length > before) {
+      world.sparkle({ x: MY_SUKKAH.x + hit.x, z: MY_SUKKAH.z + hit.z }, '#ffd166', 0.6);
+      sound.play('pop');
+    }
     if (available(progress, placing) === 0) placing = null;
   }
   refresh();
@@ -491,6 +510,7 @@ function tickHunt(dt: number) {
   const events = stepHunt(hunt, dt, world.player.pos, (p) => resolve(p, 0.45));
   for (const e of events) {
     world.sparkle(hunt.etrogs[e.index], e.by === 'me' ? '#ffe066' : '#ffffff', 1);
+    sound.play(e.by === 'me' ? 'pickup' : 'blip');
     if (e.by === 'me') world.celebrate();
   }
   world.syncHunt(hunt);
@@ -498,6 +518,7 @@ function tickHunt(dt: number) {
   if (hunt.over) {
     commit(finishHunt(progress, hunt.mine, hunt.rivals));
     world.endHunt();
+    sound.play(hunt.mine >= hunt.rivals ? 'fanfare' : 'lose');
     showHuntCard('result');
   }
 }
@@ -676,6 +697,7 @@ function renderTryOn() {
       return;
     }
     commit(buyWear(progress, tryOn));
+    sound.play('buy');
     world.sparkle(world.player.pos, '#ffd23f', 1.4);
     world.celebrate();
     toast(`✨ ${t('boughtWear', { item: t(choice.key) })}`);
@@ -765,6 +787,10 @@ function renderMenu() {
   $('#m-install').classList.toggle('hidden', !canInstall());
   $('#m-fullscreen').classList.toggle('hidden', !canFullscreen());
   $('#m-fullscreen-label').textContent = t(isFullscreen() ? 'exitFullscreen' : 'fullscreen');
+  $('#m-music').setAttribute('aria-pressed', String(sound.prefs.music));
+  $('#m-music-icon').textContent = sound.prefs.music ? '🎵' : '🔇';
+  $('#m-sfx').setAttribute('aria-pressed', String(sound.prefs.sfx));
+  $('#m-sfx-icon').textContent = sound.prefs.sfx ? '🔊' : '🔇';
   // Travelling away mid-hunt would be cheating the race.
   $('#m-home').toggleAttribute('disabled', scene === 'hunt');
   $('#m-plaza').toggleAttribute('disabled', scene === 'hunt');
@@ -796,6 +822,18 @@ $('#m-plaza').addEventListener('click', () => {
   setScene('walk');
 });
 $('#m-fullscreen').addEventListener('click', () => void toggleFullscreen());
+$('#m-music').addEventListener('click', () => {
+  sound.setMusic(!sound.prefs.music);
+  renderMenu();
+});
+$('#m-sfx').addEventListener('click', () => {
+  sound.setSfx(!sound.prefs.sfx);
+  renderMenu();
+});
+// A soft tick for every button, like in most mobile games.
+document.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('button')) sound.play('click');
+});
 $('#m-install').addEventListener('click', () => void install());
 $('#m-reset').addEventListener('click', () => {
   if (!confirm(t('resetConfirm'))) return;

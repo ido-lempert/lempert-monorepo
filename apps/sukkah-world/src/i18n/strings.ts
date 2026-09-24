@@ -198,6 +198,8 @@ export const he = {
   goToPlaza: 'לכיכר',
   install: 'התקנת האפליקציה',
   fullscreen: 'מסך מלא',
+  music: 'מוזיקה',
+  sfx: 'צלילים',
   exitFullscreen: 'יציאה ממסך מלא',
   reset: 'להתחיל הכול מההתחלה',
   resetConfirm: 'למחוק את כל ההתקדמות ולהתחיל מההתחלה?',
