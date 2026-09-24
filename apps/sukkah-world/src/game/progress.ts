@@ -1,6 +1,6 @@
 /**
- * The player's saved progress: avatar, coins, owned decorations, what's placed in their sukkah and the
- * Abraham quest. Pure functions over plain data, so it can be tested and later synced to a server as-is.
+ * The player's saved progress: avatar, coins, owned decorations and wearables, what's placed in their
+ * sukkah, pets and the Ushpizin quests. Pure functions over plain data, so it can be tested and later synced to a server as-is.
  */
 
 export type SpeciesId = 'etrog' | 'lulav' | 'hadas' | 'arava';
@@ -86,10 +86,41 @@ export interface Placed {
 }
 
 /**
- * Abraham's quest: talk to him → collect the four species in the garden → bring them back.
- * 'done' unlocks the next guest (a later slice).
+ * The Ushpizin arrive one after another, each with a quest:
+ *   Abraham – collect the four species in the garden;
+ *   Isaac   – light every lantern on the forest trail before time runs out;
+ *   Jacob   – find his lost lambs in the hedge maze and lead them back to the pen.
+ * A quest goes locked → notStarted (the guest has arrived) → active → returning (all found) → done,
+ * and finishing one brings the next guest.
  */
-export type QuestStage = 'notStarted' | 'collecting' | 'returning' | 'done';
+export type GuestId = 'abraham' | 'isaac' | 'jacob';
+export const GUESTS: GuestId[] = ['abraham', 'isaac', 'jacob'];
+export type QuestStage = 'locked' | 'notStarted' | 'active' | 'returning' | 'done';
+
+export interface Quest {
+  stage: QuestStage;
+  /** Items found so far: species ids, lantern numbers or lamb numbers. */
+  found: string[];
+}
+
+export const LANTERN_COUNT = 6;
+export const LAMB_COUNT = 3;
+export const QUEST_ITEMS: Record<GuestId, number> = { abraham: SPECIES.length, isaac: LANTERN_COUNT, jacob: LAMB_COUNT };
+
+export type PetId = 'lamb';
+
+export interface QuestReward {
+  coins: number;
+  decoration?: DecorationId;
+  wear?: WearId;
+  pet?: PetId;
+}
+
+export const QUEST_REWARDS: Record<GuestId, QuestReward> = {
+  abraham: { coins: 50, decoration: 'lantern' },
+  isaac: { coins: 60, wear: 'hadasWreath' },
+  jacob: { coins: 80, pet: 'lamb' },
+};
 
 export interface Progress {
   version: 1;
@@ -97,14 +128,14 @@ export interface Progress {
   coins: number;
   owned: Partial<Record<DecorationId, number>>;
   placed: Placed[];
-  quest: { stage: QuestStage; found: SpeciesId[] };
+  quests: Record<GuestId, Quest>;
+  pets: PetId[];
   achievements: string[];
   bestHunt: number;
   /** Wearables bought in the character creator. */
   ownedWear: WearId[];
 }
 
-export const QUEST_REWARD = { coins: 50, item: 'lantern' as DecorationId };
 export const COINS_PER_ETROG = 5;
 export const HUNT_WIN_BONUS = 20;
 export const MAX_PLACED = 24;
@@ -116,7 +147,8 @@ export function newProgress(): Progress {
     coins: 0,
     owned: {},
     placed: [],
-    quest: { stage: 'notStarted', found: [] },
+    quests: { abraham: { stage: 'notStarted', found: [] }, isaac: { stage: 'locked', found: [] }, jacob: { stage: 'locked', found: [] } },
+    pets: [],
     achievements: [],
     bestHunt: 0,
     ownedWear: [],
@@ -128,7 +160,7 @@ export function parseProgress(raw: string | null): Progress {
   const fresh = newProgress();
   if (!raw) return fresh;
   try {
-    const data = JSON.parse(raw) as Partial<Progress>;
+    const data = JSON.parse(raw) as Partial<Progress> & { quest?: { stage: string; found: string[] } };
     if (data.version !== 1) return fresh;
     const ownedWear = Array.isArray(data.ownedWear) ? data.ownedWear : [];
     // The crown was free before wearables had prices; whoever already wears it keeps it.
@@ -136,7 +168,8 @@ export function parseProgress(raw: string | null): Progress {
     return {
       ...fresh,
       ...data,
-      quest: { ...fresh.quest, ...data.quest },
+      quests: readQuests(data, fresh.quests),
+      pets: Array.isArray(data.pets) ? data.pets : [],
       owned: { ...data.owned },
       placed: Array.isArray(data.placed) ? data.placed : [],
       achievements: Array.isArray(data.achievements) ? data.achievements : [],
@@ -145,6 +178,18 @@ export function parseProgress(raw: string | null): Progress {
   } catch {
     return fresh;
   }
+}
+
+/** Reads saved quests, including saves from before the quest chain (a single Abraham quest). */
+function readQuests(data: Partial<Progress> & { quest?: { stage: string; found: string[] } }, fresh: Record<GuestId, Quest>): Record<GuestId, Quest> {
+  const quests = { ...fresh };
+  if (data.quests) for (const g of GUESTS) if (data.quests[g]) quests[g] = { ...fresh[g], ...data.quests[g] };
+  if (data.quest && !data.quests) {
+    const stage = data.quest.stage === 'collecting' ? 'active' : (data.quest.stage as QuestStage);
+    quests.abraham = { stage, found: data.quest.found ?? [] };
+    if (stage === 'done') quests.isaac = { stage: 'notStarted', found: [] };
+  }
+  return quests;
 }
 
 const withAchievement = (p: Progress, id: string): Progress =>
@@ -170,28 +215,48 @@ export function setAvatar(p: Progress, avatar: Avatar): Progress {
   return { ...p, avatar: { ...avatar, hat, accessory } };
 }
 
-export function startQuest(p: Progress): Progress {
-  if (p.quest.stage !== 'notStarted') return p;
-  return withAchievement({ ...p, quest: { stage: 'collecting', found: [] } }, 'metAbraham');
+const withQuest = (p: Progress, guest: GuestId, q: Partial<Quest>): Progress => ({
+  ...p,
+  quests: { ...p.quests, [guest]: { ...p.quests[guest], ...q } },
+});
+
+const MET: Record<GuestId, string> = { abraham: 'metAbraham', isaac: 'metIsaac', jacob: 'metJacob' };
+const FOUND_ALL: Record<GuestId, string> = { abraham: 'fourSpecies', isaac: 'lanternTrail', jacob: 'lambsHome' };
+
+/** The guest whose quest is in progress or waiting to start, if any. */
+export function currentGuest(p: Progress): GuestId | null {
+  return GUESTS.find((g) => p.quests[g].stage !== 'done' && p.quests[g].stage !== 'locked') ?? null;
 }
 
-export function findSpecies(p: Progress, id: SpeciesId): Progress {
-  if (p.quest.stage !== 'collecting' || p.quest.found.includes(id)) return p;
-  const found = [...p.quest.found, id];
-  const stage: QuestStage = found.length === SPECIES.length ? 'returning' : 'collecting';
-  const next = { ...p, quest: { stage, found } };
-  return stage === 'returning' ? withAchievement(next, 'fourSpecies') : next;
+export function startQuest(p: Progress, guest: GuestId): Progress {
+  if (p.quests[guest].stage !== 'notStarted') return p;
+  return withAchievement(withQuest(p, guest, { stage: 'active', found: [] }), MET[guest]);
 }
 
-export function completeQuest(p: Progress): Progress {
-  if (p.quest.stage !== 'returning') return p;
-  const item = QUEST_REWARD.item;
-  return {
-    ...p,
-    coins: p.coins + QUEST_REWARD.coins,
-    owned: { ...p.owned, [item]: (p.owned[item] ?? 0) + 1 },
-    quest: { ...p.quest, stage: 'done' },
-  };
+/** Marks one quest item as found; when all are found the player goes back to the guest. */
+export function findItem(p: Progress, guest: GuestId, item: string): Progress {
+  const q = p.quests[guest];
+  if (q.stage !== 'active' || q.found.includes(item)) return p;
+  const found = [...q.found, item];
+  if (found.length < QUEST_ITEMS[guest]) return withQuest(p, guest, { found });
+  return withAchievement(withQuest(p, guest, { stage: 'returning', found }), FOUND_ALL[guest]);
+}
+
+/** Starts the items over (Isaac's lanterns go dark when time runs out). */
+export function resetItems(p: Progress, guest: GuestId): Progress {
+  return p.quests[guest].stage === 'active' ? withQuest(p, guest, { found: [] }) : p;
+}
+
+export function completeQuest(p: Progress, guest: GuestId): Progress {
+  if (p.quests[guest].stage !== 'returning') return p;
+  const r = QUEST_REWARDS[guest];
+  let next = withQuest({ ...p, coins: p.coins + r.coins }, guest, { stage: 'done' });
+  if (r.decoration) next = { ...next, owned: { ...next.owned, [r.decoration]: (next.owned[r.decoration] ?? 0) + 1 } };
+  if (r.wear && !next.ownedWear.includes(r.wear)) next = { ...next, ownedWear: [...next.ownedWear, r.wear] };
+  if (r.pet && !next.pets.includes(r.pet)) next = { ...next, pets: [...next.pets, r.pet] };
+  const following = GUESTS[GUESTS.indexOf(guest) + 1];
+  if (following && next.quests[following].stage === 'locked') next = withQuest(next, following, { stage: 'notStarted' });
+  return next;
 }
 
 /** How many of an item are still in the bag (owned but not placed). */

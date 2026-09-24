@@ -648,8 +648,19 @@ export function setHat(hat: THREE.Group, id: HatId) {
   outline(hat);
 }
 
-/** Abraham: a flowing robe, a big white beard, a striped head cloth and a shepherd's staff. */
-export function abraham(): Character {
+interface GuestLook {
+  robe: string;
+  band: string;
+  sash: string;
+  skin: string;
+  beard: string;
+  cloth: string;
+  clothStripe: string;
+  staff?: boolean;
+}
+
+/** One of the Ushpizin: a flowing robe, a fluffy beard, a striped head cloth and a shepherd's staff. */
+export function guest(look: GuestLook): Character {
   const group = new THREE.Group();
   const rig = new THREE.Group();
   group.add(rig);
@@ -661,25 +672,25 @@ export function abraham(): Character {
     [0.18, 1.2],
     [0, 1.22],
   ].map(([x, y]) => new THREE.Vector2(x, y));
-  rig.add(mesh(new THREE.LatheGeometry(robeShape, 24), mat('#f6f1e4')));
-  rig.add(mesh(new THREE.TorusGeometry(0.44, 0.04, 8, 24), mat('#3a6bd1'), 0, 0.5, 0).rotateX(Math.PI / 2));
-  rig.add(mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 24), mat('#c8843f'), 0, 0.85, 0).rotateX(Math.PI / 2));
-  const skin = '#eab58a';
-  const armL = limb('#f6f1e4', 0.28, 0.1, -0.36, 1.05, ball(0.1, skin));
-  const armR = limb('#f6f1e4', 0.28, 0.1, 0.36, 1.05, ball(0.1, skin));
-  const staff = new THREE.Group();
-  staff.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 2, 8), mat('#8a5a36'), 0, -0.2, 0.08));
-  const crook = mesh(new THREE.TorusGeometry(0.12, 0.035, 8, 16, Math.PI), mat('#8a5a36'), 0.12, 0.8, 0.08);
-  staff.add(crook);
-  staff.position.y = -0.4;
-  armR.add(staff);
-  armR.rotation.x = -0.3;
+  rig.add(mesh(new THREE.LatheGeometry(robeShape, 24), mat(look.robe)));
+  rig.add(mesh(new THREE.TorusGeometry(0.44, 0.04, 8, 24), mat(look.band), 0, 0.5, 0).rotateX(Math.PI / 2));
+  rig.add(mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 24), mat(look.sash), 0, 0.85, 0).rotateX(Math.PI / 2));
+  const armL = limb(look.robe, 0.28, 0.1, -0.36, 1.05, ball(0.1, look.skin));
+  const armR = limb(look.robe, 0.28, 0.1, 0.36, 1.05, ball(0.1, look.skin));
+  if (look.staff !== false) {
+    const staff = new THREE.Group();
+    staff.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 2, 8), mat('#8a5a36'), 0, -0.2, 0.08));
+    staff.add(mesh(new THREE.TorusGeometry(0.12, 0.035, 8, 16, Math.PI), mat('#8a5a36'), 0.12, 0.8, 0.08));
+    staff.position.y = -0.4;
+    armR.add(staff);
+    armR.rotation.x = -0.3;
+  }
   rig.add(armL, armR);
   const head = new THREE.Group();
-  head.add(mesh(new THREE.SphereGeometry(HEAD_R, 32, 24), mat(skin, { rim: 0.25 }), 0, HEAD_Y, 0));
+  head.add(mesh(new THREE.SphereGeometry(HEAD_R, 32, 24), mat(look.skin, { rim: 0.25 }), 0, HEAD_Y, 0));
   face(head, HEAD_Y + 0.04, HEAD_R, false);
   // Fluffy beard and eyebrows.
-  const white = mat('#ffffff', { rough: 0.9, rim: 0.3 });
+  const beard = mat(look.beard, { rough: 0.9, rim: 0.3 });
   for (const [x, y, z, r] of [
     [0, 1.2, 0.3, 0.22],
     [-0.18, 1.28, 0.3, 0.17],
@@ -688,9 +699,9 @@ export function abraham(): Character {
     [-0.28, 1.4, 0.24, 0.12],
     [0.28, 1.4, 0.24, 0.12],
   ])
-    head.add(mesh(new THREE.IcosahedronGeometry(r, 2), white, x, y, z));
-  for (const s of [-1, 1]) head.add(rbox(0.14, 0.04, 0.05, '#ffffff', s * 0.16, HEAD_Y + 0.19, 0.41, 0.02));
-  const clothTex = fabricTexture(['#ffffff', '#ffffff', '#3a6bd1']);
+    head.add(mesh(new THREE.IcosahedronGeometry(r, 2), beard, x, y, z));
+  for (const s of [-1, 1]) head.add(rbox(0.14, 0.04, 0.05, look.beard, s * 0.16, HEAD_Y + 0.19, 0.41, 0.02));
+  const clothTex = fabricTexture([look.cloth, look.cloth, look.clothStripe]);
   clothTex.rotation = Math.PI / 2;
   const cloth = mesh(
     new THREE.SphereGeometry(HEAD_R * 1.1, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
@@ -701,11 +712,86 @@ export function abraham(): Character {
   );
   cloth.rotation.x = -0.3;
   head.add(cloth);
-  head.add(rbox(0.8, 0.7, 0.1, '#f6f1e4', 0, HEAD_Y - 0.35, -0.38, 0.05));
-  head.add(rbox(0.9, 0.06, 0.06, '#3a6bd1', 0, HEAD_Y + 0.18, 0.08, 0.02).rotateX(-0.3));
+  head.add(rbox(0.8, 0.7, 0.1, look.cloth, 0, HEAD_Y - 0.35, -0.38, 0.05));
+  head.add(rbox(0.9, 0.06, 0.06, look.clothStripe, 0, HEAD_Y + 0.18, 0.08, 0.02).rotateX(-0.3));
   rig.add(head);
   outline(rig);
   return { group, rig, limbs: { armL, armR, legL: new THREE.Group(), legR: new THREE.Group() }, hat: new THREE.Group() };
+}
+
+export const abraham = () =>
+  guest({ robe: '#f6f1e4', band: '#3a6bd1', sash: '#c8843f', skin: '#eab58a', beard: '#ffffff', cloth: '#ffffff', clothStripe: '#3a6bd1' });
+
+/** Isaac: a sky-blue robe and a red-striped head cloth, beard just turning grey. */
+export const isaac = () =>
+  guest({ robe: '#cfe8ff', band: '#e63946', sash: '#8a5a36', skin: '#e3a97e', beard: '#d9d4cc', cloth: '#fff4e0', clothStripe: '#e63946' });
+
+/** Jacob the shepherd: an earthy robe, a dark beard and a green head cloth. */
+export const jacob = () =>
+  guest({ robe: '#d9b27a', band: '#2a9d8f', sash: '#6b4a2a', skin: '#d99d73', beard: '#4a3226', cloth: '#e9f5e1', clothStripe: '#2a9d8f' });
+
+/** A wooden post with a lantern on top; `glow` is swapped between lit and unlit materials. */
+export function lanternPost(): { group: THREE.Group; glow: THREE.Mesh } {
+  const group = new THREE.Group();
+  const wood = mat('#8a5a36');
+  group.add(mesh(new THREE.CylinderGeometry(0.08, 0.11, 1.7, 8), wood, 0, 0.85, 0));
+  group.add(rbox(0.5, 0.06, 0.06, '#8a5a36', 0.18, 1.62, 0, 0.02));
+  const lantern = new THREE.Group();
+  const frame = mat('#4a3226', { metal: 0.3 });
+  lantern.add(mesh(new THREE.ConeGeometry(0.2, 0.14, 10), frame, 0, 0.1, 0));
+  lantern.add(mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.04, 10), frame, 0, -0.26, 0));
+  const glow = mesh(new THREE.SphereGeometry(0.14, 16, 12), LANTERN_UNLIT, 0, -0.08, 0);
+  glow.scale.y = 1.3;
+  glow.userData.noOutline = true;
+  lantern.add(glow);
+  lantern.position.set(0.36, 1.35, 0);
+  group.add(lantern);
+  return { group, glow };
+}
+export const LANTERN_LIT = mat('#ffb347', { emissive: 6, rim: 0 });
+export const LANTERN_UNLIT = mat('#5b5a6e', { rough: 0.3, rim: 0.2 });
+
+/** One straight piece of hedge (w × d on the ground), with round bumps along the top. */
+export function hedge(w: number, d: number): THREE.Group {
+  const g = new THREE.Group();
+  const h = 1.55;
+  g.add(rbox(w, h, d, '#4f9a3f', 0, h / 2, 0, 0.18, { rim: 0.4 }));
+  const long = Math.max(w, d);
+  const bumps = Math.max(1, Math.round(long / 0.9));
+  for (let i = 0; i < bumps; i++) {
+    const t = (i + 0.5) / bumps - 0.5;
+    const b = mesh(new THREE.IcosahedronGeometry(0.32, 1), mat(i % 2 ? '#5cae48' : '#4f9a3f', { rim: 0.4 }), w > d ? t * w : 0, h - 0.05, w > d ? 0 : t * d);
+    g.add(b);
+  }
+  return g;
+}
+
+/** A round wooden fence with a gap for the gate. */
+export function pen(r: number): THREE.Group {
+  const g = new THREE.Group();
+  const wood = mat('#b07a45');
+  const posts = 14;
+  for (let i = 0; i < posts; i++) {
+    const a = (i / posts) * Math.PI * 2;
+    if (i === 0) continue;
+    g.add(mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.8, 8), wood, Math.sin(a) * r, 0.4, Math.cos(a) * r));
+  }
+  for (const y of [0.35, 0.65]) {
+    const rail = mesh(new THREE.TorusGeometry(r, 0.035, 6, 40, Math.PI * 2 * (1 - 1.6 / posts)), wood, 0, y, 0);
+    rail.rotation.set(Math.PI / 2, 0, Math.PI / 2 + (Math.PI * 2 * 0.8) / posts);
+    g.add(rail);
+  }
+  g.add(mesh(new THREE.CircleGeometry(r, 32), mat('#c9a86b', { rim: 0 }), 0, 0.02, 0).rotateX(-Math.PI / 2));
+  g.add(rbox(0.6, 0.25, 0.35, '#8a5a36', 0, 0.12, -r * 0.5, 0.05));
+  return g;
+}
+
+export function mushroom(seed: number): THREE.Group {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.22, 8), mat('#fff4e0'), 0, 0.11, 0));
+  g.add(mesh(new THREE.SphereGeometry(0.16, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(seed % 2 ? '#e63946' : '#ff9f1c'), 0, 0.2, 0));
+  for (let i = 0; i < 3; i++) g.add(ball(0.025, '#ffffff', Math.cos(i * 2.1) * 0.09, 0.3, Math.sin(i * 2.1) * 0.09, { rim: 0 }));
+  return g;
 }
 
 /** Shoshi the sheep, the computer rival in the etrog hunt. */

@@ -21,7 +21,14 @@ import {
   DECORATIONS,
   type DecorationId,
   decoration,
-  findSpecies,
+  currentGuest,
+  findItem,
+  GUESTS,
+  type GuestId,
+  QUEST_ITEMS,
+  QUEST_REWARDS,
+  resetItems,
+  type SpeciesId,
   finishHunt,
   HUNT_WIN_BONUS,
   type HatId,
@@ -30,7 +37,6 @@ import {
   parseProgress,
   place,
   type Progress,
-  QUEST_REWARD,
   removePlaced,
   rotatePlaced,
   setAvatar,
@@ -41,7 +47,8 @@ import { applyDocument, type StringKey, t } from './i18n';
 import { canFullscreen, canInstall, install, isFullscreen, onPwaChange, toggleFullscreen } from './pwa';
 import './style.css';
 import { WalkInput } from './world/input';
-import { ABRAHAM, HUB, huntCandidates, inside, MY_SUKKAH, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
+import type { Vec } from './game/hunt';
+import { ABRAHAM, HUB, huntCandidates, inside, ISAAC, JACOB, LAMB_SPOTS, LANTERN_SECONDS, LANTERNS, MY_SUKKAH, PEN, resolve, RIVAL_HOME, SPAWN, SPECIES_SPOTS } from './world/layout';
 import { World } from './world/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -94,19 +101,22 @@ function refresh() {
     void $('#coins').offsetWidth;
     $('#coins').classList.add('bump');
   }
-  const q = progress.quest;
-  const quest =
-    q.stage === 'notStarted'
-      ? t('questTalk')
-      : q.stage === 'collecting'
-        ? t('questCollect', { n: q.found.length })
-        : q.stage === 'returning'
-          ? t('questReturn')
-          : t('questDone');
-  $('#quest-icon').textContent = q.stage === 'done' ? '⏳' : q.stage === 'returning' ? '👴🏻' : '🌿';
-  $('#quest-text').textContent = quest;
-  world.setSpecies(q.stage === 'collecting', q.found);
-  world.setAbrahamMark(q.stage === 'notStarted' ? '!' : q.stage === 'returning' ? '?' : '');
+  renderQuest();
+  const abraham = progress.quests.abraham;
+  world.setSpecies(abraham.stage === 'active', abraham.found as SpeciesId[]);
+  for (const g of GUESTS) {
+    const st = progress.quests[g].stage;
+    world.setGuest(g, st !== 'locked', st === 'notStarted' ? '!' : st === 'returning' ? '?' : '');
+  }
+  const isaac = progress.quests.isaac;
+  world.setLanterns(LANTERNS.map((_, i) => isaac.stage !== 'active' ? isaac.stage === 'returning' || isaac.stage === 'done' : isaac.found.includes(String(i))));
+  const jacob = progress.quests.jacob;
+  world.setLambs(
+    LAMB_SPOTS.map((_, i) =>
+      jacob.stage === 'done' || jacob.stage === 'returning' || jacob.found.includes(String(i)) ? 'home' : world.lambStates[i] === 'following' && jacob.stage === 'active' ? 'following' : 'lost',
+    ),
+  );
+  world.setPet(progress.pets.includes('lamb'));
   world.setDecorations(progress.placed, scene === 'build' ? selectedPlaced : -1);
   if (scene === 'build') renderPalette();
 }
@@ -117,7 +127,9 @@ const toastQueue: string[] = [];
 let toastBusy = false;
 
 function toast(text: string) {
+  // Keep at most two messages waiting (e.g. an achievement and what earned it), so news is never stale.
   toastQueue.push(text);
+  if (toastQueue.length > 2) toastQueue.splice(0, toastQueue.length - 2);
   if (!toastBusy) nextToast();
 }
 
@@ -133,8 +145,8 @@ function nextToast() {
   el.classList.add('show');
   setTimeout(() => {
     el.classList.remove('show');
-    setTimeout(nextToast, 250);
-  }, 2200);
+    setTimeout(nextToast, 200);
+  }, toastQueue.length ? 1300 : 2000);
 }
 
 // --- Dialogs with characters ------------------------------------------------------------------
@@ -169,46 +181,82 @@ function say(face: string, name: string, text: string, choices: Choice[]) {
 
 const playerName = () => progress.avatar?.name || t('defaultName');
 
-function talkToAbraham() {
-  const face = '👴🏻';
-  const name = t('abraham');
-  switch (progress.quest.stage) {
+const GUEST_FACE: Record<GuestId, string> = { abraham: '👴🏻', isaac: '🧔🏻', jacob: '🧔🏽' };
+const GUEST_SPOT: Record<GuestId, Vec> = { abraham: ABRAHAM, isaac: ISAAC, jacob: JACOB };
+
+/** Everything a guest says, in the order of their quest. */
+const LINES: Record<GuestId, { intro: StringKey; accept: StringKey; waiting: StringKey; thanks: StringKey; done: StringKey }> = {
+  abraham: { intro: 'abrahamIntro', accept: 'abrahamAccept', waiting: 'abrahamWaiting', thanks: 'abrahamThanks', done: 'abrahamDone' },
+  isaac: { intro: 'isaacIntro', accept: 'isaacAccept', waiting: 'isaacWaiting', thanks: 'isaacThanks', done: 'isaacDone' },
+  jacob: { intro: 'jacobIntro', accept: 'jacobAccept', waiting: 'jacobWaiting', thanks: 'jacobThanks', done: 'jacobDone' },
+};
+
+function talkTo(guest: GuestId) {
+  const q = progress.quests[guest];
+  const lines = LINES[guest];
+  const face = GUEST_FACE[guest];
+  const name = t(guest);
+  const params = { name: playerName(), coins: QUEST_REWARDS[guest].coins, seconds: LANTERN_SECONDS, n: QUEST_ITEMS[guest] - q.found.length };
+  switch (q.stage) {
     case 'notStarted':
-      say(face, name, t('abrahamIntro', { name: playerName() }), [
-        { label: t('abrahamAccept'), primary: true, onClick: () => commit(startQuest(progress)) },
+      say(face, name, t(lines.intro, params), [
+        { label: t(lines.accept), primary: true, onClick: () => commit(startQuest(progress, guest)) },
         { label: t('abrahamLater') },
       ]);
       break;
-    case 'collecting':
-      say(face, name, t('abrahamWaiting', { n: SPECIES.length - progress.quest.found.length }), [{ label: t('ok'), primary: true }]);
+    case 'active':
+      say(face, name, t(lines.waiting, params), [{ label: t('ok'), primary: true }]);
       break;
     case 'returning':
-      say(face, name, t('abrahamThanks', { name: playerName(), coins: QUEST_REWARD.coins }), [
+      say(face, name, t(lines.thanks, params), [
         {
           label: t('thanks'),
           primary: true,
           onClick: () => {
-            commit(completeQuest(progress));
-            world.sparkle(ABRAHAM, '#ffd166', 2);
+            commit(completeQuest(progress, guest));
+            world.sparkle(GUEST_SPOT[guest], '#ffd166', 2);
+            world.celebrate();
           },
         },
       ]);
       break;
-    case 'done':
-      say(face, name, t('abrahamDone'), [{ label: t('ok'), primary: true }]);
-      break;
+    default:
+      say(face, name, t(lines.done, params), [{ label: t('ok'), primary: true }]);
   }
+}
+
+// --- Quest tracker -----------------------------------------------------------------------------
+
+function renderQuest() {
+  const guest = currentGuest(progress);
+  let icon = '⏳';
+  let text = t('questAllDone');
+  if (guest) {
+    const q = progress.quests[guest];
+    icon = q.stage === 'returning' ? GUEST_FACE[guest] : { abraham: '🌿', isaac: '🏮', jacob: '🐑' }[guest];
+    if (q.stage === 'notStarted') text = t(({ abraham: 'questTalk', isaac: 'questTalkIsaac', jacob: 'questTalkJacob' } as const)[guest]);
+    else if (q.stage === 'returning') text = t(({ abraham: 'questReturn', isaac: 'questReturnIsaac', jacob: 'questReturnJacob' } as const)[guest]);
+    else if (guest === 'abraham') text = t('questCollect', { n: q.found.length });
+    else if (guest === 'isaac')
+      text = lanternDeadline ? t('questLanternsTimer', { n: q.found.length, s: Math.ceil(lanternLeft()) }) : t('questLanterns', { n: q.found.length });
+    else text = t('questLambs', { n: q.found.length });
+  }
+  $('#quest-icon').textContent = icon;
+  $('#quest-text').textContent = text;
+  $('#quest').classList.toggle('urgent', !!lanternDeadline && lanternLeft() < 10);
 }
 
 // --- Contextual action (talk / play / decorate) -----------------------------------------------
 
-type Action = 'talkAbraham' | 'playHunt' | 'decorate';
+type Action = 'talkAbraham' | 'talkIsaac' | 'talkJacob' | 'playHunt' | 'decorate';
+const TALK: Record<GuestId, Action> = { abraham: 'talkAbraham', isaac: 'talkIsaac', jacob: 'talkJacob' };
 let action: Action | null = null;
 
 function nearbyAction(): Action | null {
   if (scene !== 'walk') return null;
   const p = world.player.pos;
-  if (Math.hypot(p.x - ABRAHAM.x, p.z - ABRAHAM.z) < 2.6) return 'talkAbraham';
+  for (const g of GUESTS)
+    if (progress.quests[g].stage !== 'locked' && Math.hypot(p.x - GUEST_SPOT[g].x, p.z - GUEST_SPOT[g].z) < 2.6) return TALK[g];
   if (Math.hypot(p.x - HUB.x, p.z - HUB.z) < 3) return 'playHunt';
   if (inside(p, MY_SUKKAH, 0.8)) return 'decorate';
   return null;
@@ -224,7 +272,8 @@ function updateAction() {
 }
 
 function runAction() {
-  if (action === 'talkAbraham') talkToAbraham();
+  const guest = GUESTS.find((g) => TALK[g] === action);
+  if (guest) talkTo(guest);
   else if (action === 'playHunt') showHuntCard('intro');
   else if (action === 'decorate') openBuild();
 }
@@ -243,21 +292,69 @@ addEventListener('keydown', (e) => {
   }
 });
 
-// --- Four species ------------------------------------------------------------------------------
+// --- Quest items: species, lanterns, lambs -------------------------------------------------------
 
-function checkSpecies() {
-  if (progress.quest.stage !== 'collecting') return;
+/** When Isaac's lanterns go dark again (ms timestamp), counted from the first lantern lit. 0 = not running. */
+let lanternDeadline = 0;
+/** After the lanterns go out, the one the player stands on can't be relit until they step away from it. */
+let lanternBlocked = -1;
+const lanternLeft = () => Math.max(0, (lanternDeadline - performance.now()) / 1000);
+
+function checkQuestItems() {
   const p = world.player.pos;
-  for (const id of SPECIES) {
-    if (progress.quest.found.includes(id)) continue;
-    const s = SPECIES_SPOTS[id];
-    if (Math.hypot(p.x - s.x, p.z - s.z) > 1.4) continue;
-    world.sparkle(s, '#b8f28c', 1.2);
-    world.celebrate();
-    const next = findSpecies(progress, id);
-    commit(next);
-    toast(next.quest.stage === 'returning' ? `🌿 ${t('allFound')}` : `✨ ${t('foundSpecies', { item: t(id) })}`);
+  const near = (v: Vec, r: number) => Math.hypot(p.x - v.x, p.z - v.z) <= r;
+
+  if (progress.quests.abraham.stage === 'active')
+    for (const id of SPECIES) {
+      if (progress.quests.abraham.found.includes(id) || !near(SPECIES_SPOTS[id], 1.4)) continue;
+      world.sparkle(SPECIES_SPOTS[id], '#b8f28c', 1.2);
+      world.celebrate();
+      const next = findItem(progress, 'abraham', id);
+      commit(next);
+      toast(next.quests.abraham.stage === 'returning' ? `🌿 ${t('allFound')}` : `✨ ${t('foundSpecies', { item: t(id) })}`);
+    }
+
+  if (progress.quests.isaac.stage === 'active') {
+    if (lanternBlocked >= 0 && !near(LANTERNS[lanternBlocked], 2)) lanternBlocked = -1;
+    LANTERNS.forEach((l, i) => {
+      if (progress.quests.isaac.found.includes(String(i)) || i === lanternBlocked || !near(l, 1.4)) return;
+      if (!lanternDeadline) lanternDeadline = performance.now() + LANTERN_SECONDS * 1000;
+      world.sparkle(l, '#ffb347', 1.6);
+      const next = findItem(progress, 'isaac', String(i));
+      commit(next);
+      if (next.quests.isaac.stage === 'returning') {
+        lanternDeadline = 0;
+        world.celebrate();
+        toast(`🏮 ${t('allLit')}`);
+      } else toast(`🏮 ${t('lanternLit', { n: next.quests.isaac.found.length })}`);
+    });
+    if (lanternDeadline && lanternLeft() === 0) {
+      lanternDeadline = 0;
+      lanternBlocked = LANTERNS.findIndex((l) => near(l, 1.4));
+      commit(resetItems(progress, 'isaac'));
+      toast(`💨 ${t('lanternsOut')}`);
+    }
+    renderQuest();
   }
+
+  if (progress.quests.jacob.stage === 'active')
+    LAMB_SPOTS.forEach((_, i) => {
+      const state = world.lambStates[i];
+      if (state === 'lost' && near(world.lambPosition(i), 1.5)) {
+        world.lambStates[i] = 'following';
+        world.sparkle(world.lambPosition(i), '#ffffff', 0.8);
+        world.celebrate();
+        toast(`🐑 ${t('lambFound')}`);
+      } else if (state === 'following') {
+        const l = world.lambPosition(i);
+        if (Math.hypot(l.x - PEN.x, l.z - PEN.z) < PEN.r + 0.4) {
+          world.sparkle(PEN, '#ffd166', 1);
+          const next = findItem(progress, 'jacob', String(i));
+          commit(next);
+          toast(next.quests.jacob.stage === 'returning' ? `🐑 ${t('allLambs')}` : `🐑 ${t('lambHome', { n: next.quests.jacob.found.length })}`);
+        }
+      }
+    });
 }
 
 // --- Decorating --------------------------------------------------------------------------------
@@ -728,7 +825,7 @@ function loop() {
       setTimeout(() => $('#hint').classList.add('gone'), 1200);
     }
     if (scene === 'walk') {
-      checkSpecies();
+      checkQuestItems();
       updateAction();
     } else tickHunt(dt);
   }
@@ -753,6 +850,21 @@ registerSW({
 });
 $('#update-now').addEventListener('click', () => location.reload());
 $('#app-version').textContent = __APP_VERSION__;
+
+// Test hook for driving the game from Playwright during development; not in production builds.
+if (import.meta.env.DEV)
+  Object.assign(window, {
+    __game: {
+      world,
+      get progress() {
+        return progress;
+      },
+      goTo: (x: number, z: number) => world.teleport({ x, z }, world.player.heading),
+      walkTo: (x: number, z: number) => {
+        world.player.pos = { x, z };
+      },
+    },
+  });
 
 // --- Start -------------------------------------------------------------------------------------
 

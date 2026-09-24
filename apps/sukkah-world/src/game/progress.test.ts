@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  currentGuest,
+  findItem,
+  type GuestId,
+  QUEST_ITEMS,
+  QUEST_REWARDS,
+  resetItems,
   available,
   buyWear,
   fullAvatar,
@@ -8,7 +14,6 @@ import {
   WEAR_PRICES,
   buy,
   completeQuest,
-  findSpecies,
   finishHunt,
   huntReward,
   MAX_PLACED,
@@ -16,43 +21,75 @@ import {
   parseProgress,
   place,
   type Progress,
-  QUEST_REWARD,
   removePlaced,
   rotatePlaced,
   SPECIES,
   startQuest,
 } from './progress';
 
-describe('Abraham quest', () => {
-  it('goes talk → collect all four species → return → reward', () => {
-    let p = startQuest(newProgress());
-    expect(p.quest.stage).toBe('collecting');
+describe('Ushpizin quests', () => {
+  const finish = (p: Progress, guest: GuestId) => {
+    p = startQuest(p, guest);
+    for (let i = 0; i < QUEST_ITEMS[guest]; i++) p = findItem(p, guest, guest === 'abraham' ? SPECIES[i] : String(i));
+    return completeQuest(p, guest);
+  };
+
+  it('Abraham: talk → collect all four species → return → reward', () => {
+    let p = startQuest(newProgress(), 'abraham');
+    expect(p.quests.abraham.stage).toBe('active');
     expect(p.achievements).toContain('metAbraham');
-
-    for (const s of SPECIES.slice(0, 3)) p = findSpecies(p, s);
-    expect(p.quest.stage).toBe('collecting');
-    p = findSpecies(p, 'arava');
-    expect(p.quest.stage).toBe('returning');
+    for (const s of SPECIES.slice(0, 3)) p = findItem(p, 'abraham', s);
+    expect(p.quests.abraham.stage).toBe('active');
+    p = findItem(p, 'abraham', 'arava');
+    expect(p.quests.abraham.stage).toBe('returning');
     expect(p.achievements).toContain('fourSpecies');
-
-    p = completeQuest(p);
-    expect(p.quest.stage).toBe('done');
-    expect(p.coins).toBe(QUEST_REWARD.coins);
-    expect(p.owned[QUEST_REWARD.item]).toBe(1);
+    p = completeQuest(p, 'abraham');
+    expect(p.quests.abraham.stage).toBe('done');
+    expect(p.coins).toBe(QUEST_REWARDS.abraham.coins);
+    expect(p.owned.lantern).toBe(1);
   });
 
-  it('ignores species before the quest starts and duplicates', () => {
-    let p = findSpecies(newProgress(), 'etrog');
-    expect(p.quest.found).toEqual([]);
-    p = findSpecies(findSpecies(startQuest(p), 'etrog'), 'etrog');
-    expect(p.quest.found).toEqual(['etrog']);
+  it('brings the guests one after another', () => {
+    let p = newProgress();
+    expect(currentGuest(p)).toBe('abraham');
+    expect(startQuest(p, 'isaac').quests.isaac.stage).toBe('locked');
+    p = finish(p, 'abraham');
+    expect(currentGuest(p)).toBe('isaac');
+    p = finish(p, 'isaac');
+    expect(p.ownedWear).toContain('hadasWreath');
+    expect(currentGuest(p)).toBe('jacob');
+    p = finish(p, 'jacob');
+    expect(p.pets).toEqual(['lamb']);
+    expect(currentGuest(p)).toBeNull();
+    expect(p.coins).toBe(QUEST_REWARDS.abraham.coins + QUEST_REWARDS.isaac.coins + QUEST_REWARDS.jacob.coins);
+  });
+
+  it('ignores items before the quest starts and duplicates', () => {
+    let p = findItem(newProgress(), 'abraham', 'etrog');
+    expect(p.quests.abraham.found).toEqual([]);
+    p = findItem(findItem(startQuest(p, 'abraham'), 'abraham', 'etrog'), 'abraham', 'etrog');
+    expect(p.quests.abraham.found).toEqual(['etrog']);
+  });
+
+  it("puts Isaac's lanterns out again", () => {
+    let p = finish(newProgress(), 'abraham');
+    p = findItem(startQuest(p, 'isaac'), 'isaac', '0');
+    expect(resetItems(p, 'isaac').quests.isaac.found).toEqual([]);
   });
 
   it('cannot be completed twice', () => {
-    let p = startQuest(newProgress());
-    for (const s of SPECIES) p = findSpecies(p, s);
-    p = completeQuest(completeQuest(p));
-    expect(p.coins).toBe(QUEST_REWARD.coins);
+    const p = finish(newProgress(), 'abraham');
+    expect(completeQuest(p, 'abraham').coins).toBe(QUEST_REWARDS.abraham.coins);
+  });
+
+  it('reads saves from before the quest chain', () => {
+    const old = { ...newProgress(), quest: { stage: 'done', found: SPECIES } } as Record<string, unknown>;
+    delete old.quests;
+    const p = parseProgress(JSON.stringify(old));
+    expect(p.quests.abraham.stage).toBe('done');
+    expect(p.quests.isaac.stage).toBe('notStarted');
+    const collecting = { ...old, quest: { stage: 'collecting', found: ['etrog'] } };
+    expect(parseProgress(JSON.stringify(collecting)).quests.abraham).toEqual({ stage: 'active', found: ['etrog'] });
   });
 });
 
@@ -104,7 +141,7 @@ describe('etrog hunt rewards', () => {
 
 describe('saving', () => {
   it('round-trips and survives garbage', () => {
-    const p = buy({ ...startQuest(newProgress()), coins: 30 }, 'rug');
+    const p = buy({ ...startQuest(newProgress(), 'abraham'), coins: 30 }, 'rug');
     expect(parseProgress(JSON.stringify(p))).toEqual(p);
     expect(parseProgress('not json')).toEqual(newProgress());
     expect(parseProgress(null)).toEqual(newProgress());

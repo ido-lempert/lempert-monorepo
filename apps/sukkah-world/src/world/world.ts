@@ -12,10 +12,18 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Hunt, Vec } from '../game/hunt';
-import { type Avatar, decoration, type Placed, SPECIES, type SpeciesId } from '../game/progress';
+import { type Avatar, decoration, type GuestId, type Placed, SPECIES, type SpeciesId } from '../game/progress';
 import { type StringKey, t } from '../i18n';
 import {
   ABRAHAM,
+  FOREST_TREES,
+  ISAAC,
+  JACOB,
+  LAMB_SPOTS,
+  LANTERNS,
+  MAZE,
+  MAZE_LAYOUT,
+  PEN,
   GARDEN,
   GRAND_SUKKAH,
   HOUSES,
@@ -35,6 +43,14 @@ import {
 import { cloud, HORIZON, initialQuality, mat, type Quality, setWindTime, skyDome, sparkleTexture, swayMat, tileTexture, wingTexture } from './look';
 import {
   abraham,
+  hedge,
+  isaac,
+  jacob,
+  LANTERN_LIT,
+  LANTERN_UNLIT,
+  lanternPost,
+  mushroom,
+  pen,
   animateWalk,
   bush,
   type Character,
@@ -84,6 +100,8 @@ interface Butterfly {
   seed: number;
 }
 
+export type LambState = 'lost' | 'following' | 'home';
+
 export type SukkahPick = { kind: 'floor'; x: number; z: number } | { kind: 'item'; index: number };
 
 /** Deterministic random numbers, so the grass looks the same on every visit. */
@@ -112,8 +130,14 @@ export class World {
 
   readonly player: Walker;
   private rival: Walker;
-  private abraham: Character;
-  private abrahamTag: HTMLDivElement;
+  private guests = new Map<GuestId, { char: Character; tag: HTMLDivElement; home: Vec; rest: number }>();
+  private lanterns: THREE.Mesh[] = [];
+  /** Jacob's lambs: lost in the maze, following the player, or safe in the pen. */
+  private lambs: Walker[] = [];
+  lambStates: LambState[] = ['lost', 'lost', 'lost'];
+  private pet: Walker | null = null;
+  /** The player's recent path, for followers to walk along. */
+  private trail: Vec[] = [];
   private speciesItems = new Map<SpeciesId, THREE.Group>();
   private mySukkah: SukkahModel;
   private decorations = new THREE.Group();
@@ -186,11 +210,11 @@ export class World {
     this.scene.add(hub.group);
     this.label('etrogHunt', HUB.x, 5.3, HUB.z, 'zone');
 
-    this.abraham = abraham();
-    this.abraham.group.position.set(ABRAHAM.x, 0, ABRAHAM.z);
-    this.abraham.group.rotation.y = -0.6;
-    this.scene.add(this.abraham.group);
-    this.abrahamTag = this.label('abraham', 0, 2.35, 0, 'npc', this.abraham.group);
+    this.addGuest('abraham', abraham(), ABRAHAM, -0.6);
+    this.addGuest('isaac', isaac(), ISAAC, 1.2);
+    this.addGuest('jacob', jacob(), JACOB, -1.3);
+    this.buildForest();
+    this.buildMaze();
 
     this.player = this.walker(character({ name: '', shirt: '#2a9d8f', skin: '#f1c7a0', hat: 'kippah' }), SPAWN, WALK_SPEED);
     this.player.heading = Math.PI;
@@ -320,6 +344,8 @@ export class World {
       if (Math.abs(x - GARDEN.x) < GARDEN.w / 2 + 0.6 && Math.abs(z - GARDEN.z) < GARDEN.d / 2 + 0.6) return false;
       if (inside({ x, z }, GRAND_SUKKAH, 0.6) || inside({ x, z }, MY_SUKKAH, 0.6)) return false;
       if (HOUSES.some((h) => Math.hypot(x - h.x, z - h.z) < 3)) return false;
+      if (x > MAZE.x - 0.8 && x < MAZE.x + MAZE.cells * MAZE.cell + 0.8 && z > MAZE.z - 0.8 && z < MAZE.z + MAZE.cells * MAZE.cell + 0.8) return false;
+      if (Math.hypot(x - PEN.x, z - PEN.z) < PEN.r + 0.5) return false;
       return Math.hypot(x - HUB.x, z - HUB.z) > 3;
     };
     const spots = (count: number) => {
@@ -342,7 +368,7 @@ export class World {
       return b;
     });
     const tuft = mergeGeometries(blades)!;
-    const grassMatrices = spots(this.quality === 'high' ? 1600 : 700);
+    const grassMatrices = spots(this.quality === 'high' ? 2600 : 1100);
     const grass = new THREE.InstancedMesh(tuft, swayMat(null, 0.3), grassMatrices.length);
     const greens = ['#6fbf4a', '#7fcf55', '#5eab40'].map((c) => new THREE.Color(c));
     grassMatrices.forEach((m, i) => {
@@ -352,7 +378,7 @@ export class World {
     grass.receiveShadow = true;
     this.scene.add(grass);
 
-    const flowerMatrices = spots(260);
+    const flowerMatrices = spots(420);
     const stem = new THREE.CylinderGeometry(0.015, 0.02, 0.32, 4);
     stem.translate(0, 0.16, 0);
     const petals = new THREE.SphereGeometry(0.075, 10, 8);
@@ -514,6 +540,104 @@ export class World {
     }
   }
 
+  private addGuest(id: GuestId, char: Character, home: Vec, rest: number) {
+    char.group.position.set(home.x, 0, home.z);
+    char.group.rotation.y = rest;
+    this.scene.add(char.group);
+    const tag = this.label(id, 0, 2.35, 0, 'npc', char.group);
+    this.guests.set(id, { char, tag, home, rest });
+  }
+
+  /** The Forest of the Ushpizin: tall trees, mushrooms and Isaac's lantern trail. */
+  private buildForest() {
+    FOREST_TREES.forEach((p, i) => {
+      const t = this.add(tree(i + 2), p.x, p.z);
+      t.scale.setScalar(0.95 + (i % 4) * 0.1);
+      t.rotation.y = i;
+      this.occluders.push(t);
+      if (i % 3 === 0) this.add(mushroom(i), p.x + 0.9, p.z + 0.6);
+    });
+    for (const l of LANTERNS) {
+      const post = lanternPost();
+      this.add(post.group, l.x, l.z);
+      this.lanterns.push(post.glow);
+    }
+    this.label('forest', ISAAC.x - 5, 4.2, ISAAC.z - 2, 'zone');
+  }
+
+  /** Jacob's hedge maze, with the pen for the lambs next to the entrance. */
+  private buildMaze() {
+    for (const w of MAZE_LAYOUT.walls) {
+      const h = hedge(w.maxX - w.minX, w.maxZ - w.minZ);
+      this.add(h, (w.minX + w.maxX) / 2, (w.minZ + w.maxZ) / 2);
+      this.occluders.push(h);
+    }
+    this.add(pen(PEN.r), PEN.x, PEN.z).rotation.y = Math.PI / 2 - 0.4;
+    this.label('maze', MAZE.x + MAZE.cells * MAZE.cell * 0.5, 3.2, MAZE.z - 0.5, 'zone');
+    for (let i = 0; i < LAMB_SPOTS.length; i++) {
+      const lamb = sheep();
+      lamb.group.scale.setScalar(0.55);
+      this.lambs.push(this.walker(lamb, LAMB_SPOTS[i], 0));
+    }
+  }
+
+  /**
+   * Following lambs trot after the player in a little line. They walk along the player's own recent path
+   * ("breadcrumbs"), which is always walkable, so they never get stuck on hedge corners in the maze.
+   */
+  private updateLambs(dt: number, time: number) {
+    let last = this.trail[this.trail.length - 1];
+    if (!last || Math.hypot(last.x - this.player.pos.x, last.z - this.player.pos.z) > 0.2) {
+      this.trail.push({ ...this.player.pos });
+      if (this.trail.length > 300) this.trail.shift();
+      last = this.trail[this.trail.length - 1];
+    }
+    const goTo = (w: Walker, target: Vec, speed: number) => {
+      const dx = target.x - w.pos.x;
+      const dz = target.z - w.pos.z;
+      const d = Math.hypot(dx, dz);
+      w.moving = 0;
+      if (d < 0.05) return;
+      // Far behind (e.g. after travelling through the menu): catch up at once.
+      if (d > 6) {
+        w.pos = { ...target };
+        return;
+      }
+      const step = Math.min(d, speed * dt);
+      w.pos = { x: w.pos.x + (dx / d) * step, z: w.pos.z + (dz / d) * step };
+      w.phase += step * 4;
+      w.heading = Math.atan2(dx, dz);
+      w.moving = 1;
+    };
+    // Each follower stays about 1.1 m behind the one in front, measured along the path.
+    const behind = (k: number) => {
+      const want = 1.1 * (k + 1);
+      let walked = Math.hypot(this.player.pos.x - last.x, this.player.pos.z - last.z);
+      for (let i = this.trail.length - 1; i > 0; i--) {
+        const a = this.trail[i];
+        const b = this.trail[i - 1];
+        const seg = Math.hypot(a.x - b.x, a.z - b.z);
+        if (walked + seg >= want) {
+          const t = (want - walked) / seg;
+          return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+        }
+        walked += seg;
+      }
+      return this.trail[0];
+    };
+    let k = 0;
+    this.lambs.forEach((lamb, i) => {
+      const st = this.lambStates[i];
+      if (st === 'following') goTo(lamb, behind(k++), WALK_SPEED * 1.15);
+      else if (st === 'home') {
+        const spot = { x: PEN.x + Math.cos(time * 0.3 + i * 2.1) * 0.8, z: PEN.z + Math.sin(time * 0.3 + i * 2.1) * 0.8 };
+        goTo(lamb, spot, 0.8);
+        lamb.moving *= 0.5;
+      } else lamb.moving = 0;
+    });
+    if (this.pet) goTo(this.pet, behind(k), WALK_SPEED * 1.15);
+  }
+
   // --- Quality ----------------------------------------------------------------------------------
 
   private applyQuality() {
@@ -554,9 +678,42 @@ export class World {
     for (const [id, item] of this.speciesItems) item.visible = active && !found.includes(id);
   }
 
-  /** The marker above Abraham: '!' when he has something to say, '' otherwise. */
-  setAbrahamMark(mark: '' | '!' | '?') {
-    this.abrahamTag.dataset.mark = mark;
+  /** Shows a guest once they have arrived, with '!' (new quest) or '?' (come back) above them. */
+  setGuest(id: GuestId, visible: boolean, mark: '' | '!' | '?') {
+    const g = this.guests.get(id)!;
+    g.char.group.visible = visible;
+    g.tag.dataset.mark = mark;
+  }
+
+  setLanterns(lit: boolean[]) {
+    this.lanterns.forEach((glow, i) => (glow.material = lit[i] ? LANTERN_LIT : LANTERN_UNLIT));
+  }
+
+  /** Places the lambs: lost ones at their hiding spots, rescued ones in the pen; following ones stay where they are. */
+  setLambs(states: LambState[]) {
+    states.forEach((st, i) => {
+      const lamb = this.lambs[i];
+      if (st === 'lost') lamb.pos = { ...LAMB_SPOTS[i] };
+      if (st === 'home' && this.lambStates[i] !== 'home') lamb.pos = { x: PEN.x + Math.cos(i * 2.1) * 0.8, z: PEN.z + Math.sin(i * 2.1) * 0.8 };
+    });
+    this.lambStates = [...states];
+  }
+
+  lambPosition(i: number): Vec {
+    return { ...this.lambs[i].pos };
+  }
+
+  /** The player's own pet lamb, trotting after them. */
+  setPet(has: boolean) {
+    if (has && !this.pet) {
+      const lamb = sheep();
+      lamb.group.scale.setScalar(0.55);
+      this.pet = this.walker(lamb, { x: this.player.pos.x + 1, z: this.player.pos.z + 1 }, 0);
+    }
+    if (!has && this.pet) {
+      this.scene.remove(this.pet.char.group);
+      this.pet = null;
+    }
   }
 
   setDecorations(placed: Placed[], selected = -1) {
@@ -661,7 +818,7 @@ export class World {
     this.watchSpeed(raw);
 
     this.hop = Math.max(0, this.hop - dt * 2.5);
-    for (const w of [this.player, this.rival]) {
+    for (const w of [this.player, this.rival, ...this.lambs, ...(this.pet ? [this.pet] : [])]) {
       const g = w.char.group;
       const onFloor = inside(w.pos, MY_SUKKAH, -0.1) || inside(w.pos, GRAND_SUKKAH, -0.1);
       const hop = w === this.player ? Math.sin(this.hop * Math.PI) * 0.6 : 0;
@@ -670,12 +827,15 @@ export class World {
       animateWalk(w.char, w.phase, w.moving, still ? 0 : time);
     }
 
-    // Abraham turns to whoever comes near, and waves.
-    const d = Math.hypot(this.player.pos.x - ABRAHAM.x, this.player.pos.z - ABRAHAM.z);
-    const face = d < 6 ? Math.atan2(this.player.pos.x - ABRAHAM.x, this.player.pos.z - ABRAHAM.z) : -0.6;
-    this.abraham.group.rotation.y = turnTowards(this.abraham.group.rotation.y, face, dt * 4);
-    animateWalk(this.abraham, 0, 0, still ? 0 : time);
-    this.abraham.limbs.armL.rotation.z = d < 6 && !still ? -2.3 + Math.sin(time * 8) * 0.35 : -0.15;
+    // The guests turn to whoever comes near, and wave.
+    for (const g of this.guests.values()) {
+      const d = Math.hypot(this.player.pos.x - g.home.x, this.player.pos.z - g.home.z);
+      const face = d < 6 ? Math.atan2(this.player.pos.x - g.home.x, this.player.pos.z - g.home.z) : g.rest;
+      g.char.group.rotation.y = turnTowards(g.char.group.rotation.y, face, dt * 4);
+      animateWalk(g.char, 0, 0, still ? 0 : time);
+      g.char.limbs.armL.rotation.z = d < 6 && !still ? -2.3 + Math.sin(time * 8) * 0.35 : -0.15;
+    }
+    this.updateLambs(dt, time);
 
     if (!still) {
       setWindTime(time);
@@ -893,7 +1053,7 @@ function setFaded(root: THREE.Object3D, faded: boolean) {
       if (!m) {
         const clone = o.material.clone();
         clone.transparent = true;
-        clone.opacity = 0.25;
+        clone.opacity = 0.14;
         clone.depthWrite = false;
         fadedMats.set(o.material, clone);
         m = clone;

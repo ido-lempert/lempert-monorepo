@@ -30,7 +30,9 @@ export interface SukkahSpot {
   open: Side;
 }
 
-export const WORLD_RADIUS = 31;
+export const WORLD_RADIUS = 44;
+/** The old village; etrog hunts stay inside it. */
+export const VILLAGE_RADIUS = 28;
 export const SPAWN: Vec = { x: 0, z: 9 };
 export const PLAZA = { x: 0, z: 0, r: 7 };
 
@@ -54,7 +56,6 @@ export const HOUSES: (Vec & { rot: number; color: string })[] = [
   { x: 13, z: -12, rot: -0.3, color: '#f4a261' },
   { x: -12, z: 14, rot: -0.4, color: '#a8dadc' },
   { x: 12, z: 14, rot: 0.4, color: '#e5989b' },
-  { x: 24, z: -10, rot: -0.8, color: '#cdb4db' },
 ];
 export const HOUSE_SIZE = { w: 4, d: 3.5 };
 
@@ -84,6 +85,157 @@ export const TREES: Vec[] = [
   { x: -8, z: 24 },
 ];
 
+// --- Forest of the Ushpizin (Isaac) --------------------------------------------------------------
+
+export const ISAAC: Vec = { x: -27, z: 11 };
+/** Isaac's lantern trail, winding north through the forest. */
+export const LANTERNS: Vec[] = [
+  { x: -30.5, z: 7.5 },
+  { x: -36.5, z: 3.5 },
+  { x: -31, z: -2 },
+  { x: -37, z: -8 },
+  { x: -31.5, z: -13.5 },
+  { x: -37.5, z: -18.5 },
+];
+/** Seconds to light every lantern once the first one is lit. */
+export const LANTERN_SECONDS = 30;
+export const FOREST = { minX: -42, maxX: -26.5, minZ: -24, maxZ: 20 };
+
+function nearTrail(p: Vec, gap: number): boolean {
+  const pts = [ISAAC, ...LANTERNS];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.z - a.z) * (b.z - a.z)) / ((b.x - a.x) ** 2 + (b.z - a.z) ** 2)));
+    if (Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.z - (a.z + t * (b.z - a.z))) < gap) return true;
+  }
+  return false;
+}
+
+/** Deterministic random numbers (mulberry32). */
+export function seeded(seed: number): () => number {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Forest trees, scattered around the trail but never on it. */
+export const FOREST_TREES: Vec[] = (() => {
+  const random = seeded(11);
+  const out: Vec[] = [];
+  for (let tries = 0; tries < 2000 && out.length < 34; tries++) {
+    const p = { x: FOREST.minX + random() * (FOREST.maxX - FOREST.minX), z: FOREST.minZ + random() * (FOREST.maxZ - FOREST.minZ) };
+    if (Math.hypot(p.x, p.z) > WORLD_RADIUS - 1.5) continue;
+    if (nearTrail(p, 2.6)) continue;
+    if (out.some((o) => Math.hypot(o.x - p.x, o.z - p.z) < 3.2)) continue;
+    out.push(p);
+  }
+  return out;
+})();
+
+// --- Jacob's hedge maze -----------------------------------------------------------------------------
+
+export const MAZE = { x: 26, z: -7, cells: 7, cell: 2 };
+export const JACOB: Vec = { x: 24, z: -6.5 };
+/** Where the lambs have to be brought back to. */
+export const PEN: Vec & { r: number } = { x: 22, z: -11.5, r: 1.8 };
+
+export interface Maze {
+  walls: Box[];
+  /** Centres of the dead ends furthest from the entrance, furthest first. */
+  deadEnds: Vec[];
+}
+
+const cellCentre = (i: number, j: number): Vec => ({ x: MAZE.x + MAZE.cell * (i + 0.5), z: MAZE.z + MAZE.cell * (j + 0.5) });
+
+/** A perfect maze (every cell reachable, one way between any two) carved with a seeded depth-first search. */
+export function buildMaze(seed = 5): Maze {
+  const n = MAZE.cells;
+  const random = seeded(seed);
+  // open[i][j] = passages from cell (i, j): east / south.
+  const east = Array.from({ length: n }, () => Array(n).fill(false));
+  const south = Array.from({ length: n }, () => Array(n).fill(false));
+  const seen = Array.from({ length: n }, () => Array(n).fill(false));
+  const stack: [number, number][] = [[0, 0]];
+  seen[0][0] = true;
+  while (stack.length) {
+    const [i, j] = stack[stack.length - 1];
+    const options = (
+      [
+        [i + 1, j],
+        [i - 1, j],
+        [i, j + 1],
+        [i, j - 1],
+      ] as [number, number][]
+    ).filter(([a, b]) => a >= 0 && b >= 0 && a < n && b < n && !seen[a][b]);
+    if (!options.length) {
+      stack.pop();
+      continue;
+    }
+    const [a, b] = options[Math.floor(random() * options.length)];
+    if (a > i) east[i][j] = true;
+    if (a < i) east[a][b] = true;
+    if (b > j) south[i][j] = true;
+    if (b < j) south[a][b] = true;
+    seen[a][b] = true;
+    stack.push([a, b]);
+  }
+
+  const T = 0.5;
+  const c = MAZE.cell;
+  const walls: Box[] = [];
+  const x0 = MAZE.x;
+  const z0 = MAZE.z;
+  const size = n * c;
+  // Outer walls; the entrance is the west side of cell (0, 0).
+  walls.push({ minX: x0 - T / 2, maxX: x0 + size + T / 2, minZ: z0 + size - T / 2, maxZ: z0 + size + T / 2 });
+  walls.push({ minX: x0 + size - T / 2, maxX: x0 + size + T / 2, minZ: z0 - T / 2, maxZ: z0 + size + T / 2 });
+  walls.push({ minX: x0 - T / 2, maxX: x0 + size + T / 2, minZ: z0 - T / 2, maxZ: z0 + T / 2 });
+  walls.push({ minX: x0 - T / 2, maxX: x0 + T / 2, minZ: z0 + c, maxZ: z0 + size + T / 2 });
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      if (i < n - 1 && !east[i][j]) {
+        const x = x0 + (i + 1) * c;
+        walls.push({ minX: x - T / 2, maxX: x + T / 2, minZ: z0 + j * c - T / 2, maxZ: z0 + (j + 1) * c + T / 2 });
+      }
+      if (j < n - 1 && !south[i][j]) {
+        const z = z0 + (j + 1) * c;
+        walls.push({ minX: x0 + i * c - T / 2, maxX: x0 + (i + 1) * c + T / 2, minZ: z - T / 2, maxZ: z + T / 2 });
+      }
+    }
+
+  // Distance of every cell from the entrance, to hide the lambs deep inside.
+  const dist = Array.from({ length: n }, () => Array(n).fill(-1));
+  const queue: [number, number][] = [[0, 0]];
+  dist[0][0] = 0;
+  const links = (i: number, j: number): [number, number][] => {
+    const out: [number, number][] = [];
+    if (i < n - 1 && east[i][j]) out.push([i + 1, j]);
+    if (i > 0 && east[i - 1][j]) out.push([i - 1, j]);
+    if (j < n - 1 && south[i][j]) out.push([i, j + 1]);
+    if (j > 0 && south[i][j - 1]) out.push([i, j - 1]);
+    return out;
+  };
+  while (queue.length) {
+    const [i, j] = queue.shift()!;
+    for (const [a, b] of links(i, j))
+      if (dist[a][b] < 0) {
+        dist[a][b] = dist[i][j] + 1;
+        queue.push([a, b]);
+      }
+  }
+  const ends: { i: number; j: number; d: number }[] = [];
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (links(i, j).length === 1 && (i || j)) ends.push({ i, j, d: dist[i][j] });
+  ends.sort((a, b) => b.d - a.d);
+  return { walls, deadEnds: ends.map((e) => cellCentre(e.i, e.j)) };
+}
+
+export const MAZE_LAYOUT = buildMaze();
+export const LAMB_SPOTS: Vec[] = MAZE_LAYOUT.deadEnds.slice(0, 3);
+
 export const WALL = 0.3;
 
 /** The walls of a sukkah (the open side has none). */
@@ -105,10 +257,14 @@ function houseBox(h: Vec): Box {
   return { minX: h.x - r, maxX: h.x + r, minZ: h.z - r, maxZ: h.z + r };
 }
 
-export const BOXES: Box[] = [...sukkahWalls(GRAND_SUKKAH), ...sukkahWalls(MY_SUKKAH), ...HOUSES.map(houseBox)];
+export const BOXES: Box[] = [...sukkahWalls(GRAND_SUKKAH), ...sukkahWalls(MY_SUKKAH), ...HOUSES.map(houseBox), ...MAZE_LAYOUT.walls];
 export const CIRCLES: Circle[] = [
   WELL,
   { ...ABRAHAM, r: 0.5 },
+  { ...ISAAC, r: 0.5 },
+  { ...JACOB, r: 0.5 },
+  ...LANTERNS.map((l) => ({ ...l, r: 0.25 })),
+  ...FOREST_TREES.map((p) => ({ ...p, r: 0.7 })),
   // The two pillars of the Game Hub arch.
   { x: HUB.x - 1.8, z: HUB.z, r: 0.35 },
   { x: HUB.x + 1.8, z: HUB.z, r: 0.35 },
@@ -179,7 +335,7 @@ export function huntCandidates(): Vec[] {
   for (let x = -27; x <= 27; x += 1.5)
     for (let z = -26; z <= 26; z += 1.5) {
       const p = { x, z };
-      if (Math.hypot(x, z) > WORLD_RADIUS - 3) continue;
+      if (Math.hypot(x, z) > VILLAGE_RADIUS) continue;
       if (Math.hypot(x - HUB.x, z - HUB.z) < 3) continue;
       if (inside(p, MY_SUKKAH, 0.5)) continue;
       if (isFree(p, 1.2)) out.push(p);

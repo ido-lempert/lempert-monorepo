@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SPECIES } from '../game/progress';
-import { GRAND_SUKKAH, huntCandidates, isFree, MY_SUKKAH, resolve, SPAWN, SPECIES_SPOTS, WORLD_RADIUS } from './layout';
+import { buildMaze, GRAND_SUKKAH, huntCandidates, isFree, ISAAC, JACOB, LAMB_SPOTS, MAZE, MY_SUKKAH, PEN, resolve, SPAWN, SPECIES_SPOTS, WORLD_RADIUS } from './layout';
 
 describe('village layout', () => {
   it('spawns the player and places the four species on open ground', () => {
@@ -22,5 +22,23 @@ describe('village layout', () => {
 
   it('has plenty of room for an etrog hunt', () => {
     expect(huntCandidates().length).toBeGreaterThan(100);
+  });
+
+  it('places the new guests, lambs and pen inside the world, lambs and pen on open ground', () => {
+    for (const p of [ISAAC, JACOB, PEN, ...LAMB_SPOTS]) expect(Math.hypot(p.x, p.z)).toBeLessThan(WORLD_RADIUS - 1);
+    for (const p of LAMB_SPOTS) expect(isFree(p, 0.4)).toBe(true);
+    expect(isFree(PEN, 0.4)).toBe(true);
+    expect(LAMB_SPOTS).toHaveLength(3);
+  });
+
+  it('builds a maze whose entrance is open and lambs are inside', () => {
+    const entrance = { x: MAZE.x - 0.5, z: MAZE.z + MAZE.cell / 2 };
+    expect(isFree(entrance, 0.4)).toBe(true);
+    for (const l of LAMB_SPOTS) {
+      expect(l.x).toBeGreaterThan(MAZE.x);
+      expect(l.z).toBeGreaterThan(MAZE.z);
+    }
+    // Deterministic: the same maze every visit.
+    expect(buildMaze().walls).toEqual(buildMaze().walls);
   });
 });
