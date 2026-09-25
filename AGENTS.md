@@ -37,6 +37,7 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - music (`src/audio.ts`, all synthesised): calm village tunes, and each quest gets its own faster theme while it is active (`Theme`, chosen in `updateMusic` in `main.ts`); quest-find sounds climb a major scale as the quest fills up (`lift`)
   - heat and battery: `World.setPace`/`due` cap drawing at 60 fps while moving and 30 when idle (120 Hz screens would otherwise double the work), pixel ratio is capped at 1.5, shadows redraw every other frame, and the menu has a battery saver
   - on touch screens the camera pad is hidden (two fingers turn and zoom); the accessibility menu can switch it back on
+  - pop-up notices (toasts, hint, side-quest pill, install and update banners) go through `Notice` (`src/notice.ts`): they leave on their own after a few seconds and can be swiped away; never add one that stays on screen
   - `World.photoSukkah` renders the player's sukkah off-screen for the shareable greeting card (`sukkahCard` in `main.ts`)
 
 ## Conventions that differ from defaults

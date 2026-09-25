@@ -52,6 +52,7 @@ import {
 import { Sound, type Theme } from './audio';
 import { applyDocument, type StringKey, t } from './i18n';
 import { PAGE_TITLES, type PageId, PAGES } from './i18n/pages';
+import { Notice } from './notice';
 import { canFullscreen, canInstall, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
 import './style.css';
 import { WalkInput } from './world/input';
@@ -61,6 +62,13 @@ import { GARDEN, RIVER, riverPoint, GRAND_SUKKAH, HELP_ITEMS, type HelpItem, RID
 import { World } from './world/world';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+
+// Pop-up notices leave by themselves after a while and can be swiped away, so none of them sits on top of the game.
+const toastNote = new Notice($('#toast'), () => setTimeout(nextToast, 280));
+const hintNote = new Notice($('#hint'));
+const sideNote = new Notice($('#side-quest'), () => (sideAgainAt = performance.now() + SIDE_AGAIN_MS));
+const installNote = new Notice($('#install-nudge'));
+const updateNote = new Notice($('#update'), () => (updateDismissed = true));
 
 // --- Saved progress ---------------------------------------------------------------------------
 
@@ -84,8 +92,9 @@ const world = new World($('#stage'));
 const input = new WalkInput(world.canvas);
 applyDocument();
 
-/** A new version is waiting; the banner offering it shows whenever the player is walking around. */
+/** A new version is waiting; the banner offering it shows while walking around, until it leaves or is swiped away. */
 let updateReady = false;
+let updateDismissed = false;
 
 type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune' | 'finale';
 let scene: Scene = 'walk';
@@ -105,12 +114,13 @@ function setScene(next: Scene) {
   $('#jump').classList.toggle('hidden', next !== 'walk' && next !== 'hunt' && next !== 'raft');
   $('#raft-exit').classList.toggle('hidden', next !== 'raft');
   $('#quest').classList.toggle('hidden', next === 'hunt');
-  if (next !== 'walk') $('#hint').classList.add('gone');
+  if (next !== 'walk') hintNote.hide(true);
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
   if (next !== 'huntCard') $('#hunt-card').classList.add('hidden');
   if (next !== 'tune') $('#tune').classList.add('hidden');
   // The update banner sits at the bottom, where the creator's and the builder's buttons are: only while walking.
-  $('#update').classList.toggle('hidden', !updateReady || next !== 'walk');
+  if (next !== 'walk') updateNote.hide(true);
+  else if (updateReady && !updateDismissed && !updateNote.shown) updateNote.show(12000);
   closeMenu();
   updateAction();
   updateMusic();
@@ -197,20 +207,17 @@ function toast(text: string) {
   if (!toastBusy) nextToast();
 }
 
+/** Shows the next waiting message; `toastNote` calls it again once the current one has left. */
 function nextToast() {
-  const el = $('#toast');
   const text = toastQueue.shift();
   if (!text) {
     toastBusy = false;
     return;
   }
   toastBusy = true;
-  el.textContent = text;
-  el.classList.add('show');
-  setTimeout(() => {
-    el.classList.remove('show');
-    setTimeout(nextToast, 200);
-  }, toastQueue.length ? 1300 : 2000);
+  $('#toast').textContent = text;
+  // Long enough to read (longer messages stay longer), shorter while more are waiting.
+  toastNote.show(toastQueue.length ? 1500 : Math.min(4500, Math.max(2000, text.length * 55)));
 }
 
 // --- Dialogs with characters ------------------------------------------------------------------
@@ -406,6 +413,10 @@ function sideGoal(): SideGoal | null {
   if (!progress.achievements.includes('firstHunt')) return 'hunt';
   return null;
 }
+/** A side-quest pill that has left (or was swiped away) comes back after a few minutes if it still applies. */
+const SIDE_AGAIN_MS = 3 * 60 * 1000;
+let sideShownFor: SideGoal | null = null;
+let sideAgainAt = 0;
 const SIDE: Record<SideGoal, { icon: string; text: StringKey; go: StringKey }> = {
   decorate: { icon: '🛖', text: 'sideDecorate', go: 'sideDecorateGo' },
   hunt: { icon: '🍋', text: 'sideHunt', go: 'sideHuntGo' },
@@ -438,11 +449,15 @@ function renderQuest() {
     $('#live').textContent = text;
   }
   const side = sideGoal();
-  $('#side-quest').classList.toggle('hidden', !side);
-  if (side && $('#side-quest').dataset.goal !== side) {
-    $('#side-quest').dataset.goal = side;
+  if (!side) {
+    // Off to a dialog or a game: that counts as having seen it, so it doesn't pop up again on the way back.
+    if (sideNote.shown) sideAgainAt = performance.now() + SIDE_AGAIN_MS;
+    sideNote.hide(true);
+  } else if (!sideNote.shown && (side !== sideShownFor || performance.now() >= sideAgainAt)) {
+    sideShownFor = side;
     $('#side-icon').textContent = SIDE[side].icon;
     $('#side-text').textContent = t(SIDE[side].text);
+    sideNote.show(8000);
   }
   $('#quest').classList.toggle('urgent', !!lanternDeadline && lanternLeft() < 10);
 }
@@ -1496,6 +1511,7 @@ $('#side-quest').addEventListener('click', () => {
   const side = sideGoal();
   if (!side) return;
   heading = side === 'hunt' ? HUB : MY_SUKKAH;
+  sideNote.hide();
   toast(`${SIDE[side].icon} ${t(SIDE[side].go)}`);
 });
 
@@ -1680,7 +1696,7 @@ const NUDGE_KEY = 'sukkahWorld.installNudge';
 
 /** Suggests installing the game, at most every couple of days and three times in all. */
 function nudgeInstall(force = false) {
-  if (!installable() || scene !== 'walk' || !$('#install-nudge').classList.contains('hidden')) return;
+  if (!installable() || scene !== 'walk' || installNote.shown) return;
   const seen = JSON.parse(localStorage.getItem(NUDGE_KEY) ?? '{"count":0,"at":0}') as { count: number; at: number };
   if (!force && (seen.count >= 3 || Date.now() - seen.at < 2 * 24 * 3600 * 1000)) return;
   localStorage.setItem(NUDGE_KEY, JSON.stringify({ count: seen.count + 1, at: Date.now() }));
@@ -1688,15 +1704,15 @@ function nudgeInstall(force = false) {
   $('#install-title').textContent = t(phone ? 'installTitleMobile' : 'installTitleDesktop');
   $('#install-lead').textContent = t(isIos() && !canInstall() ? 'installIos' : 'installLead');
   $('#install-yes').textContent = t(isIos() && !canInstall() ? 'installGotIt' : 'installNow');
-  $('#install-nudge').classList.remove('hidden');
+  installNote.show(15000);
   sound.play('pop');
 }
 
 $('#install-yes').addEventListener('click', () => {
-  $('#install-nudge').classList.add('hidden');
+  installNote.hide();
   if (canInstall()) void install();
 });
-$('#install-no').addEventListener('click', () => $('#install-nudge').classList.add('hidden'));
+$('#install-no').addEventListener('click', () => installNote.hide());
 // Also after a few minutes of play, for kids who haven't finished a quest yet.
 setTimeout(() => nudgeInstall(), 4 * 60 * 1000);
 
@@ -1705,9 +1721,8 @@ setTimeout(() => nudgeInstall(), 4 * 60 * 1000);
 let hintShown = false;
 
 function showHint() {
-  const hint = $('#hint');
-  hint.textContent = t(matchMedia('(pointer: coarse)').matches ? 'hintTouch' : 'hintKeys');
-  hint.classList.remove('gone');
+  $('#hint').textContent = t(matchMedia('(pointer: coarse)').matches ? 'hintTouch' : 'hintKeys');
+  hintNote.show(10000);
   hintShown = true;
 }
 
@@ -1730,7 +1745,7 @@ function loop(now: number) {
     if (moved > 0) lastMoved = now;
     if (moved > 0 && hintShown) {
       hintShown = false;
-      setTimeout(() => $('#hint').classList.add('gone'), 1200);
+      setTimeout(() => hintNote.hide(), 1200);
     }
     if (scene === 'walk') {
       checkQuestItems();
@@ -1745,7 +1760,7 @@ registerSW({
   immediate: true,
   onNeedRefresh() {
     updateReady = true;
-    $('#update').classList.toggle('hidden', scene !== 'walk');
+    if (scene === 'walk') updateNote.show(12000);
   },
   onRegisteredSW(_url, registration) {
     if (!registration) return;
