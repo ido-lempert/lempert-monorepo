@@ -84,6 +84,9 @@ const world = new World($('#stage'));
 const input = new WalkInput(world.canvas);
 applyDocument();
 
+/** A new version is waiting; the banner offering it shows whenever the player is walking around. */
+let updateReady = false;
+
 type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune' | 'finale';
 let scene: Scene = 'walk';
 
@@ -106,6 +109,8 @@ function setScene(next: Scene) {
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
   if (next !== 'huntCard') $('#hunt-card').classList.add('hidden');
   if (next !== 'tune') $('#tune').classList.add('hidden');
+  // The update banner sits at the bottom, where the creator's and the builder's buttons are: only while walking.
+  $('#update').classList.toggle('hidden', !updateReady || next !== 'walk');
   closeMenu();
   updateAction();
   updateMusic();
@@ -1696,7 +1701,8 @@ function loop(now: number) {
 registerSW({
   immediate: true,
   onNeedRefresh() {
-    $('#update').classList.remove('hidden');
+    updateReady = true;
+    $('#update').classList.toggle('hidden', scene !== 'walk');
   },
   onRegisteredSW(_url, registration) {
     if (!registration) return;
