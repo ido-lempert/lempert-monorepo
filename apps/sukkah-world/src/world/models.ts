@@ -452,12 +452,22 @@ function hairModel(g: THREE.Group, style: HairStyle, color: string): number {
     g.add(c);
   };
   switch (style) {
-    case 'buzz':
-      cap(1.025, 0.4);
+    case 'buzz': {
+      // Close-cropped: the same coverage as "short" but flush with the head and matte, with no fringe.
+      const buzz = mesh(new THREE.SphereGeometry(HEAD_R * 1.028, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.42), mat(color, { rough: 0.9 }), 0, HEAD_Y + 0.02, -0.04);
+      buzz.rotation.x = -0.35;
+      g.add(buzz);
       return 0;
-    case 'short':
+    }
+    case 'short': {
       cap(1.06, 0.42);
+      // A little side-swept fringe, so it reads differently from the buzz cut.
+      const fringe = mesh(new THREE.SphereGeometry(0.2, 16, 10), m, 0.08, HEAD_Y + 0.26, 0.3);
+      fringe.scale.set(1.3, 0.4, 0.6);
+      fringe.rotation.set(0.5, 0, -0.25);
+      g.add(fringe);
       return 0;
+    }
     case 'long': {
       cap(1.06, 0.45);
       const back = mesh(new THREE.CapsuleGeometry(0.34, 0.3, 6, 16), m, 0, HEAD_Y - 0.22, -0.2);

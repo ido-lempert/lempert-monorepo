@@ -308,10 +308,37 @@ function talkTo(guest: GuestId) {
       say(
         face,
         name,
-        t(lines.done, params),
+        doneLine(guest),
         guest === 'moses' ? [{ label: t('rideForFun'), primary: true, onClick: startRide }, { label: t('ok') }] : [{ label: t('ok'), primary: true }],
       );
   }
+}
+
+/** After the game, each guest just chats about the holiday; no more sending the player anywhere. */
+const AFTER: Record<GuestId, StringKey> = {
+  abraham: 'abrahamAfter',
+  isaac: 'isaacAfter',
+  jacob: 'jacobAfter',
+  moses: 'mosesAfter',
+  aaron: 'aaronAfter',
+  joseph: 'josephAfter',
+  david: 'davidAfter',
+};
+
+/**
+ * What a guest whose quest is finished says. Their "the next guest is waiting" line only while that is
+ * still news (the next guest not yet met); otherwise wherever the story really is now.
+ */
+function doneLine(guest: GuestId): string {
+  const next = GUESTS[GUESTS.indexOf(guest) + 1];
+  if (next && progress.quests[next].stage === 'notStarted') return t(LINES[guest].done, { name: playerName() });
+  const current = currentGuest(progress);
+  if (current) {
+    const stage = progress.quests[current].stage;
+    return stage === 'notStarted' ? `${t('helloAgain')} ${t(QUEST_TALK[current])}!` : t('goodLuck', { guest: t(current) });
+  }
+  if (readyForGrandEvent(progress)) return t('toGrandEvent');
+  return t(AFTER[guest], { name: playerName() });
 }
 
 // --- Quest tracker -----------------------------------------------------------------------------
@@ -415,8 +442,10 @@ let action: Action | null = null;
 function nearbyAction(): Action | null {
   if (scene !== 'walk') return null;
   const p = world.player.pos;
-  for (const g of GUESTS)
-    if (progress.quests[g].stage !== 'locked' && Math.hypot(p.x - world.guestSpot(g).x, p.z - world.guestSpot(g).z) < (guestsSeated ? 1.3 : 2.6)) return TALK[g];
+  // The nearest guest in reach: around the Grand Sukkah table they sit close together.
+  const dist = (g: GuestId) => Math.hypot(p.x - world.guestSpot(g).x, p.z - world.guestSpot(g).z);
+  const guest = GUESTS.filter((g) => progress.quests[g].stage !== 'locked' && dist(g) < (guestsSeated ? 1.3 : 2.6)).sort((a, b) => dist(a) - dist(b))[0];
+  if (guest) return TALK[guest];
   if (Math.hypot(p.x - HUB.x, p.z - HUB.z) < 3) return 'playHunt';
   if (inside(p, MY_SUKKAH, 0.8)) return 'decorate';
   return null;
