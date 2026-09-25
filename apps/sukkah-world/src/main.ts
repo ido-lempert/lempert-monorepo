@@ -84,6 +84,9 @@ const world = new World($('#stage'));
 const input = new WalkInput(world.canvas);
 applyDocument();
 
+/** A new version is waiting; the banner offering it shows whenever the player is walking around. */
+let updateReady = false;
+
 type Scene = 'creator' | 'walk' | 'dialog' | 'build' | 'huntCard' | 'hunt' | 'raft' | 'tune' | 'finale';
 let scene: Scene = 'walk';
 
@@ -106,6 +109,8 @@ function setScene(next: Scene) {
   if (next !== 'dialog') $('#dialog').classList.add('hidden');
   if (next !== 'huntCard') $('#hunt-card').classList.add('hidden');
   if (next !== 'tune') $('#tune').classList.add('hidden');
+  // The update banner sits at the bottom, where the creator's and the builder's buttons are: only while walking.
+  $('#update').classList.toggle('hidden', !updateReady || next !== 'walk');
   closeMenu();
   updateAction();
   updateMusic();
@@ -288,22 +293,39 @@ function talkTo(guest: GuestId) {
             : [{ label: t('ok'), primary: true }],
       );
       break;
-    case 'returning':
-      say(face, name, t(lines.thanks, params), [
-        {
-          label: t('thanks'),
-          primary: true,
-          onClick: () => {
-            commit(completeQuest(progress, guest));
-            // A good moment to suggest installing: the kid just finished something and is having fun.
-            setTimeout(() => nudgeInstall(), 3000);
-            sound.play('fanfare');
-            world.sparkle(world.guestSpot(guest), '#ffd166', 2);
-            world.celebrate();
-          },
-        },
-      ]);
+    case 'returning': {
+      const finish = () => {
+        commit(completeQuest(progress, guest));
+        // A good moment to suggest installing: the kid just finished something and is having fun.
+        setTimeout(() => nudgeInstall(), 3000);
+        sound.play('fanfare');
+        world.sparkle(world.guestSpot(guest), '#ffd166', 2);
+        world.celebrate();
+      };
+      // A present to wear or hang up gets a shortcut straight to it.
+      const { wear, decoration } = QUEST_REWARDS[guest];
+      const shortcut: Choice | null = wear
+        ? {
+            label: t('wearNow'),
+            primary: true,
+            onClick: () => {
+              finish();
+              openCreator(wear);
+            },
+          }
+        : decoration
+          ? {
+              label: t('decorateNow'),
+              primary: true,
+              onClick: () => {
+                finish();
+                decorateNow(decoration);
+              },
+            }
+          : null;
+      say(face, name, t(lines.thanks, params), shortcut ? [shortcut, { label: t('thanks'), onClick: finish }] : [{ label: t('thanks'), primary: true, onClick: finish }]);
       break;
+    }
     default:
       say(
         face,
@@ -759,6 +781,7 @@ function showFinaleCard() {
   $('#finale-hunt').classList.toggle('hidden', progress.achievements.includes('firstHunt'));
   $('#finale-decorate').classList.toggle('hidden', progress.placed.length > 0);
   $('#finale-reward').textContent = finaleFirst ? t('finaleReward', { coins: GRAND_EVENT_REWARD.coins }) : '';
+  $('#finale-wear').classList.toggle('hidden', !finaleFirst || progress.avatar?.hat === GRAND_EVENT_REWARD.wear);
   $('#finale').classList.remove('hidden');
   $('#finale-share').focus();
 }
@@ -779,6 +802,10 @@ $('#finale-dance').addEventListener('click', () => {
   finaleTimers.push(window.setTimeout(showFinaleCard, 12000));
 });
 $('#finale-back').addEventListener('click', endFinale);
+$('#finale-wear').addEventListener('click', () => {
+  endFinale();
+  openCreator(GRAND_EVENT_REWARD.wear);
+});
 $('#m-party').addEventListener('click', () => {
   closeMenu();
   if (scene === 'walk') startFinale(false);
@@ -860,8 +887,8 @@ const ICONS: Record<DecorationId, string> = {
 let placing: DecorationId | null = null;
 let selectedPlaced = -1;
 
-function openBuild() {
-  placing = DECORATIONS.find((d) => available(progress, d.id) > 0)?.id ?? null;
+function openBuild(prefer?: DecorationId) {
+  placing = prefer && available(progress, prefer) > 0 ? prefer : (DECORATIONS.find((d) => available(progress, d.id) > 0)?.id ?? null);
   selectedPlaced = -1;
   setScene('build');
   refresh();
@@ -1264,8 +1291,21 @@ function renderCreator() {
   if (focused) document.querySelector<HTMLElement>(`[data-focus-id="${focused}"]`)?.focus();
 }
 
-function openCreator() {
+/** Where each wearable goes on the character, and the creator tab that shows it. */
+function wearSlot(id: WearId): { key: 'hat' | 'accessory' | 'pattern'; tab: Tab } {
+  if (HATS.some((o) => o.value === id)) return { key: 'hat', tab: 'hats' };
+  if (ACCESSORIES.some((o) => o.value === id)) return { key: 'accessory', tab: 'extras' };
+  return { key: 'pattern', tab: 'clothes' };
+}
+
+/** `wear`: a present just received, put on and shown in its tab, so saving is one tap away. */
+function openCreator(wear?: WearId) {
   draft = progress.avatar ? fullAvatar(progress.avatar) : draft;
+  if (wear) {
+    const slot = wearSlot(wear);
+    draft = { ...draft, [slot.key]: wear };
+    tab = slot.tab;
+  }
   world.setAvatar(draft);
   $<HTMLInputElement>('#avatar-name').value = draft.name;
   $('#creator-submit').textContent = t(progress.avatar ? 'saveAvatar' : 'enterVillage');
@@ -1355,8 +1395,16 @@ onPwaChange(renderMenu);
 $('#m-avatar').addEventListener('click', () => {
   if (scene !== 'hunt' && scene !== 'raft') openCreator();
 });
+const goHome = () => world.teleport({ x: MY_SUKKAH.x - MY_SUKKAH.w / 2 - 2, z: MY_SUKKAH.z }, Math.PI / 2);
+
+/** Straight from a guest's thanks to the player's own sukkah, with their present ready to hang up. */
+function decorateNow(id: DecorationId) {
+  goHome();
+  openBuild(id);
+}
+
 $('#m-home').addEventListener('click', () => {
-  world.teleport({ x: MY_SUKKAH.x - MY_SUKKAH.w / 2 - 2, z: MY_SUKKAH.z }, Math.PI / 2);
+  goHome();
   setScene('walk');
 });
 $('#m-plaza').addEventListener('click', () => {
@@ -1696,7 +1744,8 @@ function loop(now: number) {
 registerSW({
   immediate: true,
   onNeedRefresh() {
-    $('#update').classList.remove('hidden');
+    updateReady = true;
+    $('#update').classList.toggle('hidden', scene !== 'walk');
   },
   onRegisteredSW(_url, registration) {
     if (!registration) return;
