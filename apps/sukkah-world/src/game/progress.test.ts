@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   currentGuest,
   findItem,
+  followLamb,
+  lambsFollowing,
   type GuestId,
   GUESTS,
   QUEST_ITEMS,
@@ -216,5 +218,18 @@ describe('Grand Sukkot Event', () => {
     expect(p.avatar!.hat).toBe('none');
     expect(p.avatar!.pattern).toBe('plain');
     expect(buyWear({ ...newProgress(), coins: 1000 }, 'harp').ownedWear).toEqual([]);
+  });
+
+  it('keeps the lambs that follow the player in the save until they reach the pen', () => {
+    let p = startQuest({ ...newProgress(), quests: { ...newProgress().quests, jacob: { stage: 'notStarted', found: [] } } }, 'jacob');
+    p = followLamb(followLamb(p, '0'), '2');
+    p = parseProgress(JSON.stringify(p));
+    expect(lambsFollowing(p)).toEqual(['0', '2']);
+    p = findItem(p, 'jacob', '0');
+    expect(lambsFollowing(p)).toEqual(['2']);
+    expect(followLamb(p, '0')).toBe(p);
+    p = findItem(findItem(followLamb(p, '1'), 'jacob', '2'), 'jacob', '1');
+    expect(p.quests.jacob.stage).toBe('returning');
+    expect(lambsFollowing(p)).toEqual([]);
   });
 });
