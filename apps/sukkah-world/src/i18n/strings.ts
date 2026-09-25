@@ -48,7 +48,7 @@ export const he = {
   patternPlain: 'חלקה',
   patternStripes: 'פסים',
   patternStars: 'כוכבים',
-  patternRainbow: 'קשת',
+  patternRainbow: 'כתונת פסים',
   pants: 'מכנסיים',
   shoes: 'נעליים',
   accessory: 'אביזר',
@@ -211,6 +211,8 @@ export const he = {
 
   ok: 'סבבה!',
   thanks: 'תודה!',
+  wearNow: 'ללבוש עכשיו!',
+  decorateNow: 'לתלות בסוכה!',
   foundSpecies: 'יש! מצאתם {item}!',
   allFound: 'יש לכם את כל ארבעת המינים! רוצו לאברהם',
 
@@ -347,6 +349,7 @@ export const he = {
   finaleShare: 'לשתף את החגיגה!',
   finaleShareText: 'סיימתי את כל המשימות בעולם הסוכה, וכל שבעת האושפיזין רקדו איתי! ככה קישטתי את הסוכה שלי – חג סוכות שמח! 🛖🍋',
   finaleDance: 'להמשיך לרקוד!',
+  finaleWear: 'ללבוש את כתר הכוכבים!',
   partyAgain: 'לחגוג שוב!',
 
   // Legal pages

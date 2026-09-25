@@ -336,11 +336,11 @@ export interface Character {
   hat: THREE.Group;
 }
 
-function limb(color: string, len: number, radius: number, x: number, y: number, end?: THREE.Object3D): THREE.Group {
+function limb(color: string | THREE.Material, len: number, radius: number, x: number, y: number, end?: THREE.Object3D): THREE.Group {
   // Pivot at the shoulder/hip so rotation.x swings it.
   const pivot = new THREE.Group();
   pivot.position.set(x, y, 0);
-  pivot.add(mesh(new THREE.CapsuleGeometry(radius, len, 6, 12), mat(color), 0, -len / 2, 0));
+  pivot.add(mesh(new THREE.CapsuleGeometry(radius, len, 6, 12), typeof color === 'string' ? mat(color) : color, 0, -len / 2, 0));
   if (end) {
     end.position.y -= len + radius * 0.6;
     pivot.add(end);
@@ -394,8 +394,10 @@ function face(g: THREE.Group, y: number, r: number, cheeks = true, eyes: EyeStyl
     smile.userData.noOutline = true;
     g.add(smile);
     if (mouth === 'tongue') {
-      const tongue = mesh(new THREE.SphereGeometry(r * 0.08, 12, 8), mat('#ff7b93', { rim: 0 }), r * 0.05, y - r * 0.37, r * 0.86);
-      tongue.scale.set(1, 0.8, 0.5);
+      // Poking out under the smile, in front of the chin (further in, the head swallows it).
+      const tongue = mesh(new THREE.SphereGeometry(r * 0.1, 14, 10), mat('#ff5a7a', { rim: 0 }), r * 0.04, y - r * 0.36, r * 0.93);
+      tongue.scale.set(1, 1.15, 0.6);
+      tongue.userData.noOutline = true;
       g.add(tongue);
     }
   }
@@ -554,8 +556,11 @@ function accessoryModel(id: AccessoryId, head: THREE.Group, rig: THREE.Group, ha
       return;
     }
     case 'harp': {
+      // Held up in the hand, standing to chest height, rather than dangling by the knee.
       const h = harp();
-      h.position.set(0, -0.12, 0.08);
+      h.scale.setScalar(0.85);
+      h.position.set(-0.08, -0.02, 0.14);
+      h.rotation.set(0, 0.35, 0.15);
       handL.add(h);
       return;
     }
@@ -597,8 +602,10 @@ export function character(input: Avatar): Character {
   const shirt = shirtMaterial(a.shirt, a.pattern);
   rig.add(mesh(new THREE.CapsuleGeometry(0.3, 0.26, 8, 16), shirt, 0, 0.84, 0));
   const handL = ball(0.1, a.skin);
-  const armL = limb(a.shirt, 0.24, 0.085, -0.37, 1.04, handL);
-  const armR = limb(a.shirt, 0.24, 0.085, 0.37, 1.04, ball(0.1, a.skin));
+  // Joseph's coat of many colours has rainbow sleeves too; other shirts keep plain ones.
+  const sleeve = a.pattern === 'rainbow' ? shirt : a.shirt;
+  const armL = limb(sleeve, 0.24, 0.085, -0.37, 1.04, handL);
+  const armR = limb(sleeve, 0.24, 0.085, 0.37, 1.04, ball(0.1, a.skin));
   armL.rotation.z = -0.15;
   armR.rotation.z = 0.15;
   rig.add(armL, armR);
