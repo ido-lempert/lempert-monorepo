@@ -113,6 +113,11 @@ export interface Quest {
   stage: QuestStage;
   /** Items found so far: species ids, lantern numbers or lamb numbers. */
   found: string[];
+  /**
+   * Jacob's lambs that have been found in the maze and are walking behind the player, not yet in the pen.
+   * Saved, so a reload (phones often reload a tab after switching apps) doesn't send them back into the maze.
+   */
+  following?: string[];
 }
 
 export const LANTERN_COUNT = 6;
@@ -297,8 +302,19 @@ export function findItem(p: Progress, guest: GuestId, item: string): Progress {
   const q = p.quests[guest];
   if (q.stage !== 'active' || q.found.includes(item)) return p;
   const found = [...q.found, item];
-  if (found.length < QUEST_ITEMS[guest]) return withQuest(p, guest, { found });
-  return withAchievement(withQuest(p, guest, { stage: 'returning', found }), FOUND_ALL[guest]);
+  const following = q.following?.filter((x) => x !== item);
+  if (found.length < QUEST_ITEMS[guest]) return withQuest(p, guest, { found, following });
+  return withAchievement(withQuest(p, guest, { stage: 'returning', found, following: [] }), FOUND_ALL[guest]);
+}
+
+/** Jacob's lambs walking behind the player (found in the maze, not yet in the pen). */
+export const lambsFollowing = (p: Progress): string[] => (p.quests.jacob.stage === 'active' ? (p.quests.jacob.following ?? []) : []);
+
+/** A lamb found in the maze starts following the player. */
+export function followLamb(p: Progress, lamb: string): Progress {
+  const q = p.quests.jacob;
+  if (q.stage !== 'active' || q.found.includes(lamb) || lambsFollowing(p).includes(lamb)) return p;
+  return withQuest(p, 'jacob', { following: [...lambsFollowing(p), lamb] });
 }
 
 /** Starts the items over (Isaac's lanterns go dark when time runs out). */

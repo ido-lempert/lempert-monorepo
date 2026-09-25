@@ -27,6 +27,8 @@ import {
   readyForGrandEvent,
   REWARD_ONLY,
   findItem,
+  followLamb,
+  lambsFollowing,
   GUESTS,
   type GuestId,
   QUEST_ITEMS,
@@ -150,7 +152,7 @@ function refresh() {
   const jacob = progress.quests.jacob;
   world.setLambs(
     LAMB_SPOTS.map((_, i) =>
-      jacob.stage === 'done' || jacob.stage === 'returning' || jacob.found.includes(String(i)) ? 'home' : world.lambStates[i] === 'following' && jacob.stage === 'active' ? 'following' : 'lost',
+      jacob.stage === 'done' || jacob.stage === 'returning' || jacob.found.includes(String(i)) ? 'home' : lambsFollowing(progress).includes(String(i)) ? 'following' : 'lost',
     ),
   );
   world.setPets(progress.pets);
@@ -277,7 +279,8 @@ function talkTo(guest: GuestId) {
       say(
         face,
         name,
-        t(lines.waiting, params),
+        // Lambs already walking behind the player: Jacob points to the pen, not back into the maze.
+        guest === 'jacob' && lambsFollowing(progress).length ? t('jacobFollowing', { n: lambsFollowing(progress).length }) : t(lines.waiting, params),
         guest === 'moses'
           ? [{ label: t('rideAgain'), primary: true, onClick: startRide }, { label: t('abrahamLater') }]
           : guest === 'david'
@@ -371,7 +374,7 @@ function renderQuest() {
     else if (q.stage === 'returning') text = t(QUEST_RETURN[guest]);
     else if (guest === 'abraham') text = t('questCollect', { n });
     else if (guest === 'isaac') text = lanternDeadline ? t('questLanternsTimer', { n, s: Math.ceil(lanternLeft()) }) : t('questLanterns', { n });
-    else if (guest === 'jacob') text = t('questLambs', { n });
+    else if (guest === 'jacob') text = lambsFollowing(progress).length ? t('questLambsFollowing', { n, f: lambsFollowing(progress).length }) : t('questLambs', { n });
     else if (guest === 'moses') text = t('questJugs', { n });
     else if (guest === 'aaron') text = t('questHelp', { n });
     else if (guest === 'joseph') text = t('questSheaves', { n, temp: sheafTemperature() });
@@ -506,28 +509,29 @@ function checkQuestItems() {
     renderQuest();
   }
 
-  if (progress.quests.jacob.stage === 'active')
+  if (progress.quests.jacob.stage === 'active') {
     LAMB_SPOTS.forEach((_, i) => {
-      const state = world.lambStates[i];
-      if (state === 'lost' && near(world.lambPosition(i), 1.5)) {
-        world.lambStates[i] = 'following';
-        world.sparkle(world.lambPosition(i), '#ffffff', 0.8);
-        world.celebrate();
-        toast(`🐑 ${t('lambFound')}`);
-        sound.play('baa', lift('jacob', progress.quests.jacob.found.length + world.lambStates.filter((s) => s === 'following').length));
-      } else if (state === 'following') {
-        const l = world.lambPosition(i);
-        if (Math.hypot(l.x - PEN.x, l.z - PEN.z) < PEN.r + 0.4) {
-          world.sparkle(PEN, '#ffd166', 1);
-          const next = findItem(progress, 'jacob', String(i));
-          const up = lift('jacob', next.quests.jacob.found.length);
-          sound.play('baa', up);
-          setTimeout(() => sound.play('pickup', up), 250);
-          commit(next);
-          toast(next.quests.jacob.stage === 'returning' ? `🐑 ${t('allLambs')}` : `🐑 ${t('lambHome', { n: next.quests.jacob.found.length })}`);
-        }
-      }
+      if (world.lambStates[i] !== 'lost' || !near(world.lambPosition(i), 1.5)) return;
+      world.sparkle(world.lambPosition(i), '#ffffff', 0.8);
+      world.celebrate();
+      toast(`🐑 ${t('lambFound')}`);
+      commit(followLamb(progress, String(i)));
+      const q = progress.quests.jacob;
+      sound.play('baa', lift('jacob', q.found.length + lambsFollowing(progress).length));
     });
+    // Reaching the pen is enough: every lamb walking behind hops in, even the last one in the line.
+    const following = lambsFollowing(progress);
+    if (following.length && near(PEN, PEN.r + 1.2)) {
+      world.sparkle(PEN, '#ffd166', 1);
+      let next = progress;
+      for (const lamb of following) next = findItem(next, 'jacob', lamb);
+      const up = lift('jacob', next.quests.jacob.found.length);
+      sound.play('baa', up);
+      setTimeout(() => sound.play('pickup', up), 250);
+      commit(next);
+      toast(next.quests.jacob.stage === 'returning' ? `🐑 ${t('allLambs')}` : `🐑 ${t('lambHome', { n: next.quests.jacob.found.length })}`);
+    }
+  }
 }
 
 // --- Aaron: helping the villagers ------------------------------------------------------------------
@@ -1156,6 +1160,9 @@ function choiceRow<T extends string>(label: StringKey, choices: Option<T>[], key
 }
 
 /** A bar offering to buy whatever is being tried on but isn't owned yet. */
+/** Where each special item is earned, so kids know how to get what they tried on. */
+const EARNED_FROM: Partial<Record<WearId, StringKey>> = { rainbow: 'earnRainbow', harp: 'earnHarp', starCrown: 'earnStarCrown' };
+
 function renderTryOn() {
   const bar = $('#try-on');
   const tryOn = [draft.hat, draft.accessory ?? 'none', draft.pattern ?? 'plain'].find((id) => !ownsWear(progress, id)) as WearId | undefined;
@@ -1165,7 +1172,7 @@ function renderTryOn() {
   const buyBtn = $('#try-on-buy');
   if (REWARD_ONLY.includes(tryOn)) {
     // Special things can be tried on, but only the Ushpizin give them.
-    $('#try-on-text').textContent = `${choice.icon} ${t('rewardOnly')}`;
+    $('#try-on-text').textContent = `${choice.icon} ${t(EARNED_FROM[tryOn] ?? 'rewardOnly')} ${t('tryOnOnly')}`;
     buyBtn.classList.add('hidden');
     return;
   }
@@ -1265,9 +1272,12 @@ $('#creator-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $<HTMLInputElement>('#avatar-name').value.trim().slice(0, 14);
   const first = !progress.avatar;
-  const triedOn = [draft.hat, draft.accessory ?? 'none', draft.pattern ?? 'plain'].some((id) => !ownsWear(progress, id));
+  const triedOn = [draft.hat, draft.accessory ?? 'none', draft.pattern ?? 'plain'].filter((id) => !ownsWear(progress, id)) as WearId[];
   commit(setAvatar(progress, { ...draft, name }));
-  if (triedOn) toast(t('tryOnNotSaved'));
+  // Say plainly why a tried-on item isn't on the character, and for special ones where to earn it.
+  const reward = triedOn.find((id) => EARNED_FROM[id]);
+  if (reward) toast(`${t('rewardNotSaved')} ${t(EARNED_FROM[reward]!)}`);
+  else if (triedOn.length) toast(t('tryOnNotSaved'));
   world.setAvatar(progress.avatar!);
   draft = fullAvatar(progress.avatar!);
   world.player.heading = Math.PI;

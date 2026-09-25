@@ -475,6 +475,9 @@ function hairModel(g: THREE.Group, style: HairStyle, color: string): number {
       return 0;
     }
     case 'curly': {
+      // A layer of hair under the curls, so no bare scalp shows between them (it looked bald under a crown).
+      cap(1.04, 0.44);
+      g.add(mesh(new THREE.IcosahedronGeometry(0.14, 1), m, 0, HEAD_Y + HEAD_R * 0.98, -0.08));
       for (let i = 0; i < 22; i++) {
         // Curls spread over the top and back of the head, leaving the face free.
         const a = i * 2.4;
@@ -484,7 +487,7 @@ function hairModel(g: THREE.Group, style: HairStyle, color: string): number {
         const p = dir.normalize().multiplyScalar(HEAD_R * 0.98);
         g.add(mesh(new THREE.IcosahedronGeometry(0.13, 1), m, p.x, HEAD_Y + p.y + 0.02, p.z - 0.02));
       }
-      return 0.07;
+      return 0.05;
     }
     case 'spiky': {
       cap(1.06, 0.42);
