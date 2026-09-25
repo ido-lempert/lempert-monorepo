@@ -23,11 +23,28 @@ const siteUrlInHtml = (): Plugin => ({
   transformIndexHtml: (html) => html.replaceAll('%SITE_URL%', siteUrl),
 });
 
+/**
+ * Umami visit counting (cookieless, no personal data – the privacy page says so). Only in production builds,
+ * so dev servers and Playwright runs don't count as visits.
+ */
+const umami = (): Plugin => ({
+  name: 'umami',
+  apply: 'build',
+  transformIndexHtml: () => [
+    {
+      tag: 'script',
+      attrs: { defer: true, src: 'https://cloud.umami.is/script.js', 'data-website-id': 'c4bab554-41bb-47ef-9c51-8ebb9302f1e6' },
+      injectTo: 'head',
+    },
+  ],
+});
+
 export default defineConfig({
   base: './',
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
     siteUrlInHtml(),
+    umami(),
     VitePWA({
       // A new version takes over as soon as it is installed; main.ts offers an "Update" button instead of reloading mid-play.
       registerType: 'prompt',
