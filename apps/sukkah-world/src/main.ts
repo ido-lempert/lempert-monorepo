@@ -111,7 +111,8 @@ function setScene(next: Scene) {
   $('#hunt-hud').classList.toggle('hidden', next !== 'hunt');
   // The camera can be turned and zoomed while walking around (and during the etrog hunt).
   $('#cam').classList.toggle('hidden', next !== 'walk' && next !== 'hunt');
-  $('#jump').classList.toggle('hidden', next !== 'walk' && next !== 'hunt' && next !== 'raft');
+  // The jump button is only for the raft (leaping over rocks); on foot it added nothing. Space still hops.
+  $('#jump').classList.toggle('hidden', next !== 'raft');
   $('#raft-exit').classList.toggle('hidden', next !== 'raft');
   $('#quest').classList.toggle('hidden', next === 'hunt');
   if (next !== 'walk') hintNote.hide(true);
