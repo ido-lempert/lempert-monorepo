@@ -22,6 +22,11 @@ services:
       # The server runs TypeScript directly via Node's built-in type stripping (Node >= 23.6).
       - key: NODE_VERSION
         value: "24"
+      # Wall of fame database (Turso). Secrets: set their values in the Render dashboard.
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
 
   # Sukkah World: a static PWA (no server yet), so it runs as a free static site on Render's CDN.
   - type: web

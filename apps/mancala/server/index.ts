@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { attachGameServer } from './attach.ts';
 import { Fame, handleFame } from './fame.ts';
+import { storeFromEnv } from './fameStore.ts';
 
 const DIST = join(import.meta.dirname, '..', 'dist');
 const PORT = Number(process.env.PORT ?? 8080);
@@ -20,8 +21,9 @@ const TYPES: Record<string, string> = {
   '.webmanifest': 'application/manifest+json',
 };
 
-// The wall of fame is saved next to the app by default; FAME_FILE can point at a persistent disk.
-const fame = new Fame(process.env.FAME_FILE ?? join(import.meta.dirname, '..', '.data', 'fame.json'));
+// The wall of fame is kept in Turso when TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) is set; otherwise in a
+// JSON file next to the app (FAME_FILE can point at a persistent disk).
+const fame = new Fame(storeFromEnv(process.env, join(import.meta.dirname, '..', '.data', 'fame.json')));
 
 const server = createServer((req, res) => {
   if (handleFame(fame, req, res)) return;
@@ -47,3 +49,8 @@ const server = createServer((req, res) => {
 
 attachGameServer(server, fame);
 server.listen(PORT, () => console.log(`Mancala on http://localhost:${PORT}`));
+
+// Render stops the old instance with SIGTERM on every deploy: save the latest wins first.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => void fame.flush().finally(() => process.exit(0)));
+}
