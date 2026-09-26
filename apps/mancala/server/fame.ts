@@ -20,9 +20,16 @@ const key = (name: string) => name.normalize('NFKC').trim().toLowerCase();
 /** Where the wall of fame is kept between restarts (a JSON file or a Turso database, see `fameStore.ts`). */
 export interface FameStore {
   load(): Promise<FameEntry[]>;
-  /** Saves the entries that changed; `all` is the whole list, for stores that rewrite everything. */
-  save(changed: Array<[key: string, entry: FameEntry]>, all: FameEntry[]): Promise<void>;
+  /**
+   * Saves new wins. `added` holds, per player, only the wins since the last save (so two servers
+   * running side by side during a deploy add up instead of overwriting each other); `all` is the
+   * whole list, for stores that rewrite everything.
+   */
+  save(added: Array<[key: string, wins: FameEntry]>, all: FameEntry[]): Promise<void>;
 }
+
+const LOAD_TIMEOUT = 10_000;
+const RETRY_DELAYS = [5_000, 30_000, 120_000];
 
 /**
  * Wall of fame: players ranked by number of wins. Online wins are recorded by the server itself;
@@ -31,38 +38,54 @@ export interface FameStore {
  */
 export class Fame {
   private entries = new Map<string, FameEntry>();
-  private dirty = new Set<string>();
+  /** Wins not saved yet, per player. */
+  private pending = new Map<string, FameEntry>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private reports = new Map<string, number[]>();
   private store: FameStore | null;
+  private loaded = false;
   /** Resolves once the saved list has been loaded (wins recorded before that are merged in). */
   readonly ready: Promise<void>;
 
   constructor(store: FameStore | null = null) {
     this.store = store;
-    this.ready = store
-      ? store.load().then(
-          (saved) => this.merge(saved),
-          (err) => {
-            // Saving now would overwrite the list we could not read, so keep this run in memory only.
-            console.error('Could not load wall of fame; not saving it this run', err);
-            this.store = null;
-          },
-        )
-      : Promise.resolve();
+    this.loaded = !store;
+    this.ready = store ? this.load(store) : Promise.resolve();
+  }
+
+  /** Loads the saved list, retrying while the store is unreachable; nothing is saved until it succeeds. */
+  private async load(store: FameStore) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const saved = await Promise.race([
+          store.load(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out')), LOAD_TIMEOUT).unref?.()),
+        ]);
+        this.merge(saved);
+        this.loaded = true;
+        console.log(`Wall of fame: loaded ${saved.length} players`);
+        if (this.pending.size) this.scheduleSave();
+        return;
+      } catch (err) {
+        const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
+        console.error(`Could not load wall of fame; trying again in ${delay / 1000}s`, err);
+        await new Promise((r) => setTimeout(r, delay).unref?.());
+      }
+    }
   }
 
   record(rawName: string, kind: WinKind, now = Date.now()) {
     const name = rawName.trim().slice(0, 14);
     if (!name) return;
     const k = key(name);
-    const e = this.entries.get(k) ?? { name, wins: 0, computer: 0, online: 0, last: 0 };
-    e.name = name; // latest spelling wins
-    e.wins++;
-    e[kind]++;
-    e.last = now;
-    this.entries.set(k, e);
-    this.dirty.add(k);
+    for (const map of [this.entries, this.pending]) {
+      const e = map.get(k) ?? { name, wins: 0, computer: 0, online: 0, last: 0 };
+      e.name = name; // latest spelling wins
+      e.wins++;
+      e[kind]++;
+      e.last = now;
+      map.set(k, e);
+    }
     this.scheduleSave();
   }
 
@@ -99,23 +122,29 @@ export class Fame {
   }
 
   private scheduleSave() {
-    if (!this.store || this.saveTimer) return;
+    if (!this.store || !this.loaded || this.saveTimer) return;
     this.saveTimer = setTimeout(() => void this.flush(), 2000);
   }
 
-  /** Saves pending wins now (also called on shutdown, so a redeploy does not lose the last ones). */
+  /**
+   * Saves pending wins now (also called on shutdown, so a redeploy does not lose the last ones).
+   * Before the saved list has loaded nothing is written, so it is never overwritten.
+   */
   async flush() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    await this.ready; // never overwrite the saved list before it was read
-    if (!this.store || !this.dirty.size) return;
-    const changed = [...this.dirty].map((k): [string, FameEntry] => [k, { ...this.entries.get(k)! }]);
-    this.dirty.clear();
+    if (!this.store || !this.loaded || !this.pending.size) return;
+    const added = [...this.pending];
+    this.pending.clear();
     try {
-      await this.store.save(changed, this.top(500));
+      await this.store.save(added, this.top(500));
     } catch (err) {
       console.error('Could not save wall of fame', err);
-      for (const [k] of changed) this.dirty.add(k); // try again with the next win
+      for (const [k, a] of added) {
+        // Put the wins back (adding any recorded meanwhile) and try again with the next win.
+        const p = this.pending.get(k);
+        this.pending.set(k, p ? { ...p, wins: p.wins + a.wins, computer: p.computer + a.computer, online: p.online + a.online } : a);
+      }
     }
   }
 }
@@ -132,7 +161,9 @@ function send(res: ServerResponse, status: number, body: unknown) {
 export function handleFame(fame: Fame, req: IncomingMessage, res: ServerResponse): boolean {
   if (new URL(req.url ?? '/', 'http://x').pathname !== FAME_PATH) return false;
   if (req.method === 'GET') {
-    send(res, 200, fame.top());
+    // Right after a (cold) start the saved list may still be loading: wait for it briefly.
+    const wait = new Promise((r) => setTimeout(r, 5000).unref?.());
+    void Promise.race([fame.ready, wait]).then(() => send(res, 200, fame.top()));
     return true;
   }
   if (req.method !== 'POST') {
