@@ -12,6 +12,7 @@
     "start": "node server/index.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "three": "^0.186.0",
     "ws": "^8.21.3"
   },

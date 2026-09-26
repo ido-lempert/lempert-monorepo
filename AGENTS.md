@@ -21,7 +21,7 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - online multiplayer: the server in `apps/mancala/server/` is authoritative (validates moves); in dev it runs inside the Vite server via a plugin, at `/ws`
   - UI text is translated (he, en, ar, ru, fr, es): add every new string to all dictionaries in `apps/mancala/src/i18n/strings.ts` (the `Dict` type enforces it); long pages live in `src/i18n/pages.ts`
   - magic mode (cards `block` / `mirror`) lives in the rules engine (`useCard` in `src/game/kalah.ts`); the server validates card plays like moves, and the AI decides card plays in `chooseCardPlay`
-  - wall of fame: `apps/mancala/server/fame.ts` (`/api/fame`), in memory + JSON file (`FAME_FILE`, default `apps/mancala/.data/fame.json`) – may be wiped on redeploy, which the terms state
+  - wall of fame: `apps/mancala/server/fame.ts` (`/api/fame`), in memory, saved through a `FameStore` (`server/fameStore.ts`): Turso when `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` are set (as on Render), otherwise a JSON file (`FAME_FILE`, default `apps/mancala/.data/fame.json`); the terms still say it may be reset at any time
   - accessibility target is WCAG AAA: keep text contrast ≥ 7:1 in both themes (use the CSS theme variables), controls ≥ 44px, everything keyboard-operable
   - board layout: sowing is clockwise with each player's store on their left; the rules engine is index-based (`src/game/kalah.ts`) and only `containerCenter` in `src/render/board3d.ts` decides placement
 - `sukkah-world` (3D Sukkot world for kids, Vite + three.js PWA, single-player vs the computer for now):

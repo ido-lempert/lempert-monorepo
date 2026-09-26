@@ -1,6 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { dirname } from 'node:path';
 
 export type WinKind = 'computer' | 'online';
 
@@ -19,25 +17,39 @@ const MAX_REPORTS_PER_HOUR = 20;
 
 const key = (name: string) => name.normalize('NFKC').trim().toLowerCase();
 
+/** Where the wall of fame is kept between restarts (a JSON file or a Turso database, see `fameStore.ts`). */
+export interface FameStore {
+  load(): Promise<FameEntry[]>;
+  /** Saves the entries that changed; `all` is the whole list, for stores that rewrite everything. */
+  save(changed: Array<[key: string, entry: FameEntry]>, all: FameEntry[]): Promise<void>;
+}
+
 /**
  * Wall of fame: players ranked by number of wins. Online wins are recorded by the server itself;
  * wins against the computer are reported by the browser (so they are on the honour system).
- * Kept in memory and, when a file is given, saved there – the list may be reset at any time.
+ * Kept in memory and, when a store is given, saved there – the list may be reset at any time.
  */
 export class Fame {
   private entries = new Map<string, FameEntry>();
+  private dirty = new Set<string>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private reports = new Map<string, number[]>();
-  private file: string | null;
+  private store: FameStore | null;
+  /** Resolves once the saved list has been loaded (wins recorded before that are merged in). */
+  readonly ready: Promise<void>;
 
-  constructor(file: string | null = null) {
-    this.file = file;
-    if (!file) return;
-    try {
-      for (const e of JSON.parse(readFileSync(file, 'utf8')) as FameEntry[]) this.entries.set(key(e.name), e);
-    } catch {
-      /* no saved list yet */
-    }
+  constructor(store: FameStore | null = null) {
+    this.store = store;
+    this.ready = store
+      ? store.load().then(
+          (saved) => this.merge(saved),
+          (err) => {
+            // Saving now would overwrite the list we could not read, so keep this run in memory only.
+            console.error('Could not load wall of fame; not saving it this run', err);
+            this.store = null;
+          },
+        )
+      : Promise.resolve();
   }
 
   record(rawName: string, kind: WinKind, now = Date.now()) {
@@ -50,6 +62,7 @@ export class Fame {
     e[kind]++;
     e.last = now;
     this.entries.set(k, e);
+    this.dirty.add(k);
     this.scheduleSave();
   }
 
@@ -66,18 +79,44 @@ export class Fame {
     return true;
   }
 
-  private scheduleSave() {
-    if (!this.file || this.saveTimer) return;
-    this.saveTimer = setTimeout(() => {
-      this.saveTimer = null;
-      try {
-        mkdirSync(dirname(this.file!), { recursive: true });
-        writeFileSync(`${this.file}.tmp`, JSON.stringify(this.top(500)));
-        renameSync(`${this.file}.tmp`, this.file!);
-      } catch (err) {
-        console.error('Could not save wall of fame', err);
+  /** Adds saved entries to the list, keeping any wins recorded while they were loading. */
+  private merge(saved: FameEntry[]) {
+    for (const s of saved) {
+      const k = key(s.name);
+      const e = this.entries.get(k);
+      if (!e) {
+        this.entries.set(k, { ...s });
+        continue;
       }
-    }, 2000);
+      e.wins += s.wins;
+      e.computer += s.computer;
+      e.online += s.online;
+      if (s.last > e.last) {
+        e.last = s.last;
+        e.name = s.name;
+      }
+    }
+  }
+
+  private scheduleSave() {
+    if (!this.store || this.saveTimer) return;
+    this.saveTimer = setTimeout(() => void this.flush(), 2000);
+  }
+
+  /** Saves pending wins now (also called on shutdown, so a redeploy does not lose the last ones). */
+  async flush() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    await this.ready; // never overwrite the saved list before it was read
+    if (!this.store || !this.dirty.size) return;
+    const changed = [...this.dirty].map((k): [string, FameEntry] => [k, { ...this.entries.get(k)! }]);
+    this.dirty.clear();
+    try {
+      await this.store.save(changed, this.top(500));
+    } catch (err) {
+      console.error('Could not save wall of fame', err);
+      for (const [k] of changed) this.dirty.add(k); // try again with the next win
+    }
   }
 }
 
