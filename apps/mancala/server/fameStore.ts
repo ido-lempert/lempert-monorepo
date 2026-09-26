@@ -24,20 +24,28 @@ export function fileStore(file: string): FameStore {
 
 /** Keeps the list in a Turso (libSQL) database, one row per player. */
 export function tursoStore(url: string, authToken?: string): FameStore {
-  const db = createClient({ url, authToken });
-  const table = db.execute(
-    `CREATE TABLE IF NOT EXISTS fame (
-      key TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      wins INTEGER NOT NULL,
-      computer INTEGER NOT NULL,
-      online INTEGER NOT NULL,
-      last INTEGER NOT NULL
-    )`,
-  );
+  // HTTP rather than a WebSocket: every query stands alone, so nothing goes stale while the server idles.
+  const db = createClient({ url: url.replace(/^libsql:/, 'https:'), authToken });
+  let table: Promise<unknown> | null = null;
+  const ensureTable = () =>
+    (table ??= db
+      .execute(
+        `CREATE TABLE IF NOT EXISTS fame (
+          key TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          wins INTEGER NOT NULL,
+          computer INTEGER NOT NULL,
+          online INTEGER NOT NULL,
+          last INTEGER NOT NULL
+        )`,
+      )
+      .catch((err) => {
+        table = null; // try again next time
+        throw err;
+      }));
   return {
     async load() {
-      await table;
+      await ensureTable();
       const { rows } = await db.execute('SELECT name, wins, computer, online, last FROM fame');
       return rows.map((r) => ({
         name: String(r.name),
@@ -47,13 +55,15 @@ export function tursoStore(url: string, authToken?: string): FameStore {
         last: Number(r.last),
       }));
     },
-    async save(changed) {
-      await table;
+    async save(added) {
+      await ensureTable();
+      // Adds the new wins to the row, so servers running side by side never overwrite each other.
       await db.batch(
-        changed.map(([key, e]) => ({
+        added.map(([key, e]) => ({
           sql: `INSERT INTO fame (key, name, wins, computer, online, last) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET name = excluded.name, wins = excluded.wins,
-                  computer = excluded.computer, online = excluded.online, last = excluded.last`,
+                ON CONFLICT(key) DO UPDATE SET name = excluded.name, wins = wins + excluded.wins,
+                  computer = computer + excluded.computer, online = online + excluded.online,
+                  last = max(last, excluded.last)`,
           args: [key, e.name, e.wins, e.computer, e.online, e.last],
         })),
         'write',
