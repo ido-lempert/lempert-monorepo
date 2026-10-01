@@ -1486,3 +1486,107 @@ a:focus-visible {
   text-align: start;
   font-weight: 800;
 }
+
+/* --- Leaderboards ---------------------------------------------------------------------------------------- */
+
+.board-me {
+  margin: 0 0 8px;
+  font-weight: 800;
+  color: var(--grape);
+  min-height: 1.4em;
+}
+
+.board-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: calc(100dvh - 300px);
+  overflow-y: auto;
+  counter-reset: place;
+  text-align: start;
+}
+
+.board-list li {
+  counter-increment: place;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
+.board-list li:nth-child(odd) {
+  background: var(--paper-2);
+}
+
+.board-list li::before {
+  content: counter(place);
+  min-width: 2ch;
+  font-weight: 900;
+  color: var(--ink-soft);
+}
+
+.board-list li:nth-child(1)::before {
+  content: '🥇';
+}
+
+.board-list li:nth-child(2)::before {
+  content: '🥈';
+}
+
+.board-list li:nth-child(3)::before {
+  content: '🥉';
+}
+
+.board-list li.me {
+  background: #fff1c4;
+  outline: 3px solid var(--sun);
+}
+
+.board-list .who {
+  flex: 1;
+}
+
+.board-list .what {
+  font-variant-numeric: tabular-nums;
+}
+
+.board-list .empty {
+  justify-content: center;
+}
+
+.board-list .empty::before {
+  content: none;
+}
+
+.nick-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  text-align: start;
+  font-weight: 800;
+}
+
+.field input {
+  flex: 1;
+  min-height: var(--target);
+  padding: 8px 14px;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  font: inherit;
+  font-size: 1.1rem;
+}
+
+.field input:focus-visible {
+  outline: 4px solid var(--focus);
+}
+
+.card-art {
+  font-size: 3rem;
+}

@@ -56,7 +56,9 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - messages while playing have one channel (`Coach`, under the combo in `#top-stack`, below the HUD): events jump the queue and big banners hold it, so texts never overlap
   - `.claude/skills/game-engagement-auditor` audits a game's engagement; the Smash It report is `_bmad-output/planning-artifacts/smash-it/engagement-audit.md`
   - teach while playing, never up front: tips go through `Coach` (`src/coach.ts`) and show once each (`firstTime` in `progress.ts`, remembered in `seen`) at the moment they matter (first hit on a bug kind shows what it's worth, first combo, a shot that fell short); the shop, upgrades, chapter list and food tray only appear once they are useful (`shopOpen`, `upgradesOpen`, `chaptersOpen`)
-  - deployed as a Render static site (`smash-it` in `render.yaml`), from `main`: work on the `smash-it` branch, merge to `main` to release
+  - production server (static `dist/` + leaderboards API, `PORT` default 8080): `npx nx run smash-it:start` after build; in dev the API runs inside Vite (in memory)
+  - leaderboards: `apps/smash-it/server/scores.ts` (`/api/scores`: all time by stars then chapter, and today's daily-challenge scores), on the honour system with sanity caps and a per-address limit, saved through a `ScoreStore` (`server/scoresStore.ts`): Turso when `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` are set (tables `smash_players`, `smash_daily`), otherwise a JSON file (`SCORES_FILE`, default `apps/smash-it/.data/scores.json`); joining is optional, players are a random browser id plus a nickname (`src/leaderboard.ts` suggests fun ones), and leaving deletes them from the server
+  - deployed as a Render web service (`smash-it` in `render.yaml`), from `main`: work on the `smash-it` branch, merge to `main` to release
   - in dev, `window.__game` (start, shootAt, coins, play, progress) lets Playwright drive the game; it is not in production builds
   - UI text is Hebrew only for now, in `src/i18n/strings.ts`; address kids in the plural and use infinitives on buttons; wrap `×n` in LRI/PDI marks inside Hebrew strings
 
