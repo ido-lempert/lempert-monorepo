@@ -13,7 +13,7 @@ describe('progress', () => {
     expect(parseProgress('nope')).toEqual(newProgress());
     const p = parseProgress({
       coins: -5, owned: ['pie', 'banana', 'cookie'], upgrades: { guide: 9, combo: 'x' },
-      unlocked: 999, stars: { 1: 7, 77: 3 }, best: { 2: 1234.6 }, food: 'pizza',
+      unlocked: 999, stars: { 1: 7, 777: 3 }, best: { 2: 1234.6 }, food: 'pizza',
     });
     expect(p.coins).toBe(0);
     expect(p.owned).toEqual(['cookie', 'pie']);

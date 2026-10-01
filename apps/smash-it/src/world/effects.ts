@@ -7,7 +7,6 @@ import * as THREE from 'three';
 import type { Effect } from '../game/foods';
 import { COUNTER_Y, groundAt, type Vec3 } from '../game/physics';
 import { dotTexture, mat, sparkleTexture, splatTexture } from './look';
-import { SINK } from './models';
 
 interface Piece {
   mesh: THREE.Mesh;
@@ -17,8 +16,6 @@ interface Piece {
   /** Seconds left; Infinity for leftovers that stay. */
   life: number;
   settled: boolean;
-  /** Being washed down the sink. */
-  sinking: number;
 }
 
 interface Spark {
@@ -145,7 +142,7 @@ export class Effects {
     m.rotation.set(this.rand() * 6, this.rand() * 6, this.rand() * 6);
     m.castShadow = size > 0.2;
     this.group.add(m);
-    this.pieces.push({ mesh: m, v, spin: new THREE.Vector3(this.rand() * 10 - 5, this.rand() * 10 - 5, this.rand() * 10 - 5), size, life, settled: false, sinking: 0 });
+    this.pieces.push({ mesh: m, v, spin: new THREE.Vector3(this.rand() * 10 - 5, this.rand() * 10 - 5, this.rand() * 10 - 5), size, life, settled: false });
     if (this.pieces.length > MAX_PIECES) {
       const old = this.pieces.find((q) => q.life === Infinity && q.settled);
       if (old) old.life = 0.5;
@@ -184,19 +181,6 @@ export class Effects {
       if (q.life <= 0) {
         m.scale.multiplyScalar(0.85);
         if (m.scale.x < q.size * 0.1 || q.life < -0.6) {
-          this.group.remove(m);
-          this.pieces.splice(i, 1);
-        }
-        continue;
-      }
-      if (q.sinking > 0) {
-        // Swirl down the drain.
-        q.sinking += dt;
-        const a = q.sinking * 6;
-        const r = Math.max(0, 1.6 - q.sinking * 1.4);
-        m.position.set(SINK.x + Math.cos(a) * r, COUNTER_Y - q.sinking * 1.5, SINK.z + Math.sin(a) * r);
-        m.rotation.y += dt * 8;
-        if (q.sinking > 1.3) {
           this.group.remove(m);
           this.pieces.splice(i, 1);
         }
@@ -259,22 +243,23 @@ export class Effects {
   }
 
   /**
-   * The mop's edge is at `x`: leftovers it reaches are pushed along in front of it, fall off the disc and
-   * slide into the sink; splats it passes are wiped off. Returns how many things went down the drain.
+   * The mop's edge is at `x`: leftovers it reaches are pushed along in front of it and vanish past `gone`
+   * (off the screen); splats it passes are wiped off. Returns how many things went.
    */
-  sweep(x: number, dt: number): number {
-    let drained = 0;
+  sweep(x: number, dt: number, gone: number): number {
+    let swept = 0;
     for (const q of this.pieces) {
-      if (q.sinking > 0 || q.life <= 0) continue;
+      if (q.life <= 0) continue;
       const m = q.mesh;
       if (m.position.x > x) continue;
       m.position.x = x + 0.1 + q.size * 0.5;
+      m.position.y = Math.max(m.position.y, groundAt(m.position.x, m.position.z) + q.size * 0.5);
       q.settled = false;
-      q.v.set(0.5, 0, (SINK.z - m.position.z) * 0.6);
+      q.v.set(0.5, 0, 0);
       m.rotation.z -= dt * 6;
-      if (m.position.x > SINK.x - SINK.radius * 0.7 && Math.abs(m.position.z - SINK.z) < SINK.radius * 1.8) {
-        q.sinking = 0.001;
-        drained++;
+      if (m.position.x > gone) {
+        q.life = 0.3;
+        swept++;
       }
     }
     for (let i = this.splats.length - 1; i >= 0; i--) {
@@ -290,7 +275,7 @@ export class Effects {
         }
       }
     }
-    return drained;
+    return swept;
   }
 
   /** Throws everything away at once. */

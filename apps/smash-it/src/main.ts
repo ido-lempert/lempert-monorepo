@@ -12,12 +12,12 @@ import { type Level, levelById, LEVELS } from './game/levels';
 import { affordableFood, buyFood, buyUpgrade, chaptersOpen, finishLevel, firstTime, KEY, loadProgress, newProgress, saveProgress, shopOpen, type UpgradeId } from './game/progress';
 import { Coach } from './coach';
 import { bestShots } from './game/replay';
-import { MAX_RANGE, MIN_RANGE, SLING, type Vec3 } from './game/physics';
+import { aimAt, type Vec3 } from './game/physics';
 import { applyDocument, t } from './i18n';
 import { Notice } from './notice';
 import { Play } from './play';
 import { canFullscreen, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
-import { clock, foodName, goalText, num, renderChapters, renderHudGoals, renderIntro, renderResult, renderShop, renderTray, type ResultInfo, updateTray } from './ui';
+import { clock, foodName, goalText, kingName, num, worldName, renderChapters, renderHudGoals, renderIntro, renderResult, renderShop, renderTray, type ResultInfo, updateTray } from './ui';
 import { World } from './world/world';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -85,7 +85,7 @@ function popup(html: string, at: Vec3, cls = '') {
   setTimeout(() => d.remove(), 1150);
 }
 
-const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'combo', 'replay-bar', 'result', 'mop-hint', 'pause', 'vignette', 'aim-hint', 'banner'];
+const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'combo', 'replay-bar', 'result', 'mop-hint', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate'];
 function show(...ids: string[]) {
   for (const id of screens) $(id).classList.toggle('hidden', !ids.includes(id));
   closeMenu();
@@ -104,8 +104,13 @@ let result: ResultInfo | null = null;
 let titleUntil = 0;
 
 /** Bugs wandering about behind the menus. */
+/** The player's current world, with its bugs wandering about (no king, no clock). */
+function demoLevel(): Level {
+  const l = levelById(progress.unlocked);
+  return { ...l, time: 1e9, boss: undefined, groups: undefined, rareEvery: undefined, max: 7, obstacles: l.obstacles.filter((o) => o.kind !== 'fence') };
+}
 function demoArena(): Arena {
-  return new Arena({ ...LEVELS[0], time: 1e9, mix: { ladybug: 2, ant: 2, butterfly: 2, snail: 1, beetle: 1 }, max: 7, obstacles: [] });
+  return new Arena(demoLevel());
 }
 let demo = demoArena();
 
@@ -116,7 +121,7 @@ function toMenu() {
   replay = null;
   mop = null;
   demo = demoArena();
-  world.setLevel(LEVELS[0]);
+  world.setLevel(demoLevel());
   world.mess.clear();
   world.bind(demo);
   world.mopTo(null, 0);
@@ -160,11 +165,18 @@ function startLevel(withMission = false) {
   };
   play = new Play(world, sound, progress, level, { popup, banner, toast: say, shot, tip }, () => prefs.calm);
   sound.setTheme('play');
-  show('hud', 'tray', ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
+  show('hud', 'tray', 'rotate', ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
   renderTray(progress, play.food, pickFood);
   banner(t('chapter', { n: level.id }), '', 1100);
   // Tips for this moment, in order: the mission (when there was no intro card), the food tray, the best food here.
-  if (withMission) coach.say('🎯', t('coachMission', { goal: level.goals.map(goalText).join(' · ') }));
+  if (withMission) coach.say('🎯', t('coachMission', { goal: level.goals.map((g) => goalText(g, level)).join(' · ') }));
+  // A new world gets its name up in lights; a king gets introduced.
+  if (level.index === 1) banner(`${t('world', { n: level.world })} · ${worldName(level.world)}`, 'mint', 1600);
+  if (level.boss) coach.say('👑', t('coachKing', { name: kingName(level), n: level.boss.hp }));
+  sound.setTheme(level.boss ? 'boss' : 'play');
+  $('rotate').classList.toggle('hidden', !level.rotate);
+  if (level.rotate) tip('rotate', '🔄', t('coachRotate'));
+  if (level.obstacles.some((o) => o.kind === 'fence')) tip('fence', '🚧', t('coachFence'));
   if (progress.owned.length > 1 && tip('tray', '👇', t('coachTray'))) {
     $('tray').classList.remove('pulse');
     void $('tray').offsetWidth;
@@ -451,6 +463,23 @@ addEventListener('keydown', (e) => {
   }
 });
 
+// Walking the slingshot around the world: hold a button.
+for (const [id, dir] of [['rot-ccw', -1], ['rot-cw', 1]] as const) {
+  const b = $(id);
+  b.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (play) play.spin = dir;
+  });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel'])
+    b.addEventListener(ev, () => {
+      if (play) play.spin = 0;
+    });
+  b.addEventListener('click', () => {
+    // Keyboard and switch users: one step per press.
+    if (play && play.spin === 0) play.turn(dir * 0.25);
+  });
+}
+
 // --- HUD -----------------------------------------------------------------------------------------------
 
 let lastSecond = -1;
@@ -464,10 +493,11 @@ function updateHud() {
   if (sec !== lastSecond) {
     lastSecond = sec;
     if (hurry && sec > 0) sound.play('tick');
-    if (!play.over) sound.setTheme(sec <= 20 ? 'hurry' : 'play');
+    if (!play.over) sound.setTheme(sec <= 20 ? 'hurry' : level.boss ? 'boss' : 'play');
   }
   $('score-text').textContent = num(s.score);
-  renderHudGoals(level, s);
+  const king = play.arena.king;
+  renderHudGoals(level, s, king?.boss ? { hp: king.hp, max: king.boss.hp } : undefined);
   const combo = $('combo');
   if (s.chain >= 2 && !play.over) {
     combo.classList.remove('hidden');
@@ -565,9 +595,7 @@ if (import.meta.env.DEV) {
     },
     /** Throws the chosen food at a spot on the disc (leading nothing). */
     shootAt(x: number, z: number) {
-      const yaw = Math.atan2(x - SLING.x, SLING.z - z);
-      const d = Math.hypot(x - SLING.x, z - SLING.z);
-      (play as unknown as { fire(a: { yaw: number; power: number }): void }).fire({ yaw, power: (d - MIN_RANGE) / (MAX_RANGE - MIN_RANGE) });
+      (play as unknown as { fire(a: { yaw: number; power: number }): void }).fire(aimAt(x, z));
     },
     coins(n: number) {
       progress.coins = n;

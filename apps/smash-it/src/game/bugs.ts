@@ -2,10 +2,10 @@
  * The bugs: what each kind is like (size, speed, value, how it moves) and how one moves around the disc.
  * Small means hard to hit, fast means hard to follow, and the harder a bug is the more points it is worth.
  */
-import { COUNTER_Y, DISC_RADIUS, groundAt } from './physics';
+import { COUNTER_Y, field, groundAt } from './physics';
 import type { Rng } from './rng';
 
-export type BugKind = 'snail' | 'ladybug' | 'ant' | 'beetle' | 'butterfly' | 'fly' | 'golden';
+export type BugKind = 'snail' | 'ladybug' | 'ant' | 'beetle' | 'butterfly' | 'fly' | 'golden' | 'king';
 
 /**
  * - wander: drifts about, turning smoothly
@@ -39,7 +39,24 @@ export const BUGS: Record<BugKind, BugDef> = {
   butterfly: { kind: 'butterfly', emoji: '🦋', radius: 0.55, speed: 2.3, value: 150, move: 'zigzag', hover: 1.3 },
   fly: { kind: 'fly', emoji: '🪰', radius: 0.32, speed: 3.6, value: 300, move: 'dart', hover: 0.9 },
   golden: { kind: 'golden', emoji: '✨', radius: 0.42, speed: 2.8, value: 500, move: 'zigzag', rare: true },
+  /** A boss: big, takes several hits (value is per hit); its size, speed and tricks come from the level. */
+  king: { kind: 'king', emoji: '👑', radius: 1.1, speed: 0.7, value: 150, move: 'wander' },
 };
+
+/**
+ * A king: a big crowned bug that takes `hp` hits. Some call in helpers, some pull into their shell now and
+ * then (no damage meanwhile), and some only feel heavy food (`armor`: the least `knock` that hurts).
+ */
+export interface BossDef {
+  /** Which bug it is a king of (its look and voice). */
+  look: Exclude<BugKind, 'king' | 'golden'>;
+  hp: number;
+  radius: number;
+  speed: number;
+  summon?: { kind: BugKind; every: number; count: number };
+  shell?: { every: number; time: number };
+  armor?: number;
+}
 
 /** Small bugs, for goals like "hit 3 small bugs". */
 export const isSmall = (k: BugKind) => BUGS[k].radius < 0.4;
@@ -55,12 +72,40 @@ export const isSmall = (k: BugKind) => BUGS[k].radius < 0.4;
  */
 export type BugState = 'enter' | 'walk' | 'hidden' | 'knocked' | 'dazed' | 'leaving' | 'gone';
 
+/**
+ * Things on the world that food can't go through: mushrooms (bugs hide under the cap), cups, sugar cubes,
+ * and fences (a straight wall `length` long, turned by `angle`; `radius` is half its thickness).
+ */
 export interface Obstacle {
-  kind: 'mushroom' | 'cup';
+  kind: 'mushroom' | 'cup' | 'cube' | 'fence';
   x: number;
   z: number;
   radius: number;
   height: number;
+  length?: number;
+  angle?: number;
+}
+
+/**
+ * How far a point is outside an obstacle's footprint (negative inside), and which way is out. `stem`: for
+ * mushrooms, only the stem counts (bugs walk under the cap).
+ */
+export function footprint(o: Obstacle, x: number, z: number, stem = false): { d: number; nx: number; nz: number } {
+  let cx = o.x;
+  let cz = o.z;
+  if (o.kind === 'fence') {
+    const ux = Math.cos(o.angle ?? 0);
+    const uz = Math.sin(o.angle ?? 0);
+    const half = (o.length ?? 2) / 2;
+    const along = Math.max(-half, Math.min(half, (x - o.x) * ux + (z - o.z) * uz));
+    cx = o.x + ux * along;
+    cz = o.z + uz * along;
+  }
+  const dx = x - cx;
+  const dz = z - cz;
+  const d = Math.hypot(dx, dz) || 0.0001;
+  const r = o.kind === 'mushroom' && stem ? o.radius * 0.45 : o.radius;
+  return { d: d - r, nx: dx / d, nz: dz / d };
 }
 
 export interface Bug {
@@ -88,6 +133,18 @@ export interface Bug {
   march?: { radius: number; angle: number; dir: 1 | -1 };
   /** Replay: walks in a straight line at this velocity. */
   script?: { vx: number; vz: number };
+  /** Stays near this spot (bugs guarding a place behind a fence). */
+  home?: { x: number; z: number; r: number };
+  /** Kings only. */
+  boss?: BossDef;
+  hp: number;
+  /** Seconds left of being pushed back by a hit (kings stagger instead of flying). */
+  hurt: number;
+  /** Seconds until the next helper / shell. */
+  summonIn: number;
+  shellIn: number;
+  /** Seconds left inside the shell (no damage). */
+  shelled: number;
   // Being thrown
   vx: number;
   vy: number;
@@ -96,9 +153,13 @@ export interface Bug {
   tumble: number;
 }
 
-export function makeBug(id: number, kind: BugKind, x: number, z: number, heading: number, rng: Rng): Bug {
-  const def = BUGS[kind];
+export function makeBug(id: number, kind: BugKind, x: number, z: number, heading: number, rng: Rng, boss?: BossDef): Bug {
+  const def = boss ? { ...BUGS.king, radius: boss.radius, speed: boss.speed, hover: BUGS[boss.look].hover ? 1.8 : undefined } : BUGS[kind];
   return {
+    boss, hp: boss?.hp ?? 1, hurt: 0,
+    summonIn: boss?.summon?.every ?? Infinity,
+    shellIn: boss?.shell?.every ?? Infinity,
+    shelled: 0,
     id, kind, def, x, z, heading,
     y: def.hover ? def.hover + 2 : groundAt(x, z),
     speed: def.speed, state: 'enter', t: 0, age: rng() * 10,
@@ -109,6 +170,8 @@ export function makeBug(id: number, kind: BugKind, x: number, z: number, heading
 
 /** Can food hit it right now? */
 export function hittable(b: Bug): boolean {
+  // A king that was just hit can't be hit again for a moment (one throw, one heart).
+  if (b.boss && b.hurt > 0.3) return false;
   return b.state === 'enter' || b.state === 'walk' || b.state === 'leaving';
 }
 
@@ -159,6 +222,26 @@ export function moveBug(b: Bug, dt: number, rng: Rng, ctx: MoveContext) {
 
   const def = b.def;
   const base = def.speed * ctx.pace;
+  if (b.boss) {
+    // Kings: pushed back after a hit, and now and then hide in their shell.
+    b.shellIn -= dt;
+    if (b.shelled > 0) b.shelled = Math.max(0, b.shelled - dt);
+    else if (b.shellIn <= 0 && b.boss.shell) {
+      b.shelled = b.boss.shell.time;
+      b.shellIn = b.boss.shell.every;
+    }
+    if (b.hurt > 0) {
+      b.hurt = Math.max(0, b.hurt - dt);
+      b.x += b.vx * dt * (b.hurt / 0.6);
+      b.z += b.vz * dt * (b.hurt / 0.6);
+      keepOnDisc(b, dt);
+      return;
+    }
+    if (b.shelled > 0) {
+      b.speed = 0;
+      return;
+    }
+  }
   if (b.script) {
     b.x += b.script.vx * dt;
     b.z += b.script.vz * dt;
@@ -199,7 +282,7 @@ export function moveBug(b: Bug, dt: number, rng: Rng, ctx: MoveContext) {
   b.z += Math.cos(b.heading) * b.speed * dt;
 
   if (b.state === 'leaving') {
-    if (Math.hypot(b.x, b.z) > DISC_RADIUS + 0.8) setState(b, 'gone');
+    if (Math.hypot(b.x, b.z) > field.radius + 0.8) setState(b, 'gone');
   } else {
     keepOnDisc(b, dt);
     if (!def.hover) avoid(b, ctx.obstacles);
@@ -256,6 +339,9 @@ function wander(b: Bug, dt: number, rng: Rng, base: number, ctx: MoveContext) {
       b.speed = base;
       smoothTurn(b, dt, rng);
   }
+  // Guards stay near their spot.
+  const h = b.home;
+  if (h && Math.hypot(b.x - h.x, b.z - h.z) > h.r) steer(b, Math.atan2(h.x - b.x, h.z - b.z), 4 * dt);
 }
 
 function smoothTurn(b: Bug, dt: number, rng: Rng) {
@@ -269,7 +355,7 @@ function smoothTurn(b: Bug, dt: number, rng: Rng) {
 /** Turns back towards the middle near the edge. */
 function keepOnDisc(b: Bug, dt: number) {
   const r = Math.hypot(b.x, b.z);
-  const limit = DISC_RADIUS - 1.1;
+  const limit = field.radius - 0.4 - b.def.radius;
   if (r > limit - 0.6 && b.state !== 'enter') steer(b, Math.atan2(-b.x, -b.z), 5 * dt);
   if (r > limit && b.state !== 'enter') {
     b.x *= limit / r;
@@ -277,18 +363,16 @@ function keepOnDisc(b: Bug, dt: number) {
   }
 }
 
-/** Walks around mushrooms and cups instead of through them (hiders may go under mushrooms). */
+/** Walks around obstacles instead of through them (hiders may go under mushrooms). */
 function avoid(b: Bug, obstacles: readonly Obstacle[]) {
   obstacles.forEach((o, i) => {
     if (b.def.move === 'hide' && o.kind === 'mushroom' && b.hideTarget === i) return;
-    const dx = b.x - o.x;
-    const dz = b.z - o.z;
-    const d = Math.hypot(dx, dz);
-    const min = (o.kind === 'mushroom' ? o.radius * 0.45 : o.radius) + b.def.radius;
-    if (d < min && d > 0.0001) {
-      b.x = o.x + (dx / d) * min;
-      b.z = o.z + (dz / d) * min;
-      b.heading = Math.atan2(dx, dz) + 0.6;
+    const f = footprint(o, b.x, b.z, true);
+    const gap = f.d - b.def.radius;
+    if (gap < 0) {
+      b.x -= f.nx * gap;
+      b.z -= f.nz * gap;
+      b.heading = Math.atan2(f.nx, f.nz) + 0.6;
     }
   });
 }

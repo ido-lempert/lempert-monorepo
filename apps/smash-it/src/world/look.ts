@@ -168,42 +168,6 @@ export function canvasTexture(size: number, draw: (g: CanvasRenderingContext2D, 
   return tex;
 }
 
-/** Lawn: soft patches of lighter and darker green, with tiny clover and blades drawn in. */
-export const grassTexture = (() => {
-  const tex = canvasTexture(512, (g, s) => {
-    g.fillStyle = '#5fbf45';
-    g.fillRect(0, 0, s, s);
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    // Big soft patches.
-    for (let i = 0; i < 40; i++) {
-      const x = rnd() * s;
-      const y = rnd() * s;
-      const r = 30 + rnd() * 70;
-      const grad = g.createRadialGradient(x, y, 0, x, y, r);
-      const light = rnd() < 0.5;
-      grad.addColorStop(0, light ? 'rgba(170, 230, 110, 0.35)' : 'rgba(40, 130, 50, 0.3)');
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = grad;
-      g.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    // Little strokes.
-    for (let i = 0; i < 5000; i++) {
-      const x = rnd() * s;
-      const y = rnd() * s;
-      g.strokeStyle = rnd() < 0.5 ? 'rgba(190, 245, 130, 0.45)' : 'rgba(35, 120, 45, 0.4)';
-      g.lineWidth = 1 + rnd();
-      g.beginPath();
-      g.moveTo(x, y);
-      g.lineTo(x + (rnd() - 0.5) * 4, y - 3 - rnd() * 5);
-      g.stroke();
-    }
-  });
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 3);
-  return tex;
-})();
-
 /** A soft dark round blot, for contact shadows under bugs and flying food. */
 export const blobTexture = canvasTexture(64, (g, s) => {
   const h = s / 2;
@@ -361,43 +325,6 @@ export const melonTexture = (() => {
   return tex;
 })();
 
-/** Ladybug back: red with black spots. */
-export function spotsTexture(base: string, spot: string): THREE.CanvasTexture {
-  return canvasTexture(128, (g, s) => {
-    g.fillStyle = base;
-    g.fillRect(0, 0, s, s);
-    g.fillStyle = spot;
-    const spots = [[0.25, 0.3], [0.7, 0.25], [0.45, 0.55], [0.15, 0.7], [0.8, 0.65], [0.5, 0.85]];
-    for (const [x, y] of spots) {
-      g.beginPath();
-      g.arc(x * s, y * s, s * 0.08, 0, Math.PI * 2);
-      g.fill();
-    }
-  });
-}
-
-/** A butterfly wing, drawn once per colour. */
-export function wingTexture(color: string, dots: string): THREE.CanvasTexture {
-  return canvasTexture(64, (g, s) => {
-    g.fillStyle = color;
-    g.beginPath();
-    g.ellipse(s * 0.5, s * 0.36, s * 0.45, s * 0.32, 0, 0, Math.PI * 2);
-    g.ellipse(s * 0.44, s * 0.76, s * 0.3, s * 0.22, 0, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = dots;
-    for (const [x, y, r] of [[0.6, 0.3, 0.11], [0.35, 0.4, 0.07], [0.45, 0.78, 0.08]]) {
-      g.beginPath();
-      g.arc(x * s, y * s, r * s, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.strokeStyle = 'rgba(40, 20, 60, 0.8)';
-    g.lineWidth = 3;
-    g.beginPath();
-    g.ellipse(s * 0.5, s * 0.36, s * 0.43, s * 0.3, 0, 0, Math.PI * 2);
-    g.stroke();
-  });
-}
-
 // --- Grass ----------------------------------------------------------------------------------------
 
 const wind = { value: 0 };
@@ -410,7 +337,7 @@ export function setWindTime(t: number) {
  * Thousands of little grass blades in one draw call, swaying in the wind, darker at the root and sunlit
  * at the tip. `radius`: the circle to fill; `count` depends on quality.
  */
-export function grassField(radius: number, count: number): THREE.InstancedMesh {
+export function grassField(radius: number, count: number, palette: { h: [number, number]; s: [number, number]; l: [number, number]; height: number }): THREE.InstancedMesh {
   // A blade: a thin, slightly bent triangle strip.
   const geo = new THREE.BufferGeometry();
   const w = 0.07;
@@ -449,14 +376,14 @@ export function grassField(radius: number, count: number): THREE.InstancedMesh {
     const a = rnd() * Math.PI * 2;
     d.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
     d.rotation.set(0, rnd() * Math.PI, (rnd() - 0.5) * 0.4);
-    const h = 0.09 + rnd() * 0.14;
+    const h = (0.09 + rnd() * 0.14) * palette.height;
     d.scale.set(0.8 + rnd() * 0.6, h, 1);
     d.updateMatrix();
     mesh.setMatrixAt(i, d.matrix);
-    c.setHSL(0.26 + rnd() * 0.06, 0.42 + rnd() * 0.15, 0.36 + rnd() * 0.12);
+    const lerp = (r: [number, number]) => r[0] + rnd() * (r[1] - r[0]);
+    c.setHSL(lerp(palette.h), lerp(palette.s), lerp(palette.l));
     mesh.setColorAt(i, c);
   }
-  mesh.receiveShadow = true;
   mesh.raycast = () => {};
   return mesh;
 }

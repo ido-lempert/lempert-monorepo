@@ -1,27 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { Arena, levelBugs } from './arena';
-import { BUGS, type BugKind, makeBug, moveBug } from './bugs';
+import { BUGS, type BugKind, isSmall, makeBug, moveBug } from './bugs';
 import { FOOD_ORDER, FOODS } from './foods';
-import { LEVELS, type Level } from './levels';
-import { aimFromPull, DISC_RADIUS, flightTime, launchVelocity, MAX_RANGE, MAX_YAW, MIN_RANGE, predictPath, SLING, SURFACE_Y } from './physics';
+import { LEVELS, type Level, ROTATE_FROM } from './levels';
+import { aimAt, aimFromPull, field, flightTime, launchVelocity, MAX_YAW, maxRange, MIN_RANGE, predictPath, setField, slingAt, SURFACE_Y } from './physics';
 import { bestShots, stage, stageLength } from './replay';
 import { makeRng } from './rng';
 import { MEGA, Session } from './session';
 
 const quiet: Level = {
-  id: 99, time: 60, goals: [{ kind: 'hits', n: 3 }], mix: { ladybug: 1 }, max: 0,
+  id: 99, world: 1, index: 1, radius: 7.5, rotate: false, time: 60, goals: [{ kind: 'hits', n: 3 }], mix: { ladybug: 1 }, max: 0,
   guide: 1, pace: 1, obstacles: [], tip: 'cookie', stars: [100, 200],
 };
 
 /** The pull that throws `d` far. */
-const powerFor = (d: number) => (d - MIN_RANGE) / (MAX_RANGE - MIN_RANGE);
+const powerFor = (d: number) => (d - MIN_RANGE) / (maxRange() - MIN_RANGE);
 
 /** Lands a shot where the food would come down, by flying it in the arena. */
 function landing(foodId: keyof typeof FOODS, yaw: number, distance: number) {
+  setField(7.5);
   const food = FOODS[foodId];
+  const s = slingAt();
   const v = launchVelocity(yaw, distance, food.angle, food.gravity);
-  const t = flightTime(SLING.y, v.y, food.gravity);
-  return { x: SLING.x + v.x * t, z: SLING.z + v.z * t, t };
+  const t = flightTime(s.y, v.y, food.gravity);
+  return { x: s.x + v.x * t, z: s.z + v.z * t, t };
 }
 
 describe('physics', () => {
@@ -29,7 +31,7 @@ describe('physics', () => {
     for (const id of FOOD_ORDER)
       for (const d of [5, 12, 20]) {
         const p = landing(id, 0.3, d);
-        expect(Math.hypot(p.x - SLING.x, p.z - SLING.z)).toBeCloseTo(d, 3);
+        expect(Math.hypot(p.x - slingAt().x, p.z - slingAt().z)).toBeCloseTo(d, 3);
       }
   });
 
@@ -54,7 +56,7 @@ describe('physics', () => {
 
   it('predicts a path that ends at the grass', () => {
     const v = launchVelocity(0, 12, 32, 18);
-    const path = predictPath(SLING, v, 18);
+    const path = predictPath(slingAt(), v, 18);
     expect(path.length).toBeGreaterThan(10);
     expect(path.at(-1)!.y).toBeGreaterThanOrEqual(SURFACE_Y);
   });
@@ -68,7 +70,7 @@ describe('bugs', () => {
       for (let i = 0; i < 3000; i++) {
         moveBug(b, 1 / 60, rng, { obstacles: [], pace: 1.2 });
         if (b.state === 'leaving' || b.state === 'gone') break;
-        expect(Math.hypot(b.x, b.z)).toBeLessThan(DISC_RADIUS);
+        expect(Math.hypot(b.x, b.z)).toBeLessThan(field.radius);
       }
     }
   });
@@ -212,7 +214,7 @@ describe('arena', () => {
     const spawns = run(arena, 20).filter((e) => e.type === 'spawn');
     expect(spawns.length).toBeGreaterThanOrEqual(6);
     expect(arena.activeBugs).toBeLessThanOrEqual(6);
-    for (const e of spawns) if (e.type === 'spawn') expect(e.bug.z).toBeLessThan(DISC_RADIUS * 0.9);
+    for (const e of spawns) if (e.type === 'spawn') expect(e.bug.z).toBeLessThan(field.radius * 0.9);
   });
 
   it('ends when the clock runs out', () => {
@@ -245,18 +247,109 @@ describe('replay', () => {
 });
 
 describe('levels', () => {
-  it('are numbered in order and each one is winnable on paper', () => {
+  it('are 100, numbered in order, and each one is winnable on paper', () => {
+    expect(LEVELS).toHaveLength(100);
     LEVELS.forEach((l, i) => {
       expect(l.id).toBe(i + 1);
+      expect(l.world).toBe(Math.floor(i / 10) + 1);
       expect(l.goals.length).toBeGreaterThan(0);
       const bugs = levelBugs(l);
-      for (const g of l.goals) if (g.kind === 'bug' && g.bug !== 'small') expect(bugs).toContain(g.bug);
+      for (const g of l.goals) {
+        if (g.kind === 'bug' && g.bug !== 'small') expect(bugs).toContain(g.bug);
+        if (g.kind === 'bug' && g.bug === 'small') expect(bugs.some(isSmall)).toBe(true);
+        if (g.kind === 'multi') expect(l.groups?.some((gr) => gr.formation === 'cluster')).toBe(true);
+      }
       expect(l.stars[0]).toBeLessThan(l.stars[1]);
+      // Everything stays on the world.
+      for (const o of l.obstacles) expect(Math.hypot(o.x, o.z) + o.radius).toBeLessThan(l.radius);
+      for (const g of l.groups ?? []) if (g.at) expect(Math.hypot(g.at.x, g.at.z)).toBeLessThan(l.radius - 1.5);
     });
   });
 
-  it('get harder: less guide and quicker bugs later on', () => {
+  it('have a king every 5 chapters, and rotation and fences from world 3', () => {
+    for (const l of LEVELS) {
+      expect(!!l.boss).toBe(l.id % 5 === 0);
+      expect(l.rotate).toBe(l.id >= ROTATE_FROM);
+      if (l.obstacles.some((o) => o.kind === 'fence')) expect(l.rotate).toBe(true);
+    }
+    expect(LEVELS.some((l) => l.obstacles.some((o) => o.kind === 'fence'))).toBe(true);
+  });
+
+  it('get harder: bigger worlds, less guide and quicker bugs later on', () => {
     expect(LEVELS[0].guide).toBeGreaterThan(LEVELS.at(-1)!.guide);
     expect(LEVELS[0].pace).toBeLessThan(LEVELS.at(-1)!.pace);
+    expect(LEVELS[0].radius).toBeLessThan(LEVELS.at(-1)!.radius);
+    expect(LEVELS[9].boss!.hp).toBeLessThan(LEVELS[99].boss!.hp);
+  });
+});
+
+describe('rotation', () => {
+  it('aims at the same spot from anywhere around the world', () => {
+    setField(9);
+    for (const angle of [0, 1, 2.5, -2]) {
+      const aim = aimAt(2, -3, angle);
+      const food = FOODS.cookie;
+      const s = slingAt(angle);
+      const v = launchVelocity(aim.yaw, MIN_RANGE + aim.power * (maxRange() - MIN_RANGE), food.angle, food.gravity, s, angle);
+      const t = flightTime(s.y, v.y, food.gravity);
+      expect(s.x + v.x * t).toBeCloseTo(2, 3);
+      expect(s.z + v.z * t).toBeCloseTo(-3, 3);
+    }
+  });
+});
+
+describe('kings and fences', () => {
+  const kingLevel: Level = {
+    ...quiet, max: 0, radius: 9,
+    goals: [{ kind: 'boss' }],
+    boss: { look: 'ladybug', hp: 3, radius: 1.2, speed: 0 },
+  };
+
+  function throwAt(arena: Arena, food: keyof typeof FOODS, x: number, z: number) {
+    const aim = aimAt(x, z);
+    arena.fire(food, aim.yaw, aim.power);
+    for (let i = 0; i < 200; i++) arena.update(1 / 60);
+  }
+
+  it('a king takes one heart per throw and goes down at the last', () => {
+    const arena = new Arena(kingLevel, { seed: 3 });
+    const king = arena.king!;
+    expect(king.hp).toBe(3);
+    for (let i = 0; i < 3; i++) throwAt(arena, 'cookie', king.x, king.z);
+    expect(king.hp).toBe(0);
+    expect(arena.session.bossDown).toBe(true);
+    expect(arena.session.success).toBe(true);
+  });
+
+  it('a king in its shell, or one with armour, shrugs off light food', () => {
+    const arena = new Arena({ ...kingLevel, boss: { ...kingLevel.boss!, armor: 1.3 } }, { seed: 4 });
+    const king = arena.king!;
+    throwAt(arena, 'cookie', king.x, king.z);
+    expect(king.hp).toBe(3);
+    throwAt(arena, 'watermelon', king.x, king.z);
+    expect(king.hp).toBe(2);
+    king.shelled = 5;
+    throwAt(arena, 'watermelon', king.x, king.z);
+    expect(king.hp).toBe(2);
+  });
+
+  it('a fence stops low food, but a high lob goes over it', () => {
+    const fence = { kind: 'fence' as const, x: 0, z: 2, radius: 0.18, height: 1.4, length: 5, angle: 0 };
+    const level = { ...quiet, max: 0, obstacles: [fence] };
+    for (const [food, through] of [['popcorn', false], ['pie', true]] as const) {
+      const arena = new Arena(level, { seed: 5 });
+      const b = arena.addBug('ladybug', 0, -1, 0);
+      b.state = 'walk';
+      b.script = { vx: 0, vz: 0 };
+      throwAt(arena, food, 0, -1);
+      expect(arena.session.hits > 0).toBe(through);
+    }
+  });
+
+  it('guards stay near their spot', () => {
+    const arena = new Arena({ ...quiet, max: 0 }, { seed: 6 });
+    const guards = arena.spawnGroup('ant', 4, 'guard', { x: 2, z: -2 });
+    for (let i = 0; i < 1200; i++) arena.update(1 / 60);
+    for (const g of guards) expect(Math.hypot(g.x - 2, g.z + 2)).toBeLessThan(2.6);
   });
 });

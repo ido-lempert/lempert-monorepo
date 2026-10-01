@@ -107,7 +107,7 @@
           <h2 id="chapters-title" data-i18n="chapters"></h2>
           <button class="icon" data-close data-i18n-attr="aria-label:close;title:close">✕</button>
         </header>
-        <div class="chapter-grid" id="chapter-grid"></div>
+        <div class="chapter-list" id="chapter-list"></div>
       </div>
     </section>
 
@@ -131,7 +131,7 @@
     <section class="screen overlay hidden" id="intro" aria-labelledby="intro-title">
       <div class="card">
         <p class="kicker" id="intro-kicker"></p>
-        <h2 id="intro-title" data-i18n="mission"></h2>
+        <h2 id="intro-title"></h2>
         <ul class="goals" id="intro-goals"></ul>
         <p class="muted" id="intro-best"></p>
         <div class="actions">
@@ -154,6 +154,10 @@
     <div class="coach hidden" id="coach" role="status"></div>
     <div class="aim-hint hidden" id="aim-hint"><span class="hand" aria-hidden="true">👆</span> <span data-i18n="aimHint"></span></div>
     <nav class="tray hidden" id="tray" data-i18n-attr="aria-label:tray"></nav>
+    <div class="rotate hidden" id="rotate">
+      <button class="icon" id="rot-ccw" data-i18n-attr="aria-label:rotateCcw;title:rotateCcw" dir="ltr">⟲</button>
+      <button class="icon" id="rot-cw" data-i18n-attr="aria-label:rotateCw;title:rotateCw" dir="ltr">⟳</button>
+    </div>
 
     <!-- Replay -->
     <div class="replay-bar hidden" id="replay-bar">

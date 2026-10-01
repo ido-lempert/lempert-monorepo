@@ -1134,3 +1134,54 @@ a:focus-visible {
     top: calc(max(10px, var(--safe-top)) + 160px);
   }
 }
+
+/* --- Walking around the world, chapters by world, kings ------------------------------------------- */
+
+.rotate {
+  position: fixed;
+  bottom: calc(max(12px, var(--safe-bottom)) + 78px);
+  inset-inline: 16px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  direction: ltr;
+}
+
+.rotate button {
+  pointer-events: auto;
+  width: 60px;
+  height: 60px;
+  font-size: 1.8rem;
+  touch-action: none;
+}
+
+.rotate button:active {
+  background: var(--sun);
+}
+
+.chapter-list {
+  max-height: calc(100dvh - 140px);
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.world-head {
+  margin: 16px 4px 8px;
+  text-align: start;
+  font-size: 1.2rem;
+}
+
+.world-head:first-child {
+  margin-top: 0;
+}
+
+.chapter-grid button.king {
+  background: #fff1c4;
+  box-shadow: 0 4px 0 #f0c64a;
+}
+
+.hud-goals > div.hearts b {
+  letter-spacing: -2px;
+  font-size: 0.95rem;
+}

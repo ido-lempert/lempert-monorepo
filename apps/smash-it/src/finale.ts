@@ -5,10 +5,9 @@
 import type { Sound } from './audio';
 import type { Arena, ShotRecord } from './game/arena';
 import type { Level } from './game/levels';
-import { DISC_RADIUS, type Vec3 } from './game/physics';
+import { field, type Vec3 } from './game/physics';
 import { stage, stageLength } from './game/replay';
 import { Effects } from './world/effects';
-import { SINK } from './world/models';
 import type { World } from './world/world';
 
 /** Plays each recorded shot again in slow motion, from a different angle each time. */
@@ -70,8 +69,10 @@ export class Replay {
         if (e.type === 'impact') this.sound.play('crunch');
       }
     const body = this.arena.shots[0]?.bodies.find((b) => b.mode !== 'done');
-    if (this.hitAt) this.world.orbitCamera(this.hitAt, this.angle + this.time * 0.8, 5.5, 2.2, 3);
-    else if (body) this.world.orbitCamera(body, this.angle, 6, 2.5, 4);
+    // Kings are big: step back for them.
+    const k = this.rec.hits.some((h) => h.boss) ? 1.8 : 1;
+    if (this.hitAt) this.world.orbitCamera(this.hitAt, this.angle + this.time * 0.8, 5.5 * k, 2.2 * k, 3);
+    else if (body) this.world.orbitCamera(body, this.angle, 6 * k, 2.5 * k, 4);
     this.world.frame(dt, gameDt);
     if (this.time > this.length) {
       this.effects?.clear();
@@ -90,12 +91,12 @@ export class Replay {
   }
 }
 
-/** The mop: dragged (or carried on its own) across the world, pushing everything into the sink. */
+/** The mop: dragged (or carried on its own) across the world, pushing everything off the screen. */
 export class MopScene {
-  x = -DISC_RADIUS - 4;
+  x = -field.radius - 4;
   private idle = 0;
   private swish = 0;
-  private gurgle = 0;
+  private popped = 0;
   private done = 0;
 
   constructor(
@@ -108,7 +109,7 @@ export class MopScene {
   /** The finger moved the mop by `px` screen pixels. */
   drag(px: number) {
     if (px <= 0) return;
-    this.x += (px / innerWidth) * 26;
+    this.x += (px / innerWidth) * 26 * (field.radius / 7.5);
     this.idle = 0;
     if (this.swish <= 0) {
       this.sound.play('swish');
@@ -120,14 +121,14 @@ export class MopScene {
   update(dt: number): boolean {
     this.idle += dt;
     this.swish -= dt;
-    this.gurgle -= dt;
+    this.popped -= dt;
     // Carry on by itself if nobody drags it.
     if (this.idle > 1.5) this.x += dt * 9;
-    const end = SINK.x + 3;
-    const drained = this.world.mopTo(Math.min(this.x, end), dt);
-    if (drained && this.gurgle <= 0) {
-      this.sound.play('gurgle');
-      this.gurgle = 0.25;
+    const end = this.world.mopEnd;
+    const swept = this.world.mopTo(Math.min(this.x, end), dt);
+    if (swept && this.popped <= 0) {
+      this.sound.play('pop');
+      this.popped = 0.25;
     }
     this.world.overviewCamera(2.5);
     this.world.frame(dt, dt);

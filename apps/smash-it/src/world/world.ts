@@ -8,12 +8,14 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { Arena, Body, GameEvent } from '../game/arena';
 import type { Bug } from '../game/bugs';
 import { FOODS, type FoodId } from '../game/foods';
-import type { Level } from '../game/levels';
-import { type Aim, aimDir, COUNTER_Y, DISC_RADIUS, groundAt, launchVelocity, predictPath, rangeFor, SLING, type Vec3 } from '../game/physics';
+import { type Level, LEVELS, worldOf } from '../game/levels';
+import { type Aim, aimDir, field, groundAt, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
 import { Effects } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, type Quality, setWindTime } from './look';
 import { Post } from './post';
-import { bugModel, type BugModel, disc, foodModel, kitchen, mop, obstacleModel, SINK, slingshot, stretchBand } from './models';
+import { bugModel, type BugModel } from './bugs3d';
+import { disc, foodModel, kitchen, mop, obstacleModel, slingshot, stretchBand } from './models';
+import { THEMES } from './themes';
 
 /** A soft round shadow right under something, so it's easy to see where it is above the ground. */
 const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
@@ -31,8 +33,10 @@ interface BugView {
   scale: number;
   /** Squash after landing. */
   squash: number;
-  /** Swirling down the sink (seconds). */
-  sink: number;
+  /** Swept off the world by the mop (seconds). */
+  swept: number;
+  /** Seconds until the next blink. */
+  blink: number;
 }
 
 interface BodyView {
@@ -114,9 +118,12 @@ export class World {
   private recoil = 0;
   private readonly guide: THREE.Sprite[] = [];
   private readonly target: THREE.Mesh;
-  readonly mopModel = mop();
+  private mopModel = mop(7.5);
   private readonly sun: THREE.DirectionalLight;
-  private readonly water: THREE.Object3D;
+  private readonly hemi: THREE.HemisphereLight;
+  private readonly sky: THREE.Mesh;
+  private ground: THREE.Group | null = null;
+  private level: Level = LEVELS[0];
   private quality: Quality = initialQuality();
   private time = 0;
   private slowFrames = 0;
@@ -136,8 +143,10 @@ export class World {
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.add(backdrop());
-    this.scene.add(new THREE.HemisphereLight('#fff3df', '#c98a5a', 0.7));
+    this.sky = backdrop();
+    this.scene.add(this.sky);
+    this.hemi = new THREE.HemisphereLight('#fff3df', '#c98a5a', 0.7);
+    this.scene.add(this.hemi);
     // A warm sun from the window side, a cool light from behind for bright edges, and a soft fill.
     this.sun = new THREE.DirectionalLight('#ffe9c9', 2.6);
     this.sun.position.set(-9, 18, 6);
@@ -160,10 +169,7 @@ export class World {
     this.scene.add(back, fill);
     this.post = new Post(this.renderer, this.scene, this.camera);
 
-    const k = kitchen();
-    this.water = k.getObjectByName('sinkWater')!;
-    this.scene.add(k, disc(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group);
-    this.sling.root.position.set(SLING.x, SLING.y - 0.35, SLING.z);
+    this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group);
     this.scene.add(this.sling.root);
     this.mopModel.visible = false;
     this.scene.add(this.mopModel);
@@ -183,6 +189,7 @@ export class World {
     this.scene.add(this.target);
 
     this.applyQuality();
+    this.setLevel(LEVELS[0]);
     this.resize();
     this.homeCamera(0);
     addEventListener('resize', () => this.resize());
@@ -221,17 +228,58 @@ export class World {
     this.sun.shadow.map = null;
     this.post.setQuality(high);
     this.post.resize();
-    // Fewer grass blades on slower devices.
-    if (this.grass) this.scene.remove(this.grass);
-    this.grass = grassField(DISC_RADIUS, high ? 8000 : 3000);
-    this.scene.add(this.grass);
+    this.plantGrass();
+  }
+
+  /** Grass blades for the world's size and theme (fewer on slower devices). */
+  private plantGrass() {
+    if (this.grass) {
+      this.scene.remove(this.grass);
+      this.grass.geometry.dispose();
+    }
+    const look = THEMES[worldOf(this.level).theme].blades;
+    const area = (this.level.radius / 7.5) ** 2;
+    const count = Math.round((this.quality === 'high' ? 8000 : 3000) * area * look.amount);
+    this.grass = count > 0 ? grassField(this.level.radius, count, look) : null;
+    if (this.grass) this.scene.add(this.grass);
   }
 
   // --- Level and arena ----------------------------------------------------------------------------
 
+  /** Dresses the world for a chapter: its theme and size, obstacles, and the light (night is darker). */
   setLevel(level: Level) {
+    const theme = worldOf(level).theme;
+    const changed = !this.ground || worldOf(this.level).theme !== theme || this.level.radius !== level.radius;
+    this.level = level;
+    field.radius = level.radius;
     this.obstacleLayer.clear();
     for (const o of level.obstacles) this.obstacleLayer.add(obstacleModel(o));
+    this.setSlingAngle(field.angle);
+    if (!changed) return;
+    if (this.ground) this.scene.remove(this.ground);
+    this.ground = disc(theme, level.radius);
+    this.scene.add(this.ground);
+    this.plantGrass();
+    this.scene.remove(this.mopModel);
+    this.mopModel = mop(level.radius);
+    this.mopModel.visible = false;
+    this.scene.add(this.mopModel);
+    const night = !!THEMES[theme].night;
+    this.sun.color.set(night ? '#9fb8ff' : '#ffe9c9');
+    this.sun.intensity = night ? 1.1 : 2.6;
+    this.hemi.intensity = night ? 0.35 : 0.7;
+    this.hemi.color.set(night ? '#8090ff' : '#fff3df');
+    const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
+    u.top.value.set(night ? '#1a1f4a' : '#7fd0ff');
+    u.middle.value.set(night ? '#3a2f6a' : '#ffe2b0');
+    u.bottom.value.set(night ? '#5a3f6a' : '#ffc58a');
+  }
+
+  /** Moves the slingshot around the world (it always faces the middle). */
+  setSlingAngle(angle: number) {
+    const s = slingAt(angle);
+    this.sling.root.position.set(s.x, s.y - 0.35, s.z);
+    this.sling.root.rotation.y = angle;
   }
 
   /** Draws `arena` from now on, with its own `effects` (the replay passes a fresh one). */
@@ -275,12 +323,13 @@ export class World {
       this.target.visible = false;
       return;
     }
-    const d = aimDir(aim.yaw);
+    // In the slingshot's own space, where yaw 0 is straight ahead (-z).
+    const d = aimDir(aim.yaw, 0);
     const pull = 0.25 + aim.power * 1.7;
     pouch.set(-d.x * pull, 0.35 - aim.power * 0.45, -d.z * pull);
     const f = FOODS[food];
     const v = launchVelocity(aim.yaw, rangeFor(aim.power), f.angle, f.gravity);
-    const path = predictPath(SLING, v, f.gravity, 0.035);
+    const path = predictPath(slingAt(), v, f.gravity, 0.035);
     const shown = Math.floor(path.length * guide);
     const every = Math.max(1, Math.ceil(path.length / this.guide.length));
     let n = 0;
@@ -328,18 +377,30 @@ export class World {
 
   // --- Camera poses --------------------------------------------------------------------------------
 
+  /** How much bigger than the first world this one is (cameras step back to match). */
+  private get scale(): number {
+    // Only part of the way: bigger worlds are seen a little smaller, but bugs stay easy to see.
+    return 1 + (this.level.radius / 7.5 - 1) * 0.55;
+  }
+
+  /** Turns a point around the middle of the world to where the slingshot stands. */
+  private aroundSling(v: THREE.Vector3): THREE.Vector3 {
+    return v.applyAxisAngle(new THREE.Vector3(0, 1, 0), field.angle);
+  }
+
   /** The normal view from behind the slingshot; turns a little with the aim. */
   homeCamera(yaw: number, follow?: Vec3, rate = 4) {
     const portrait = this.portrait;
+    const k = this.scale;
     // Orbit the middle of the world a little towards the aim.
     const a = yaw * 0.3;
-    const back = portrait ? 25 : 18.5;
-    const height = portrait ? 14 : 8.5;
-    const pos = new THREE.Vector3(Math.sin(a) * back, height, Math.cos(a) * back);
-    const look = new THREE.Vector3(Math.sin(a) * 1.5, portrait ? -1 : -1.6, portrait ? -0.5 : 0.6);
+    const back = (portrait ? 25 : 18.5) * k;
+    const height = (portrait ? 14 : 8.5) * k;
+    const pos = this.aroundSling(new THREE.Vector3(Math.sin(a) * back, height, Math.cos(a) * back));
+    const look = this.aroundSling(new THREE.Vector3(Math.sin(a) * 1.5, (portrait ? -1 : -1.6) * k, (portrait ? -0.5 : 0.6) * k));
     if (follow) look.lerp(v3(follow), 0.15);
     this.cam.want(pos, look, rate, portrait ? 62 : 48);
-    this.post.setFocus(1, [0.02, portrait ? 0.68 : 0.66]);
+    this.post.setFocus(0.8, [0.02, portrait ? 0.74 : 0.76]);
   }
 
   /** A close-up of a spot, from the side of the flight. */
@@ -350,33 +411,30 @@ export class World {
       .add(new THREE.Vector3(from.x * -distance * 0.6, distance * 0.42 + 0.6, from.z * -distance * 0.6));
     pos.y = Math.max(pos.y, 1.2);
     this.cam.want(pos, v3(at).add(new THREE.Vector3(0, 0.5, 0)), rate, 45);
-    this.post.setFocus(1.8, [0.3, 0.6]);
+    this.post.setFocus(1.6, [0.2, 0.78]);
   }
 
   /** Looking at a spot from an angle around it (the replay's cuts). */
   orbitCamera(at: Vec3, angle: number, distance: number, height: number, rate = 3) {
     const pos = new THREE.Vector3(at.x + Math.sin(angle) * distance, at.y + height, at.z + Math.cos(angle) * distance);
     this.cam.want(pos, v3(at).add(new THREE.Vector3(0, 0.4, 0)), rate, 48);
-    this.post.setFocus(1.8, [0.3, 0.62]);
+    this.post.setFocus(1.6, [0.2, 0.78]);
   }
 
-  /** High above, with the sink in view (the mop). */
+  /** High above the whole world (the mop and the results). */
   overviewCamera(rate = 2) {
     const portrait = this.portrait;
-    this.cam.want(
-      new THREE.Vector3(portrait ? 7 : 4, portrait ? 34 : 23, portrait ? 24 : 21),
-      new THREE.Vector3(portrait ? 6 : 4.5, -1, 0),
-      rate,
-      portrait ? 62 : 48,
-    );
+    const k = this.scale;
+    this.cam.want(new THREE.Vector3(0, (portrait ? 34 : 22) * k, (portrait ? 20 : 17) * k), new THREE.Vector3(0, -1, 0), rate, portrait ? 62 : 48);
     this.post.setFocus(0.5, [0.15, 0.75]);
   }
 
   /** A slow turn around the whole world (menus). */
   menuCamera(t: number) {
     const a = Math.sin(t * 0.12) * 0.5;
-    const r = this.portrait ? 30 : 22;
-    this.cam.want(new THREE.Vector3(Math.sin(a) * r, this.portrait ? 16 : 11, Math.cos(a) * r), new THREE.Vector3(0, 0, 0), 2, this.portrait ? 58 : 46);
+    const k = this.scale;
+    const r = (this.portrait ? 30 : 22) * k;
+    this.cam.want(new THREE.Vector3(Math.sin(a) * r, (this.portrait ? 16 : 11) * k, Math.cos(a) * r), new THREE.Vector3(0, 0, 0), 2, this.portrait ? 58 : 46);
     this.post.setFocus(1.2, [0.2, 0.62]);
   }
 
@@ -421,35 +479,35 @@ export class World {
 
   // --- The mop --------------------------------------------------------------------------------------
 
-  /** Places the mop's edge at `x` (null hides it) and pushes everything in front of it. */
+  /** Where the mop takes everything: off the side of the screen. */
+  get mopEnd(): number {
+    return this.level.radius + 14 * this.scale;
+  }
+
+  /** Places the mop's edge at `x` (null hides it) and pushes everything in front of it off the screen. */
   mopTo(x: number | null, dt: number): number {
     this.mopModel.visible = x !== null;
     if (x === null) return 0;
-    this.mopModel.position.set(x - 0.7, COUNTER_Y + 0.2, 0);
+    this.mopModel.position.set(x - 0.7, -0.6, 0);
     this.mopModel.rotation.z = Math.sin(this.time * 9) * 0.03;
-    let drained = this.effects.sweep(x, dt);
+    const gone = this.level.radius + 8 * this.scale;
+    let swept = this.effects.sweep(x, dt, gone);
     for (const v of this.bugViews.values()) {
       const b = v.bug;
-      if (v.sink > 0 || b.x > x + b.def.radius) continue;
+      if (v.swept > 0 || b.x > x + b.def.radius) continue;
       if (b.state !== 'dazed') {
         // Still walking? Now it's flat on its back too.
         b.state = 'dazed';
         b.t = 0;
       }
       b.x = x + b.def.radius;
-      b.z += (SINK.z - b.z) * Math.min(1, dt * 0.6);
       b.y = groundAt(b.x, b.z);
-      if (b.x > SINK.x - SINK.radius * 0.7) {
-        v.sink = 0.001;
-        drained++;
+      if (b.x > gone) {
+        v.swept = 0.001;
+        swept++;
       }
     }
-    return drained;
-  }
-
-  /** Bubbles in the sink. */
-  private updateSink(dt: number) {
-    this.water.rotation.z += dt * 2;
+    return swept;
   }
 
   // --- Frame ----------------------------------------------------------------------------------------
@@ -464,7 +522,6 @@ export class World {
     this.syncBodies(gameDt);
     this.effects.update(gameDt);
     this.updateSling(dt);
-    this.updateSink(dt);
     this.cam.update(dt);
     setWindTime(this.time);
     if (this.quality === 'high') this.post.render();
@@ -489,8 +546,8 @@ export class World {
       seen.add(b.id);
       let v = this.bugViews.get(b.id);
       if (!v) {
-        const model = bugModel(b.kind);
-        v = { bug: b, model, shadow: blob(), scale: b.def.radius * 1.4, squash: 0, sink: 0 };
+        const model = bugModel(b.kind, b.boss);
+        v = { bug: b, model, shadow: blob(), scale: b.def.radius * 1.55, squash: 0, swept: 0, blink: 1 + Math.random() * 3 };
         model.root.scale.setScalar(0.01);
         this.bugLayer.add(model.root, v.shadow);
         this.bugViews.set(b.id, v);
@@ -514,13 +571,12 @@ export class World {
     const { bug: b, model: m } = v;
     const t = b.age;
     const root = m.root;
-    if (v.sink > 0) {
-      v.sink += dt;
-      const a = v.sink * 5;
-      const r = Math.max(0, 1.8 - v.sink * 1.2);
-      root.position.set(SINK.x + Math.cos(a) * r, COUNTER_Y - v.sink * 1.2, SINK.z + Math.sin(a) * r);
-      root.rotation.y += dt * 9;
-      if (v.sink > 1.5) b.state = 'gone';
+    if (v.swept > 0) {
+      // Off the side of the screen: shrink away.
+      v.swept += dt;
+      root.scale.multiplyScalar(1 - Math.min(0.5, dt * 4));
+      v.shadow.visible = false;
+      if (v.swept > 0.6) b.state = 'gone';
       return;
     }
     root.position.set(b.x, b.y, b.z);
@@ -536,28 +592,14 @@ export class World {
     const grow = Math.min(1, root.scale.x / v.scale + dt * 4);
     let sx = v.scale * grow;
     let sy = sx;
-    const body = m.body;
-    body.rotation.set(0, 0, 0);
-    body.position.set(0, 0, 0);
     m.stars.visible = false;
     const walking = b.state === 'walk' || b.state === 'enter' || b.state === 'leaving';
-    if (walking) {
-      const step = b.speed * 7;
-      body.position.y = Math.abs(Math.sin(t * step * 0.5)) * 0.08;
-      sy *= 1 + Math.sin(t * step) * 0.04;
-      for (const leg of m.legs) leg.rotation.x = Math.sin(t * step + (leg.userData.phase as number)) * 0.6;
-    } else if (b.state === 'hidden') {
-      sy *= 0.75;
-    } else if (b.state === 'knocked') {
-      body.position.y = 0.5;
-      body.rotation.set(b.tumble, 0, b.tumble * 0.4);
-      for (const leg of m.legs) leg.rotation.x = Math.sin(this.time * 40) * 0.8;
-      v.squash = 1;
-    } else if (b.state === 'dazed') {
-      // On its back, legs wiggling, stars going round.
-      body.rotation.z = Math.PI;
-      body.position.y = 0.95;
-      for (const leg of m.legs) leg.rotation.x = Math.sin(this.time * 18 + (leg.userData.phase as number)) * 0.7;
+    const dizzy = b.state === 'knocked' || b.state === 'dazed';
+    // Blink now and then.
+    v.blink -= dt;
+    if (v.blink < -0.12) v.blink = 1.5 + Math.random() * 3;
+    const eyeOpen = v.blink < 0 ? 0.1 : 1;
+    if (b.state === 'dazed') {
       m.stars.visible = b.t < 8;
       m.stars.rotation.y = this.time * 4;
       if (v.squash > 0) {
@@ -566,21 +608,58 @@ export class World {
         sy *= 1 - k;
         sx *= 1 + k * 0.6;
       }
+    } else if (b.state === 'knocked') v.squash = 1;
+    else if (b.state === 'hidden') sy *= 0.75;
+    if (walking) sy *= 1 + Math.sin(t * b.speed * 7) * 0.04;
+    // A king: squashes when hit, and hides in a bubble while it can't be hurt.
+    if (b.boss) {
+      if (b.hurt > 0) {
+        const k = Math.sin((b.hurt / 0.6) * Math.PI) * 0.25;
+        sy *= 1 - k;
+        sx *= 1 + k;
+      }
+      if (m.bubble) {
+        m.bubble.visible = b.shelled > 0;
+        m.bubble.rotation.y = this.time;
+        m.bubble.scale.setScalar(1.25 + Math.sin(this.time * 6) * 0.04);
+      }
     }
-    // Eyes: look about while walking, go round and round when dizzy.
-    const dizzy = b.state === 'knocked' || b.state === 'dazed';
-    m.pupils.forEach((p, i) => {
-      const a = dizzy ? this.time * 12 + i * Math.PI : Math.sin(t * 0.7 + i) * 0.4;
-      const r = dizzy ? 0.22 : 0.12;
-      p.position.x = Math.cos(a) * r;
-      p.position.y = 0.05 + Math.sin(a) * r * (dizzy ? 1 : 0.3);
-    });
-    // Wings: big slow flaps for butterflies, a buzz for flies.
-    for (const w of m.wings) {
-      const side = w.userData.side as number;
-      const fast = b.kind === 'fly';
-      const flap = dizzy ? 0.2 : fast ? Math.sin(this.time * 60) * 0.5 : Math.sin(this.time * 9) * 0.9;
-      w.rotation.z = side * (0.3 + flap);
+    for (const p of m.parts) {
+      const body = p.body;
+      body.rotation.set(0, 0, 0);
+      body.position.set(0, 0, 0);
+      if (walking) {
+        const step = b.speed * 7;
+        body.position.y = Math.abs(Math.sin(t * step * 0.5)) * 0.08;
+        body.rotation.z = Math.sin(t * step * 0.5) * 0.06;
+        for (const leg of p.legs) leg.rotation.x = Math.sin(t * step + (leg.userData.phase as number)) * 0.6;
+      } else if (b.state === 'knocked') {
+        body.position.y = 0.5;
+        body.rotation.set(b.tumble, 0, b.tumble * 0.4);
+        for (const leg of p.legs) leg.rotation.x = Math.sin(this.time * 40) * 0.8;
+      } else if (b.state === 'dazed') {
+        // On its back, legs wiggling.
+        body.rotation.z = Math.PI;
+        body.position.y = 1.1;
+        for (const leg of p.legs) leg.rotation.x = Math.sin(this.time * 18 + (leg.userData.phase as number)) * 0.7;
+      }
+      for (const e of p.eyes) {
+        e.visible = !dizzy;
+        e.scale.y = eyeOpen;
+      }
+      for (const sw of p.dizzy) {
+        sw.visible = dizzy;
+        sw.rotation.z = -this.time * 8;
+      }
+      p.oh.visible = b.state === 'knocked' || (b.boss !== undefined && b.hurt > 0);
+      p.smile.visible = !p.oh.visible;
+      // Wings: big slow flaps for butterflies, a buzz for flies.
+      for (const w of p.wings) {
+        const side = w.userData.side as number;
+        const fast = b.kind === 'fly' || b.boss?.look === 'fly';
+        const flap = dizzy ? 0.2 : fast ? Math.sin(this.time * 60) * 0.5 : Math.sin(this.time * 9) * 0.9;
+        w.rotation.z = side * (0.3 + flap);
+      }
     }
     if (b.def.rare && walking && Math.random() < dt * 8) this.effects.sparkle(b, 1, '#ffd23f', 0.4);
     if (b.state === 'leaving' || b.state === 'gone') sx = sy = Math.min(sx, root.scale.x);
