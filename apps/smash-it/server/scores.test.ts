@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanName, parseReport, Scores, type ScoreStore } from './scores.ts';
-import { fileStore } from './scoresStore.ts';
+import { fileStore, storeFromEnv } from './scoresStore.ts';
 
 const ID = 'abcd1234-ef';
 
@@ -105,5 +105,10 @@ describe('saving', () => {
     fail = false;
     await s.flush();
     expect(saved).toHaveLength(1);
+  });
+
+  it('trims pasted settings, and falls back to the file for a broken database address', () => {
+    expect(() => storeFromEnv({ TURSO_DATABASE_URL: 'libsql://example.turso.io\n', TURSO_AUTH_TOKEN: 'abc\n' }, '/tmp/x.json')).not.toThrow();
+    expect(() => storeFromEnv({ TURSO_DATABASE_URL: 'not a url at all' }, '/tmp/x.json')).not.toThrow();
   });
 });
