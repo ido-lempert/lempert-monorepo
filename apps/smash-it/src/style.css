@@ -1185,3 +1185,304 @@ a:focus-visible {
   letter-spacing: -2px;
   font-size: 0.95rem;
 }
+
+/* --- Hierarchy under the HUD: the combo first, then one message at a time ---------------------------- */
+
+.hud-time b {
+  font-size: 1.5rem;
+}
+
+.top-stack {
+  position: fixed;
+  top: calc(var(--hud-bottom, 70px) + 8px);
+  inset-inline: 12px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.top-stack > * {
+  pointer-events: auto;
+}
+
+.top-stack .combo {
+  position: static;
+  transform: none;
+}
+
+.top-stack .combo.bump {
+  animation: bump-in-place 0.25s ease;
+}
+
+@keyframes bump-in-place {
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.top-stack .coach,
+.top-stack .coach.notice {
+  position: static;
+  translate: none;
+  margin: 0;
+  width: auto;
+  max-width: min(460px, 100%);
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 8px 16px 8px 10px;
+}
+
+.top-stack .coach-icon {
+  width: 36px;
+  height: 36px;
+  font-size: 1.3rem;
+}
+
+/* --- Star meter ---------------------------------------------------------------------------------------- */
+
+.meter {
+  position: relative;
+  display: inline-block;
+  width: 70px;
+  height: 10px;
+  margin-inline-start: 6px;
+  border-radius: 5px;
+  background: var(--line);
+}
+
+.meter i {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--fill, 0%);
+  border-radius: 5px;
+  background: linear-gradient(90deg, #ffd23f, #ff9a1f);
+  transition: width 0.25s ease;
+}
+
+.meter b {
+  position: absolute;
+  top: 50%;
+  translate: 50% -50%;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #b8a88f;
+  -webkit-text-stroke: 1px var(--ink);
+}
+
+.meter .m2 {
+  inset-inline-start: var(--m2, 66%);
+}
+
+.meter .m3 {
+  inset-inline-start: 100%;
+}
+
+.meter b.on {
+  color: #ffc21a;
+}
+
+.meter.pop {
+  animation: bump-in-place 0.4s ease;
+}
+
+/* --- Intro and results ----------------------------------------------------------------------------------- */
+
+.intro-stars {
+  margin: 10px 0 0;
+  font-weight: 800;
+}
+
+.assist-note {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: #e8f3ff;
+  font-weight: 700;
+}
+
+.result-goals {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  text-align: start;
+}
+
+.result-goals li {
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--paper-2);
+  font-weight: 800;
+}
+
+.result-goals li.done {
+  background: #d9f7e3;
+}
+
+.result-goals li.miss {
+  background: #ffe0e8;
+}
+
+.star-note {
+  margin: 4px 0;
+  font-weight: 800;
+  color: var(--grape);
+}
+
+/* --- Home extras ---------------------------------------------------------------------------------------- */
+
+.daily-btn small {
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.mop-skip {
+  position: fixed;
+  top: max(14px, var(--safe-top));
+  inset-inline-end: 14px;
+  z-index: 15;
+}
+
+/* --- The prize reveal -------------------------------------------------------------------------------------- */
+
+.reveal {
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 42%, #5a3fb0 0%, #2a1d3d 70%);
+  animation: fade-in 0.3s ease;
+}
+
+.rays {
+  position: absolute;
+  inset: -50%;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 230, 140, 0.22) 0deg 10deg, transparent 10deg 24deg);
+  animation: spin 14s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.reveal-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(420px, calc(100% - 32px));
+  text-align: center;
+  color: #fff;
+}
+
+.reveal-kicker {
+  margin: 0;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: var(--sun);
+  color: #3b2300;
+  font-weight: 900;
+  font-size: 1.1rem;
+  animation: banner-in 0.5s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+#reveal-canvas {
+  width: min(260px, 62vmin);
+  height: min(260px, 62vmin);
+}
+
+.reveal h2 {
+  margin: 0;
+  font-size: clamp(32px, 9vmin, 52px);
+  font-weight: 900;
+  color: var(--sun);
+  -webkit-text-stroke: 2px var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 var(--ink);
+}
+
+.reveal .lead {
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+}
+
+.reveal .bars {
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+}
+
+.reveal .link-btn {
+  color: #fff;
+}
+
+.confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.confetti i {
+  position: absolute;
+  top: -20px;
+  width: 10px;
+  height: 16px;
+  border-radius: 3px;
+  animation: confetti-fall linear forwards;
+}
+
+@keyframes confetti-fall {
+  to {
+    transform: translateY(110vh) rotate(720deg);
+  }
+}
+
+/* --- Album ------------------------------------------------------------------------------------------- */
+
+.album-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  max-height: calc(100dvh - 140px);
+  overflow-y: auto;
+}
+
+.album-item {
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--paper-2);
+  text-align: center;
+}
+
+.album-item .emoji {
+  font-size: 2.4rem;
+}
+
+.album-item h3 {
+  margin: 4px 0;
+  font-size: 1.05rem;
+}
+
+.album-item p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.album-item.unknown {
+  opacity: 0.6;
+}
+
+.album-kings {
+  grid-column: 1 / -1;
+  text-align: start;
+  font-weight: 800;
+}

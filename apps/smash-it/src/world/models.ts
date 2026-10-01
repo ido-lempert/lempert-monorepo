@@ -6,9 +6,10 @@
 import * as THREE from 'three';
 import type { Obstacle } from '../game/bugs';
 import type { FoodId } from '../game/foods';
-import { COUNTER_Y } from '../game/physics';
+import { COUNTER_Y, edgeFactor, type WorldShape } from '../game/physics';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { Theme } from '../game/levels';
+import type { SkinId } from '../game/progress';
 import { groundTexture, THEMES, type ThemeLook } from './themes';
 import { mat, melonTexture, outline, tileTexture, windowTexture, woodTexture } from './look';
 
@@ -268,10 +269,22 @@ export interface SlingshotModel {
   bands: THREE.Mesh[];
 }
 
-export function slingshot(): SlingshotModel {
+/** Slingshot colours (frame, grip tape, band), unlocked with stars. */
+export const SKIN_COLORS: Record<SkinId, { frame: string; tape: string; band: string; metal?: number }> = {
+  classic: { frame: '#b5652b', tape: '#ff5b5b', band: '#ff9a3c' },
+  mint: { frame: '#5fd3a8', tape: '#ffffff', band: '#2f9d77' },
+  candy: { frame: '#ff8fc8', tape: '#ffffff', band: '#ff4d8d' },
+  sunny: { frame: '#ffd23f', tape: '#ff9a1f', band: '#ff5b5b' },
+  ocean: { frame: '#4dabff', tape: '#ffffff', band: '#2f6fe0' },
+  rainbow: { frame: '#b98cff', tape: '#ffe14d', band: '#4dd0ff' },
+  galaxy: { frame: '#3a2f7a', tape: '#ffd23f', band: '#b98cff', metal: 0.6 },
+};
+
+export function slingshot(skin: SkinId = 'classic'): SlingshotModel {
+  const c = SKIN_COLORS[skin];
   const root = new THREE.Group();
-  const wood = mat('#b5652b', { rough: 0.45, clearcoat: 0.5 });
-  const tape = mat('#ff5b5b', { rough: 0.6, sheen: 1 });
+  const wood = mat(c.frame, { rough: 0.35, clearcoat: 0.7, metal: c.metal });
+  const tape = mat(c.tape, { rough: 0.6, sheen: 1 });
   root.add(rod(wood, new THREE.Vector3(0, -2.4, 0), new THREE.Vector3(0, -0.5, 0), 0.2));
   root.add(mesh(geo.cyl, tape, 0, -1.3, 0, 0.23, 0.5, 0.23));
   const prongs: THREE.Vector3[] = [];
@@ -285,7 +298,7 @@ export function slingshot(): SlingshotModel {
   const pouch = ball(mat('#6b3b22', { rough: 0.7, sheen: 0.8 }), 0.3);
   pouch.scale.set(0.42, 0.22, 0.32);
   root.add(pouch);
-  const bandMat = mat('#ff9a3c', { rough: 0.5, rim: 0.2 });
+  const bandMat = mat(c.band, { rough: 0.5, rim: 0.2 });
   const bands = [0, 1].map(() => {
     const b = mesh(geo.cyl, bandMat);
     root.add(b);
@@ -306,45 +319,65 @@ export function stretchBand(band: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3
 
 // --- The little world and the kitchen ---------------------------------------------------------------
 
-/** The round world for a theme and size: ground, a rounded rim, layers of soil, and what grows around the edge. */
-export function disc(theme: Theme, radius: number): THREE.Group {
+/** The world's outline (x, z points), `inset` in from its edge. */
+function outlinePoints(radius: number, shape: WorldShape, inset = 0, n = 160): THREE.Vector2[] {
+  const pts: THREE.Vector2[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const r = radius * edgeFactor(a, shape) - inset;
+    pts.push(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r));
+  }
+  return pts;
+}
+
+/** A slab with the world's outline, from `top` down by `depth`; its top face uses `capMat`, the side `sideMat`. */
+function slab(radius: number, shape: WorldShape, inset: number, top: number, depth: number, capMat: THREE.Material, sideMat: THREE.Material, bevel = 0): THREE.Mesh {
+  // Shape coordinates are (x, -z) so that after turning it flat the outline lands on (x, z).
+  const sh = new THREE.Shape(outlinePoints(radius, shape, inset).map((p) => new THREE.Vector2(p.x, -p.y)));
+  const geo = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: bevel > 0, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3, curveSegments: 4 });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, top - depth, 0);
+  const m = new THREE.Mesh(geo, [capMat, sideMat]);
+  m.receiveShadow = true;
+  return m;
+}
+
+/** The world for a chapter: its ground (lawn, sand, a picnic cloth, icing…), a rounded rim, layers underneath, and what grows around the edge. */
+export function disc(theme: Theme, radius: number, shape: WorldShape): THREE.Group {
   const look = THEMES[theme];
   const g = new THREE.Group();
   const depth = -COUNTER_Y;
   const groundTex = groundTexture(theme).clone();
   groundTex.needsUpdate = true;
-  groundTex.repeat.set(radius / 2.5, radius / 2.5);
-  const ground = mat('#ffffff', { map: groundTex, rough: theme === 'snow' ? 0.5 : 0.95, rim: 0, sheen: theme === 'snow' ? 0.6 : undefined });
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.3, 128), [mat(look.lip, { rough: 0.9, rim: 0 }), ground, ground]);
-  top.position.y = -0.15;
-  top.receiveShadow = true;
-  g.add(top);
-  const lip = new THREE.Mesh(new THREE.TorusGeometry(radius - 0.05, 0.13, 12, 160), mat(look.lip, { rough: 0.95, rim: 0 }));
-  lip.rotation.x = Math.PI / 2;
-  lip.position.y = -0.06;
+  // Extruded caps are mapped in world units.
+  groundTex.repeat.set(1 / 5, 1 / 5);
+  const ground = mat('#ffffff', { map: groundTex, rough: look.gloss ? 0.35 : theme === 'snow' ? 0.5 : 0.95, rim: 0, clearcoat: look.gloss ? 0.8 : undefined, sheen: theme === 'snow' || theme === 'picnic' ? 0.7 : undefined });
+  const [s1, s2, s3] = look.soil;
+  g.add(slab(radius, shape, 0, 0, 0.3, ground, mat(look.lip, { rough: 0.85, rim: 0 })));
+  // A soft rounded rim along the edge.
+  const rimPts = outlinePoints(radius, shape, 0.05, 200).map((p) => new THREE.Vector3(p.x, -0.06, p.y));
+  const lip = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rimPts, true), 400, 0.13, 10, true), mat(look.lip, { rough: look.gloss ? 0.3 : 0.9, rim: 0, clearcoat: look.gloss ? 0.8 : undefined }));
   lip.receiveShadow = true;
   g.add(lip);
-  const [s1, s2, s3] = look.soil;
+  // Layers underneath, like a slice of the ground (or of a cake).
   let y = -0.3;
-  for (const l of [{ h: 0.3, c: s1, r: 0 }, { h: 0.12, c: s2, r: 0.08 }, { h: depth - 0.72, c: s3, r: 0.12 }]) {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(radius - 0.02 - l.r, radius - 0.04 - l.r - l.h * 0.15, l.h, 128), mat(l.c, { rough: 0.95, rim: 0.1 }));
-    m.position.y = y - l.h / 2;
-    m.receiveShadow = true;
-    g.add(m);
+  for (const l of [{ h: 0.3, c: s1, r: 0.02 }, { h: 0.12, c: s2, r: 0.08 }, { h: depth - 0.72, c: s3, r: 0.12 }]) {
+    const m = mat(l.c, { rough: 0.9, rim: 0.1, sheen: theme === 'cake' ? 0.6 : undefined });
+    g.add(slab(radius, shape, l.r, y, l.h, m, m));
     y -= l.h;
   }
-  const n = Math.round(radius * 5.5);
+  const outline = outlinePoints(radius, shape, 0, Math.round(radius * 5.5));
   const sp = new THREE.SphereGeometry(1, 14, 10);
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + (i % 3) * 0.04;
-    const r = radius - 0.45 - (i % 2) * 0.25;
+  outline.forEach((p, i) => {
+    const r = Math.hypot(p.x, p.y);
+    const k = (r - 0.45 - (i % 2) * 0.25) / r;
     const item = rimDecor(look, i, sp);
-    item.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    item.position.set(p.x * k, 0, p.y * k);
     item.rotation.y = i * 1.7;
     g.add(item);
-  }
+  });
   g.traverse((c) => {
-    if (c instanceof THREE.Mesh && c !== top) c.castShadow = true;
+    if (c instanceof THREE.Mesh) c.castShadow = true;
   });
   return g;
 }
@@ -433,6 +466,51 @@ function rimDecor(look: ThemeLook, i: number, sp: THREE.SphereGeometry): THREE.G
       if (i % 2) at(mat('#fff3a0', { emissive: 4, rim: 0 }), 0.1, 0.6 + (i % 3) * 0.2, 0.05, 0.035);
       break;
     }
+    case 'cherries': {
+      const red = mat(c, { rough: 0.1, clearcoat: 1 });
+      at(red, 0, 0.14, 0, 0.14);
+      if (i % 2) at(mat('#ffffff', { rough: 0.7, sheen: 1 }), 0.25, 0.08, 0.05, 0.13, 0.1, 0.13);
+      f.add(rod(mat('#3f7a2a'), new THREE.Vector3(0, 0.26, 0), new THREE.Vector3(0.08, 0.45, 0), 0.015));
+      break;
+    }
+    case 'veggies': {
+      if (i % 3 === 0) at(mat('#ff4d4d', { rough: 0.15, clearcoat: 1 }), 0, 0.13, 0, 0.14, 0.12, 0.14);
+      else if (i % 3 === 1) {
+        const slice = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 20), mat('#b8e88a', { rough: 0.4, clearcoat: 0.6 }));
+        slice.position.y = 0.03;
+        f.add(slice);
+      } else {
+        const leaf = at(mat('#3f9a3a', { rough: 0.5, double: true }), 0, 0.03, 0, 0.18, 0.02, 0.08);
+        leaf.rotation.y = i;
+      }
+      break;
+    }
+    case 'reeds': {
+      const green = mat('#4f8a3a', { rough: 0.6 });
+      for (let k = 0; k < 3; k++) f.add(rod(green, new THREE.Vector3(k * 0.06, 0, 0), new THREE.Vector3(k * 0.1 - 0.05, 0.5 + k * 0.12, 0.02), 0.015));
+      if (i % 3 === 1) {
+        // A little water lily.
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2;
+          const pt = at(mat(c, { rough: 0.4, sheen: 0.8 }), 0.25 + Math.cos(a) * 0.08, 0.06, Math.sin(a) * 0.08, 0.07, 0.03, 0.04);
+          pt.rotation.y = -a;
+        }
+        at(mat('#ffd23f', { emissive: 0.3 }), 0.25, 0.08, 0, 0.04);
+      }
+      break;
+    }
+    case 'crumbs': {
+      if (i % 2) {
+        // A tiny sandwich triangle.
+        const bread = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 3), mat('#f3d39a', { rough: 0.8 }));
+        bread.position.y = 0.05;
+        f.add(bread);
+        const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.03, 3), mat(c, { rough: 0.5 }));
+        fill.position.y = 0.11;
+        f.add(fill);
+      } else at(mat('#e8b46e', { rough: 0.9 }), 0, 0.04, 0, 0.06);
+      break;
+    }
     case 'stones': {
       const stone = mat('#9a90a8', { rough: 0.8 });
       const b = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), stone);
@@ -471,7 +549,10 @@ export function obstacleModel(o: Obstacle): THREE.Group {
     g.add(under);
   } else if (o.kind === 'cup') {
     const cupM = mat('#4fb7ff', { rough: 0.12, clearcoat: 1 });
-    g.add(mesh(new THREE.CylinderGeometry(o.radius, o.radius * 0.85, o.height, 40, 1, true), cupM, 0, o.height / 2, 0));
+    const r = o.radius;
+    const h = o.height;
+    // Thick walls and a solid base.
+    g.add(lathe([[0, 0], [r * 0.85, 0], [r * 0.88, 0.08], [r, h], [r - 0.13, h], [r * 0.85 - 0.12, 0.4], [0, 0.4]], cupM));
     const inside = new THREE.Mesh(new THREE.CircleGeometry(o.radius * 0.95, 32), mat('#7a3f1d', { rim: 0, clearcoat: 1, rough: 0.05 }));
     inside.rotation.x = -Math.PI / 2;
     inside.position.y = o.height * 0.82;
@@ -553,9 +634,10 @@ export function kitchen(): THREE.Group {
   for (let i = 0; i < 26; i++) {
     const a = i * 2.4;
     const r = (i % 3) * 0.8;
-    jar.add(ball(mat(candy[i % candy.length], { rough: 0.2, clearcoat: 1 }), 0.75, Math.cos(a) * r, 0.8 + Math.floor(i / 5) * 1.05, Math.sin(a) * r));
+    jar.add(ball(mat(candy[i % candy.length], { rough: 0.2, clearcoat: 1 }), 0.75, Math.cos(a) * r, 1.75 + Math.floor(i / 5) * 1.05, Math.sin(a) * r));
   }
-  jar.add(mesh(new THREE.CylinderGeometry(3, 3, 8, 40, 1, true), mat('#eaf8ff', { rough: 0.05, transmission: 1, thickness: 0.3, rim: 0, double: true }), 0, 4, 0));
+  // Glass with a thick base, so it reads as a solid jar.
+  jar.add(lathe([[0, 0], [2.8, 0], [3, 0.25], [3, 8], [2.82, 8], [2.82, 1.1], [2.6, 0.95], [0, 0.95]], mat('#eaf8ff', { rough: 0.05, transmission: 1, thickness: 0.6, rim: 0 })));
   jar.add(mesh(geo.cyl, mat('#ff6f6f', { rough: 0.3, clearcoat: 1 }), 0, 8.4, 0, 3.2, 0.9, 3.2));
   g.add(jar);
   const teapot = new THREE.Group();
@@ -573,14 +655,33 @@ export function kitchen(): THREE.Group {
   g.add(teapot);
   const fruitBowl = new THREE.Group();
   fruitBowl.position.set(1, COUNTER_Y, -19);
-  const dish = new THREE.Mesh(new THREE.SphereGeometry(4.5, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mat('#9b7bff', { double: true, rough: 0.15, clearcoat: 1 }));
-  dish.position.y = 3;
-  fruitBowl.add(dish);
+  // A thick bowl on a foot.
+  const bowlPts: [number, number][] = [[0, 0], [1.9, 0], [2, 0.4]];
+  for (let k = 0; k <= 10; k++) {
+    const a = 0.45 + (k / 10) * (Math.PI / 2 - 0.45);
+    bowlPts.push([4.5 * Math.sin(a), 0.4 + 3.2 * (1 - Math.cos(a)) * 0.9]);
+  }
+  const rimY = bowlPts[bowlPts.length - 1][1];
+  bowlPts.push([4.15, rimY]);
+  for (let k = 10; k >= 0; k--) {
+    const a = 0.3 + (k / 10) * (Math.PI / 2 - 0.3);
+    bowlPts.push([4.1 * Math.sin(a), 1.05 + (rimY - 1.05) * (1 - Math.cos(a)) / (1 - Math.cos(Math.PI / 2))]);
+  }
+  bowlPts.push([0, 1.05]);
+  fruitBowl.add(lathe(bowlPts, mat('#9b7bff', { rough: 0.15, clearcoat: 1 })));
   const fruit = ['#ff4d4d', '#ffcf3f', '#7ed957', '#ff9a3c', '#ff4d4d'];
-  fruit.forEach((c, i) => fruitBowl.add(ball(mat(c, { rough: 0.3, clearcoat: 0.8 }), 1.5, (i - 2) * 1.6, 3.4 + (i % 2) * 1.2, (i % 3) - 1)));
+  fruit.forEach((c, i) => fruitBowl.add(ball(mat(c, { rough: 0.3, clearcoat: 0.8 }), 1.5, (i - 2) * 1.5, 2.5 + (i % 2) * 1.1, (i % 3) - 1)));
   g.add(fruitBowl);
   for (const o of [jar, teapot, fruitBowl]) o.traverse((c) => (c.castShadow = true));
   return g;
+}
+
+/** A turned shape (a jar, a bowl, a cup) from (radius, height) points, outside going up then inside coming down. */
+function lathe(pts: [number, number][], m: THREE.Material): THREE.Mesh {
+  const o = new THREE.Mesh(new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), 48), m);
+  o.castShadow = true;
+  o.receiveShadow = true;
+  return o;
 }
 
 // --- The mop ----------------------------------------------------------------------------------------
@@ -599,9 +700,9 @@ export function mop(radius: number): THREE.Group {
     const s = mesh(geo.sphere, strands[i % 2], (i % 2) * 0.25 - 0.1, 0.65, z, 0.42, 0.95, 0.38);
     head.add(s);
   }
-  const stick = rod(mat('#c98a4b', { rough: 0.4, clearcoat: 0.6 }), new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(-7, 16, 4), 0.32);
+  // A very long handle reaching up towards the camera and out of the picture, so its end is never seen.
+  const stick = rod(mat('#c98a4b', { rough: 0.4, clearcoat: 0.6 }), new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(-0.25, 0.75, 0.62).multiplyScalar(90).add(new THREE.Vector3(0, 2.2, 0)), 0.32);
   g.add(stick);
-  g.add(ball(mat('#ff5b5b'), 0.5, -7, 16, 4));
   g.traverse((c) => (c.castShadow = true));
   return g;
 }

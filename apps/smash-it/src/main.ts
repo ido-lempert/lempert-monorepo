@@ -1,23 +1,31 @@
 /**
- * The game shell: menus, the flow of a chapter (intro → play → replay → results → mop → next chapter),
- * saving, settings and the PWA bits. Rules live in src/game, the 3D in src/world; this wires them to the UI.
+ * The game shell: menus, the flow of a chapter (intro → play → replay → results → prizes → mop → next
+ * chapter), the daily challenge, the shop and the album, saving, settings and the PWA bits. Rules live in
+ * src/game, the 3D in src/world; this wires them to the UI.
  */
 import './style.css';
 import { registerSW } from 'virtual:pwa-register';
 import { Sound } from './audio';
+import { Coach } from './coach';
 import { MopScene, Replay } from './finale';
 import { Arena } from './game/arena';
 import { FOODS, type FoodId } from './game/foods';
-import { type Level, levelById, LEVELS } from './game/levels';
-import { affordableFood, buyFood, buyUpgrade, chaptersOpen, finishLevel, firstTime, KEY, loadProgress, newProgress, saveProgress, shopOpen, type UpgradeId } from './game/progress';
-import { Coach } from './coach';
-import { bestShots } from './game/replay';
+import { dailyLevel, type Level, levelById, LEVELS } from './game/levels';
 import { aimAt, type Vec3 } from './game/physics';
-import { applyDocument, t } from './i18n';
+import {
+  buyTier, buyUpgrade, canAffordUpgrade, chaptersOpen, chooseSkin, dailyOpen, finishDaily, finishLevel, firstTime, KEY, loadProgress,
+  newProgress, saveProgress, shopOpen, SKINS, type UpgradeId,
+} from './game/progress';
+import { bestShots } from './game/replay';
+import { applyDocument, type StringKey, t } from './i18n';
 import { Notice } from './notice';
 import { Play } from './play';
 import { canFullscreen, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
-import { clock, foodName, goalText, kingName, num, worldName, renderChapters, renderHudGoals, renderIntro, renderResult, renderShop, renderTray, type ResultInfo, updateTray } from './ui';
+import { type Prize, RevealStage } from './reveal';
+import {
+  clock, foodBars, foodName, goalText, kingName, num, renderAlbum, renderChapters, renderHudGoals, renderIntro, renderResult, renderShop,
+  renderTray, type ResultInfo, type ShopTab, updateStarMeter, updateTray, worldName,
+} from './ui';
 import { World } from './world/world';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -32,7 +40,7 @@ const save = () => saveProgress(progress);
 // --- Settings ------------------------------------------------------------------------------------------
 
 const PREFS_KEY = 'smashIt.prefs';
-const prefs = { calm: matchMedia('(prefers-reduced-motion: reduce)').matches, battery: false };
+const prefs = { calm: matchMedia('(prefers-reduced-motion: reduce)').matches, battery: false, haptics: true };
 try {
   Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}'));
 } catch {
@@ -49,18 +57,23 @@ const savePrefs = () => {
 const world = new World($('stage'));
 world.cam.calm = prefs.calm;
 world.setBatterySaver(prefs.battery);
+world.setSkin(progress.skin);
 
 // --- Small UI helpers ----------------------------------------------------------------------------------
 
 const toast = new Notice($('toast'));
 const coach = new Coach($('coach'), $('live'));
-function say(text: string) {
+
+/** A message: during play it goes through the one message channel (ahead of tips), otherwise a toast. */
+function say(text: string, icon = '✨') {
+  if (mode === 'play') return coach.say(icon, text, true);
   $('toast').textContent = text;
   toast.show(2600);
   $('live').textContent = text;
 }
 
 let bannerTimer = 0;
+/** A big message in the middle of the screen: the most important thing right now, so tips step aside. */
 function banner(text: string, cls = '', ms = 1400) {
   const b = $('banner');
   b.textContent = text;
@@ -71,6 +84,7 @@ function banner(text: string, cls = '', ms = 1400) {
   b.style.animation = '';
   clearTimeout(bannerTimer);
   bannerTimer = window.setTimeout(() => b.classList.add('hidden'), ms);
+  if (mode === 'play') coach.hold(ms);
 }
 
 function popup(html: string, at: Vec3, cls = '') {
@@ -85,16 +99,26 @@ function popup(html: string, at: Vec3, cls = '') {
   setTimeout(() => d.remove(), 1150);
 }
 
-const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'combo', 'replay-bar', 'result', 'mop-hint', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate'];
+function buzz(ms: number) {
+  if (prefs.haptics && !prefs.calm) navigator.vibrate?.(ms);
+}
+
+const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'reveal', 'album'];
 function show(...ids: string[]) {
   for (const id of screens) $(id).classList.toggle('hidden', !ids.includes(id));
   closeMenu();
   if (!ids.includes('hud')) coach.clear();
 }
 
+// The messages under the HUD start just below it, however tall it is (it wraps on phones).
+new ResizeObserver(() => {
+  const r = $('hud').getBoundingClientRect();
+  if (r.height) document.documentElement.style.setProperty('--hud-bottom', `${r.bottom}px`);
+}).observe($('hud'));
+
 // --- Flow ----------------------------------------------------------------------------------------------
 
-type Mode = 'menu' | 'play' | 'replay' | 'result' | 'mop' | 'title';
+type Mode = 'menu' | 'play' | 'replay' | 'result' | 'prize' | 'mop' | 'title';
 let mode: Mode = 'menu';
 let level: Level = levelById(progress.unlocked);
 let play: Play | null = null;
@@ -102,25 +126,30 @@ let replay: Replay | null = null;
 let mop: MopScene | null = null;
 let result: ResultInfo | null = null;
 let titleUntil = 0;
+/** Today's date while playing the daily challenge. */
+let daily: string | null = null;
+/** After the mop: replay this chapter for more stars. */
+let again = false;
+let prizes: Prize[] = [];
+let starsReached = 1;
 
-/** Bugs wandering about behind the menus. */
+const today = () => new Date().toISOString().slice(0, 10);
+
 /** The player's current world, with its bugs wandering about (no king, no clock). */
 function demoLevel(): Level {
   const l = levelById(progress.unlocked);
   return { ...l, time: 1e9, boss: undefined, groups: undefined, rareEvery: undefined, max: 7, obstacles: l.obstacles.filter((o) => o.kind !== 'fence') };
 }
-function demoArena(): Arena {
-  return new Arena(demoLevel());
-}
-let demo = demoArena();
+let demo = new Arena(demoLevel());
 
 function toMenu() {
   mode = 'menu';
   play = null;
+  daily = null;
   replay?.stop();
   replay = null;
   mop = null;
-  demo = demoArena();
+  demo = new Arena(demoLevel());
   world.setLevel(demoLevel());
   world.mess.clear();
   world.bind(demo);
@@ -138,6 +167,9 @@ function renderHome() {
   $('home-play').textContent = first ? t('play') : t('playChapter', { n: progress.unlocked });
   $('home-chapters').classList.toggle('hidden', !chaptersOpen(progress));
   $('home-shop').classList.toggle('hidden', !shopOpen(progress));
+  $('home-album').classList.toggle('hidden', !Object.keys(progress.album).length);
+  $('home-daily').classList.toggle('hidden', !dailyOpen(progress));
+  $('home-daily-best').textContent = progress.daily.date === today() && progress.daily.best ? `· ${t('dailyBest', { n: num(progress.daily.best) })}` : '';
 }
 
 /** A tip shown only once ever (remembered in the save). */
@@ -150,6 +182,7 @@ function tip(id: string, icon: string, text: string): boolean {
 
 function openIntro(id: number) {
   level = levelById(id);
+  daily = null;
   renderIntro(progress, level);
   if (mode !== 'menu') toMenu();
   world.setLevel(level);
@@ -157,21 +190,21 @@ function openIntro(id: number) {
   $('intro-go').focus();
 }
 
-function startLevel(withMission = false) {
+function startLevel(withMission = false, assist = false) {
   mode = 'play';
   const shot = () => {
     $('aim-hint').classList.add('hidden');
     if (firstTime(progress, 'aim')) save();
   };
-  play = new Play(world, sound, progress, level, { popup, banner, toast: say, shot, tip }, () => prefs.calm);
-  sound.setTheme('play');
-  show('hud', 'tray', 'rotate', ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
+  play = new Play(world, sound, progress, level, { popup, banner, toast: (text) => say(text), shot, tip, buzz }, () => prefs.calm, assist);
+  starsReached = 1;
+  show('hud', 'tray', 'top-stack', 'rotate', ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
   renderTray(progress, play.food, pickFood);
-  banner(t('chapter', { n: level.id }), '', 1100);
+  banner(daily ? t('daily') : t('chapter', { n: level.id }), '', 1100);
   // Tips for this moment, in order: the mission (when there was no intro card), the food tray, the best food here.
   if (withMission) coach.say('🎯', t('coachMission', { goal: level.goals.map((g) => goalText(g, level)).join(' · ') }));
   // A new world gets its name up in lights; a king gets introduced.
-  if (level.index === 1) banner(`${t('world', { n: level.world })} · ${worldName(level.world)}`, 'mint', 1600);
+  if (level.index === 1 && !daily) banner(`${t('world', { n: level.world })} · ${worldName(level.world)}`, 'mint', 1600);
   if (level.boss) coach.say('👑', t('coachKing', { name: kingName(level), n: level.boss.hp }));
   sound.setTheme(level.boss ? 'boss' : 'play');
   $('rotate').classList.toggle('hidden', !level.rotate);
@@ -186,6 +219,13 @@ function startLevel(withMission = false) {
   if (level.id > 1 && progress.owned.includes(best.id) && best.id !== play.food) tip(`tip:${level.id}`, best.emoji, t('coachTip', { food: foodName(best.id) }));
 }
 
+function startDaily() {
+  daily = today();
+  level = dailyLevel(daily, progress.unlocked);
+  world.setLevel(level);
+  startLevel();
+}
+
 function pickFood(id: FoodId) {
   play?.selectFood(id);
   save();
@@ -198,20 +238,34 @@ function endLevel() {
   const before = progress.best[level.id] ?? 0;
   const coins = s.coins();
   const stars = s.stars();
-  const opened = finishLevel(progress, { levelId: level.id, success: s.success, score: s.score, stars, coins });
+  let unlocked: number | null = null;
+  let dailyInfo: ResultInfo['daily'];
+  prizes = [];
+  if (daily) {
+    const isNew = finishDaily(progress, daily, s.score, coins);
+    for (const [k, n] of Object.entries(s.byKind)) progress.album[k as keyof typeof progress.album] = (progress.album[k as keyof typeof progress.album] ?? 0) + (n ?? 0);
+    dailyInfo = { best: progress.daily.best, isNew };
+  } else {
+    const won = finishLevel(progress, { levelId: level.id, success: s.success, score: s.score, stars, coins, hits: s.byKind });
+    unlocked = won.opened ? progress.unlocked : null;
+    prizes = [...won.foods.map((id) => ({ kind: 'food' as const, id })), ...won.skins.map((id) => ({ kind: 'skin' as const, id }))];
+  }
+  const canBuy = canAffordUpgrade(progress);
+  // The shop opens for good the first time there is something to buy.
+  if (canBuy) firstTime(progress, 'shop');
   save();
   result = {
     success: s.success,
+    level,
     session: s,
     coins,
     stars,
-    newBest: s.score > before && before > 0,
-    unlocked: opened ? progress.unlocked : null,
+    newBest: !daily && s.score > before && before > 0,
+    unlocked,
     lastChapter: level.id === LEVELS.length,
-    canBuy: affordableFood(progress),
+    canBuy,
+    daily: dailyInfo,
   };
-  // The shop opens for good the first time there is something to buy.
-  if (result.canBuy && firstTime(progress, 'shop')) save();
   const shots = bestShots(arena, 3);
   sound.setTheme('quiet');
   if (!shots.length) return showResult();
@@ -235,17 +289,91 @@ function showResult() {
   $('result-next').focus();
 }
 
+/** After the results: any prizes first, then the mop. */
+function nextAfterResult() {
+  const prize = prizes.shift();
+  if (prize) return showPrize(prize);
+  startMop();
+}
+
+// --- Prizes --------------------------------------------------------------------------------------------
+
+const stage = new RevealStage($('reveal-canvas') as HTMLCanvasElement);
+let shownPrize: Prize | null = null;
+
+function showPrize(prize: Prize) {
+  mode = 'prize';
+  shownPrize = prize;
+  show('reveal');
+  if (prize.kind === 'food') {
+    const f = FOODS[prize.id];
+    $('reveal-kicker').textContent = `🎁 ${t('prizeTitle')}`;
+    $('reveal-title').textContent = `${f.emoji} ${foodName(prize.id)}`;
+    $('reveal-text').textContent = t(`foodInfo_${prize.id}` as StringKey);
+    $('reveal-bars').replaceChildren(...foodBars(prize.id));
+    $('reveal-bars').classList.remove('hidden');
+    $('reveal-ok').textContent = t('prizeTake');
+    $('reveal-later').classList.add('hidden');
+  } else {
+    const s = SKINS.find((k) => k.id === prize.id)!;
+    $('reveal-kicker').textContent = `${s.emoji} ${t('prizeSkin')}`;
+    $('reveal-title').textContent = t(`skin_${prize.id}` as StringKey);
+    $('reveal-text').textContent = t('prizeSkinText', { n: s.stars });
+    $('reveal-bars').classList.add('hidden');
+    $('reveal-ok').textContent = t('prizeWear');
+    $('reveal-later').classList.remove('hidden');
+  }
+  stage.show(prize);
+  confetti();
+  sound.play('whoosh');
+  setTimeout(() => sound.play('fanfare'), 250);
+  buzz(50);
+  $('reveal-ok').focus();
+}
+
+function confetti() {
+  const box = $('confetti');
+  const colors = ['#ffd23f', '#ff5b85', '#4dd0ff', '#7dff8a', '#b98cff', '#ffffff'];
+  box.replaceChildren(
+    ...Array.from({ length: 46 }, (_, i) => {
+      const c = document.createElement('i');
+      c.style.left = `${Math.random() * 100}%`;
+      c.style.background = colors[i % colors.length];
+      c.style.animationDuration = `${2.2 + Math.random() * 2}s`;
+      c.style.animationDelay = `${Math.random() * 0.8}s`;
+      return c;
+    }),
+  );
+}
+
+function closePrize(use: boolean) {
+  stage.hide();
+  const p = shownPrize;
+  shownPrize = null;
+  if (p && use) {
+    if (p.kind === 'food') progress.food = p.id;
+    else if (chooseSkin(progress, p.id)) world.setSkin(p.id);
+    save();
+    world.loadPouch(progress.food);
+  }
+  nextAfterResult();
+}
+
+// --- After the results ----------------------------------------------------------------------------------
+
 function startMop() {
   mode = 'mop';
   mop = new MopScene(world, sound);
-  show('mop-hint');
+  show('mop-hint', ...(progress.seen.includes('mop') ? ['mop-skip'] : []));
 }
 
 function afterMop() {
   mop = null;
+  if (firstTime(progress, 'mop')) save();
   const r = result!;
-  if (r.success && r.lastChapter) return toMenu();
-  level = levelById(r.success ? level.id + 1 : level.id);
+  if (daily || (r.success && r.lastChapter && !again)) return toMenu();
+  level = levelById(again || !r.success ? level.id : level.id + 1);
+  again = false;
   mode = 'title';
   titleUntil = performance.now() + 1700;
   world.setLevel(level);
@@ -253,6 +381,21 @@ function afterMop() {
   show('banner');
   banner(t('chapter', { n: level.id }), '', 1700);
   sound.play('combo', 4);
+}
+
+async function shareResult() {
+  const r = result!;
+  const text = t('shareText', { score: num(r.session.score), n: daily ? t('daily') : r.level.id, stars: '⭐'.repeat(r.stars) });
+  const url = location.origin + location.pathname;
+  try {
+    if (navigator.share) await navigator.share({ text, url });
+    else {
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      say(t('shareCopied'));
+    }
+  } catch {
+    /* cancelled */
+  }
 }
 
 // --- Buttons -------------------------------------------------------------------------------------------
@@ -272,12 +415,28 @@ $('home-chapters').addEventListener('click', () => {
   $('chapters').classList.remove('hidden');
 });
 $('home-shop').addEventListener('click', () => openShop());
+$('home-album').addEventListener('click', () => {
+  renderAlbum(progress);
+  $('album').classList.remove('hidden');
+});
+$('home-daily').addEventListener('click', () => startDaily());
 $('intro-go').addEventListener('click', () => startLevel());
+$('intro-assist').addEventListener('click', () => startLevel(false, true));
 $('intro-shop').addEventListener('click', () => openShop());
 $('intro-back').addEventListener('click', () => toMenu());
-$('result-next').addEventListener('click', () => startMop());
+$('result-next').addEventListener('click', () => nextAfterResult());
+$('result-again').addEventListener('click', () => {
+  again = true;
+  nextAfterResult();
+});
 $('result-shop').addEventListener('click', () => openShop());
+$('result-share').addEventListener('click', () => void shareResult());
 $('replay-skip').addEventListener('click', () => showResult());
+$('reveal-ok').addEventListener('click', () => closePrize(true));
+$('reveal-later').addEventListener('click', () => closePrize(false));
+$('mop-skip').addEventListener('click', () => {
+  if (mop?.finish()) afterMop();
+});
 
 document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) =>
   b.addEventListener('click', () => {
@@ -286,18 +445,17 @@ document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) =>
   }),
 );
 
-let shopTab: 'foods' | 'upgrades' = 'foods';
+let shopTab: ShopTab = 'foods';
 function openShop() {
   drawShop();
   $('shop').classList.remove('hidden');
 }
 function drawShop() {
   renderShop(progress, shopTab, {
-    buyFood: (id) => {
-      if (!buyFood(progress, id)) return;
+    buyTier: (id) => {
+      if (!buyTier(progress, id)) return;
       save();
       sound.play('buy');
-      say(t('bought', { name: foodName(id) }));
       drawShop();
     },
     chooseFood: (id) => {
@@ -312,25 +470,29 @@ function drawShop() {
       sound.play('buy');
       drawShop();
     },
+    chooseSkin: (id) => {
+      if (!chooseSkin(progress, id)) return;
+      save();
+      world.setSkin(id);
+      sound.play('click');
+      drawShop();
+    },
   });
 }
 function afterShop() {
   renderHome();
   if (result && !$('result').classList.contains('hidden')) {
-    result.canBuy = affordableFood(progress);
-    $('result-shop').classList.toggle('glow', !!result.canBuy);
+    result.canBuy = canAffordUpgrade(progress);
+    $('result-shop').classList.toggle('glow', result.canBuy);
   }
   if (!$('intro').classList.contains('hidden')) renderIntro(progress, level);
   world.loadPouch(progress.food);
 }
-$('tab-foods').addEventListener('click', () => {
-  shopTab = 'foods';
-  drawShop();
-});
-$('tab-upgrades').addEventListener('click', () => {
-  shopTab = 'upgrades';
-  drawShop();
-});
+for (const tab of ['foods', 'upgrades', 'skins'] as ShopTab[])
+  $(`tab-${tab}`).addEventListener('click', () => {
+    shopTab = tab;
+    drawShop();
+  });
 
 // Pause
 function pause(on: boolean) {
@@ -364,6 +526,8 @@ $('menu-btn').addEventListener('click', () => {
 function refreshMenu() {
   $('m-music').setAttribute('aria-pressed', String(sound.prefs.music));
   $('m-sfx').setAttribute('aria-pressed', String(sound.prefs.sfx));
+  $('m-haptics').setAttribute('aria-pressed', String(prefs.haptics));
+  $('m-haptics').classList.toggle('hidden', !('vibrate' in navigator));
   $('m-motion').setAttribute('aria-pressed', String(prefs.calm));
   $('m-battery').setAttribute('aria-pressed', String(prefs.battery));
   $('m-fullscreen').classList.toggle('hidden', !canFullscreen());
@@ -377,6 +541,12 @@ $('m-music').addEventListener('click', () => {
 });
 $('m-sfx').addEventListener('click', () => {
   sound.setSfx(!sound.prefs.sfx);
+  refreshMenu();
+});
+$('m-haptics').addEventListener('click', () => {
+  prefs.haptics = !prefs.haptics;
+  savePrefs();
+  buzz(20);
   refreshMenu();
 });
 $('m-motion').addEventListener('click', () => {
@@ -404,6 +574,7 @@ $('m-reset').addEventListener('click', () => {
   } catch {
     /* ignore */
   }
+  world.setSkin(progress.skin);
   toMenu();
 });
 document.querySelectorAll<HTMLElement>('[data-page]').forEach((b) =>
@@ -447,7 +618,7 @@ canvas.addEventListener('pointercancel', up);
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!$('menu').classList.contains('hidden')) return closeMenu();
-    for (const id of ['page', 'shop', 'chapters']) {
+    for (const id of ['page', 'shop', 'chapters', 'album']) {
       if (!$(id).classList.contains('hidden')) {
         $(id).classList.add('hidden');
         if (id === 'shop') afterShop();
@@ -496,6 +667,16 @@ function updateHud() {
     if (!play.over) sound.setTheme(sec <= 20 ? 'hurry' : level.boss ? 'boss' : 'play');
   }
   $('score-text').textContent = num(s.score);
+  // The star meter: a little cheer each time the score passes a star.
+  const reached = updateStarMeter(level, s.score);
+  if (reached > starsReached) {
+    starsReached = reached;
+    sound.play('coin');
+    const m = $('star-meter');
+    m.classList.remove('pop');
+    void m.offsetWidth;
+    m.classList.add('pop');
+  }
   const king = play.arena.king;
   renderHudGoals(level, s, king?.boss ? { hp: king.hp, max: king.boss.hp } : undefined);
   const combo = $('combo');
@@ -538,6 +719,7 @@ function tick(now: number) {
       if (replay!.update(dt)) showResult();
       break;
     case 'result':
+    case 'prize':
       world.frame(dt, dt);
       break;
     case 'mop':
@@ -593,6 +775,8 @@ if (import.meta.env.DEV) {
       openIntro(id);
       startLevel();
     },
+    daily: () => startDaily(),
+    prize: (p: Prize) => showPrize(p),
     /** Throws the chosen food at a spot on the disc (leading nothing). */
     shootAt(x: number, z: number) {
       (play as unknown as { fire(a: { yaw: number; power: number }): void }).fire(aimAt(x, z));
@@ -604,3 +788,4 @@ if (import.meta.env.DEV) {
     },
   };
 }
+

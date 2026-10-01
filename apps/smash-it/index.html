@@ -96,7 +96,9 @@
         <div class="row">
           <button class="secondary" id="home-chapters"><span aria-hidden="true">🗺️</span> <span data-i18n="chapters"></span></button>
           <button class="secondary" id="home-shop"><span aria-hidden="true">🛒</span> <span data-i18n="shop"></span></button>
+          <button class="secondary" id="home-album"><span aria-hidden="true">📖</span> <span data-i18n="album"></span></button>
         </div>
+        <button class="secondary daily-btn" id="home-daily"><span aria-hidden="true">📅</span> <span data-i18n="daily"></span> <small id="home-daily-best"></small></button>
       </div>
     </section>
 
@@ -122,6 +124,7 @@
         <div class="tabs" role="tablist">
           <button role="tab" id="tab-foods" aria-selected="true" data-i18n="shopFoods"></button>
           <button role="tab" id="tab-upgrades" aria-selected="false" data-i18n="shopUpgrades"></button>
+          <button role="tab" id="tab-skins" aria-selected="false" data-i18n="shopSkins"></button>
         </div>
         <div class="shop-list" id="shop-list" role="tabpanel"></div>
       </div>
@@ -133,9 +136,13 @@
         <p class="kicker" id="intro-kicker"></p>
         <h2 id="intro-title"></h2>
         <ul class="goals" id="intro-goals"></ul>
+        <p class="intro-stars" id="intro-stars"></p>
+        <p class="tip" id="intro-prize"></p>
         <p class="muted" id="intro-best"></p>
+        <p class="assist-note hidden" id="intro-assist-note" data-i18n="assistNote"></p>
         <div class="actions">
           <button class="primary big" id="intro-go" data-i18n="go"></button>
+          <button class="secondary hidden" id="intro-assist"><span aria-hidden="true">🎯</span> <span data-i18n="assist"></span></button>
           <button class="secondary" id="intro-shop"><span aria-hidden="true">🛒</span> <span data-i18n="shop"></span></button>
           <button class="link-btn" id="intro-back" data-i18n="back"></button>
         </div>
@@ -146,12 +153,18 @@
     <header class="hud hidden" id="hud">
       <div class="hud-time" id="hud-time" role="timer"><span class="hud-label" data-i18n="time"></span> <b id="time-text" dir="ltr">03:00</b></div>
       <div class="hud-goals" id="hud-goals"></div>
-      <div class="hud-score"><b id="score-text">0</b> <span class="hud-label" data-i18n="score"></span></div>
+      <div class="hud-score">
+        <b id="score-text">0</b> <span class="hud-label" data-i18n="score"></span>
+        <span class="meter" id="star-meter" role="img" data-i18n-attr="aria-label:starsMeter"><i id="star-fill"></i><b class="m2">★</b><b class="m3">★</b></span>
+      </div>
       <button class="icon" id="pause-btn" data-i18n-attr="aria-label:pause;title:pause">⏸</button>
     </header>
-    <div class="combo hidden" id="combo" aria-hidden="true"><b id="combo-text"></b><i id="combo-bar"></i></div>
+    <!-- Under the HUD, in order of importance and never on top of each other: the combo, then messages. -->
+    <div class="top-stack" id="top-stack">
+      <div class="combo hidden" id="combo" aria-hidden="true"><b id="combo-text"></b><i id="combo-bar"></i></div>
+      <div class="coach hidden" id="coach" role="status"></div>
+    </div>
     <div class="banner hidden" id="banner" aria-hidden="true"></div>
-    <div class="coach hidden" id="coach" role="status"></div>
     <div class="aim-hint hidden" id="aim-hint"><span class="hand" aria-hidden="true">👆</span> <span data-i18n="aimHint"></span></div>
     <nav class="tray hidden" id="tray" data-i18n-attr="aria-label:tray"></nav>
     <div class="rotate hidden" id="rotate">
@@ -170,11 +183,15 @@
       <div class="card result-card">
         <h2 class="result-title" id="result-title"></h2>
         <div class="stars" id="result-stars" aria-hidden="true"></div>
+        <ul class="result-goals" id="result-goals" data-i18n-attr="aria-label:goalsTitle"></ul>
         <dl class="stats" id="result-stats"></dl>
+        <p class="star-note" id="result-star-note"></p>
         <p class="lead" id="result-note"></p>
         <div class="actions">
           <button class="primary big" id="result-next"></button>
+          <button class="secondary hidden" id="result-again" data-i18n="improveStars"></button>
           <button class="secondary" id="result-shop"><span aria-hidden="true">🛒</span> <span data-i18n="shop"></span></button>
+          <button class="secondary" id="result-share"><span aria-hidden="true">📣</span> <span data-i18n="share"></span></button>
         </div>
       </div>
     </section>
@@ -184,6 +201,35 @@
       <b data-i18n="mopTitle"></b>
       <span><span data-i18n="mopHint"></span> <span class="swipe" aria-hidden="true">→</span></span>
     </div>
+    <button class="secondary mop-skip hidden" id="mop-skip" data-i18n="skipMop"></button>
+
+    <!-- A prize: a new food or slingshot colour -->
+    <section class="screen reveal hidden" id="reveal" aria-labelledby="reveal-title" role="dialog" aria-modal="true">
+      <div class="rays" aria-hidden="true"></div>
+      <div class="confetti" id="confetti" aria-hidden="true"></div>
+      <div class="reveal-card">
+        <p class="reveal-kicker" id="reveal-kicker"></p>
+        <canvas id="reveal-canvas" aria-hidden="true"></canvas>
+        <h2 id="reveal-title"></h2>
+        <p class="lead" id="reveal-text"></p>
+        <div class="bars hidden" id="reveal-bars"></div>
+        <div class="actions">
+          <button class="primary big" id="reveal-ok"></button>
+          <button class="link-btn hidden" id="reveal-later" data-i18n="prizeLater"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- The bug album -->
+    <section class="screen overlay hidden" id="album" aria-labelledby="album-title">
+      <div class="card wide">
+        <header class="card-head">
+          <h2 id="album-title" data-i18n="albumTitle"></h2>
+          <button class="icon" data-close data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <div class="album-list" id="album-list"></div>
+      </div>
+    </section>
 
     <!-- Pause -->
     <section class="screen overlay hidden" id="pause" aria-labelledby="pause-title">
@@ -201,6 +247,7 @@
     <nav class="menu hidden" id="menu" data-i18n-attr="aria-label:menu">
       <button id="m-music" aria-pressed="true"><span aria-hidden="true">🎵</span> <span data-i18n="music"></span></button>
       <button id="m-sfx" aria-pressed="true"><span aria-hidden="true">🔊</span> <span data-i18n="sfx"></span></button>
+      <button id="m-haptics" aria-pressed="true"><span aria-hidden="true">📳</span> <span data-i18n="haptics"></span></button>
       <button id="m-motion" aria-pressed="false"><span aria-hidden="true">🌙</span> <span data-i18n="lessMotion"></span></button>
       <button id="m-battery" aria-pressed="false"><span aria-hidden="true">🔋</span> <span data-i18n="batterySaver"></span></button>
       <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>

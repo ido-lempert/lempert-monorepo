@@ -4,7 +4,7 @@
  * walks in a straight line so it reaches the spot where it was hit at the moment it was hit.
  */
 import { Arena, type ShotRecord } from './arena';
-import { FOODS } from './foods';
+import { FOODS, withTier } from './foods';
 import type { Level } from './levels';
 
 /** The best shots of a play, best first (only shots that hit something). */
@@ -17,7 +17,7 @@ export function bestShots(arena: Arena, count = 3): ShotRecord[] {
 
 /** A scripted arena that plays one recorded shot again. */
 export function stage(level: Level, rec: ShotRecord): Arena {
-  const arena = new Arena({ ...level, obstacles: level.obstacles }, { scripted: true, seed: rec.shotId });
+  const arena = new Arena(level, { scripted: true, seed: rec.shotId });
   for (const h of rec.hits) {
     const b = arena.addBug(h.kind, h.x - h.vx * h.after, h.z - h.vz * h.after, Math.atan2(h.vx, h.vz), h.boss);
     if (h.hp) b.hp = h.hp;
@@ -26,7 +26,7 @@ export function stage(level: Level, rec: ShotRecord): Arena {
     b.age = h.age - h.after;
     b.script = { vx: h.vx, vz: h.vz };
   }
-  arena.launch(FOODS[rec.food], { ...rec.origin }, { ...rec.velocity }, rec.shotId);
+  arena.launch(withTier(FOODS[rec.food], rec.tier), { ...rec.origin }, { ...rec.velocity }, rec.shotId);
   return arena;
 }
 

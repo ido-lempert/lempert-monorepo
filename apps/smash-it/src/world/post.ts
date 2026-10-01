@@ -61,6 +61,26 @@ const grade = {
     }`,
 };
 
+/**
+ * GTAO draws every visible object into its depth/normal pass, so see-through things (smoke and dust
+ * puffs, sparkles, splats) would cast square dark shadows. Hide them from that pass.
+ */
+function skipSeeThrough(ao: GTAOPass) {
+  const pass = ao as unknown as { _overrideVisibility(): void; _visibilityCache: THREE.Object3D[]; scene: THREE.Scene };
+  const original = pass._overrideVisibility.bind(pass);
+  pass._overrideVisibility = () => {
+    original();
+    pass.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if (!o.visible) return;
+      if (o instanceof THREE.Sprite || (m && !Array.isArray(m) && m.transparent)) {
+        o.visible = false;
+        pass._visibilityCache.push(o);
+      }
+    });
+  };
+}
+
 export class Post {
   private composer: EffectComposer;
   private ao: GTAOPass | null = null;
@@ -91,6 +111,7 @@ export class Post {
       this.ao.output = GTAOPass.OUTPUT.Default;
       this.ao.blendIntensity = 0.85;
       this.ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1, scale: 1.2 });
+      skipSeeThrough(this.ao);
       c.addPass(this.ao);
       for (const dir of [[1, 0], [0, 1]] as [number, number][]) {
         const p = new ShaderPass(tiltShift(dir));

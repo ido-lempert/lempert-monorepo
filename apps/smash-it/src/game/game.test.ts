@@ -3,13 +3,13 @@ import { Arena, levelBugs } from './arena';
 import { BUGS, type BugKind, isSmall, makeBug, moveBug } from './bugs';
 import { FOOD_ORDER, FOODS } from './foods';
 import { LEVELS, type Level, ROTATE_FROM } from './levels';
-import { aimAt, aimFromPull, field, flightTime, launchVelocity, MAX_YAW, maxRange, MIN_RANGE, predictPath, setField, slingAt, SURFACE_Y } from './physics';
+import { aimAt, aimFromPull, edgeAt, field, onDisc, type WorldShape, flightTime, launchVelocity, MAX_YAW, maxRange, MIN_RANGE, predictPath, setField, slingAt, SURFACE_Y } from './physics';
 import { bestShots, stage, stageLength } from './replay';
 import { makeRng } from './rng';
 import { MEGA, Session } from './session';
 
 const quiet: Level = {
-  id: 99, world: 1, index: 1, radius: 7.5, rotate: false, time: 60, goals: [{ kind: 'hits', n: 3 }], mix: { ladybug: 1 }, max: 0,
+  id: 99, world: 1, index: 1, radius: 7.5, theme: 'garden', shape: 'circle', rotate: false, time: 60, goals: [{ kind: 'hits', n: 3 }], mix: { ladybug: 1 }, max: 0,
   guide: 1, pace: 1, obstacles: [], tip: 'cookie', stars: [100, 200],
 };
 
@@ -260,9 +260,10 @@ describe('levels', () => {
         if (g.kind === 'multi') expect(l.groups?.some((gr) => gr.formation === 'cluster')).toBe(true);
       }
       expect(l.stars[0]).toBeLessThan(l.stars[1]);
-      // Everything stays on the world.
-      for (const o of l.obstacles) expect(Math.hypot(o.x, o.z) + o.radius).toBeLessThan(l.radius);
-      for (const g of l.groups ?? []) if (g.at) expect(Math.hypot(g.at.x, g.at.z)).toBeLessThan(l.radius - 1.5);
+      // Everything stays on the world, whatever its shape.
+      setField(l.radius, 0, l.shape);
+      for (const o of l.obstacles) expect(onDisc(o.x, o.z, o.radius + (o.length ?? 0) / 2)).toBe(true);
+      for (const g of l.groups ?? []) if (g.at) expect(onDisc(g.at.x, g.at.z, 1.5)).toBe(true);
     });
   });
 
@@ -280,6 +281,34 @@ describe('levels', () => {
     expect(LEVELS[0].pace).toBeLessThan(LEVELS.at(-1)!.pace);
     expect(LEVELS[0].radius).toBeLessThan(LEVELS.at(-1)!.radius);
     expect(LEVELS[9].boss!.hp).toBeLessThan(LEVELS[99].boss!.hp);
+  });
+});
+
+describe('world shapes', () => {
+  it('never reach past the radius, and bugs stay inside them', () => {
+    for (const shape of ['circle', 'flower', 'hex', 'square', 'oval', 'blob'] as WorldShape[]) {
+      setField(9, 0, shape);
+      for (let i = 0; i < 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        const e = edgeAt(Math.cos(a), Math.sin(a));
+        expect(e).toBeLessThanOrEqual(9.0001);
+        expect(e).toBeGreaterThan(6.5);
+      }
+      const rng = makeRng(2);
+      const b = makeBug(1, 'ant', 0, 0, 0, rng);
+      for (let i = 0; i < 2000; i++) {
+        moveBug(b, 1 / 60, rng, { obstacles: [], pace: 1.2 });
+        expect(onDisc(b.x, b.z)).toBe(true);
+      }
+    }
+    setField(7.5);
+  });
+
+  it('change every two chapters', () => {
+    const looks = new Set(LEVELS.slice(0, 10).map((l) => `${l.theme}/${l.shape}`));
+    expect(looks.size).toBe(5);
+    expect(LEVELS[0].theme).toBe(LEVELS[1].theme);
+    expect(`${LEVELS[1].theme}/${LEVELS[1].shape}`).not.toBe(`${LEVELS[2].theme}/${LEVELS[2].shape}`);
   });
 });
 
