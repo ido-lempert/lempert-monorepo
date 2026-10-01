@@ -1,6 +1,21 @@
 import { execSync } from 'node:child_process';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { handleScores, Scores } from './server/scores.ts';
+
+/** Serves the leaderboards API inside the Vite dev/preview server (in memory), so one port serves everything. */
+const scoresServer = (): Plugin => {
+  const scores = new Scores();
+  return {
+    name: 'smash-it-scores',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => handleScores(scores, req, res) || next());
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => handleScores(scores, req, res) || next());
+    },
+  };
+};
 
 /** Short commit id shown in the menu, so it's easy to tell which version is running. */
 function appVersion(): string {
@@ -27,6 +42,7 @@ export default defineConfig({
   base: './',
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
+    scoresServer(),
     siteUrlInHtml(),
     VitePWA({
       // main.ts offers an "Update" button instead of reloading mid-level.
@@ -58,6 +74,8 @@ export default defineConfig({
         // Every model and sound is procedural, so precaching the bundle makes the whole game playable offline.
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
         navigateFallback: 'index.html',
+        // The leaderboards are live: never answered from the cache.
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,

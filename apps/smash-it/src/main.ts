@@ -14,8 +14,9 @@ import { dailyLevel, type Level, levelById, LEVELS } from './game/levels';
 import { aimAt, type Vec3 } from './game/physics';
 import {
   buyTier, buyUpgrade, canAffordUpgrade, chaptersOpen, chooseSkin, dailyOpen, finishDaily, finishLevel, firstTime, KEY, loadProgress,
-  newProgress, saveProgress, shopOpen, SKINS, type UpgradeId,
+  newProgress, saveProgress, shopOpen, SKINS, totalStars, type UpgradeId,
 } from './game/progress';
+import { type Boards, fetchBoards, leave, loadPlayer, randomNick, report, savePlayer } from './leaderboard';
 import { bestShots } from './game/replay';
 import { applyDocument, type StringKey, t } from './i18n';
 import { Notice } from './notice';
@@ -35,6 +36,7 @@ $('app-version').textContent = __APP_VERSION__;
 
 const sound = new Sound();
 let progress = loadProgress();
+const player = loadPlayer();
 const save = () => saveProgress(progress);
 
 // --- Settings ------------------------------------------------------------------------------------------
@@ -103,7 +105,7 @@ function buzz(ms: number) {
   if (prefs.haptics && !prefs.calm) navigator.vibrate?.(ms);
 }
 
-const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'reveal', 'album'];
+const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'reveal', 'album', 'board', 'join'];
 function show(...ids: string[]) {
   for (const id of screens) $(id).classList.toggle('hidden', !ids.includes(id));
   closeMenu();
@@ -168,6 +170,7 @@ function renderHome() {
   $('home-chapters').classList.toggle('hidden', !chaptersOpen(progress));
   $('home-shop').classList.toggle('hidden', !shopOpen(progress));
   $('home-album').classList.toggle('hidden', !Object.keys(progress.album).length);
+  $('home-board').classList.toggle('hidden', !chaptersOpen(progress));
   $('home-daily').classList.toggle('hidden', !dailyOpen(progress));
   $('home-daily-best').textContent = progress.daily.date === today() && progress.daily.best ? `· ${t('dailyBest', { n: num(progress.daily.best) })}` : '';
 }
@@ -250,6 +253,9 @@ function endLevel() {
     unlocked = won.opened ? progress.unlocked : null;
     prizes = [...won.foods.map((id) => ({ kind: 'food' as const, id })), ...won.skins.map((id) => ({ kind: 'skin' as const, id }))];
   }
+  // Leaderboards (only for players who joined): stars and chapter, and today's challenge score.
+  if (daily) void report(player, totalStars(progress), progress.unlocked, { date: daily, score: progress.daily.best });
+  else if (s.success) void report(player, totalStars(progress), progress.unlocked);
   const canBuy = canAffordUpgrade(progress);
   // The shop opens for good the first time there is something to buy.
   if (canBuy) firstTime(progress, 'shop');
@@ -287,6 +293,7 @@ function showResult() {
   sound.setTheme('menu');
   sound.play(result!.success ? 'win' : 'lose');
   $('result-next').focus();
+  if (daily) void showDailyRank(daily);
 }
 
 /** After the results: any prizes first, then the mop. */
@@ -359,6 +366,111 @@ function closePrize(use: boolean) {
   nextAfterResult();
 }
 
+// --- Leaderboards ---------------------------------------------------------------------------------------
+
+let boardTab: 'daily' | 'all' = 'daily';
+let boards: Boards | null = null;
+
+/** Opens the leaderboards; the first time, asks whether to join (with a nickname). */
+function openBoard() {
+  if (!player.joined) return openJoin(() => openBoard());
+  $('board').classList.remove('hidden');
+  boards = null;
+  drawBoard();
+  void fetchBoards(player, today()).then((b) => {
+    boards = b;
+    drawBoard(b === null);
+  });
+}
+
+function drawBoard(offline = false) {
+  $('board-tab-daily').setAttribute('aria-selected', String(boardTab === 'daily'));
+  $('board-tab-all').setAttribute('aria-selected', String(boardTab === 'all'));
+  const list = $('board-list');
+  const item = (text: string, cls = '') => Object.assign(document.createElement('li'), { textContent: text, className: cls });
+  if (!boards) {
+    list.replaceChildren(item(offline ? t('boardOffline') : t('loading'), 'empty'));
+    $('board-me').textContent = '';
+    return;
+  }
+  const rows =
+    boardTab === 'daily'
+      ? boards.daily.map((r) => ({ who: r.name, what: t('boardPoints', { n: num(r.score) }), me: r.me }))
+      : boards.all.map((r) => ({ who: r.name, what: t('boardStars', { stars: r.stars, n: r.chapter }), me: r.me }));
+  list.replaceChildren(
+    ...(rows.length
+      ? rows.map((r) => {
+          const li = document.createElement('li');
+          li.className = r.me ? 'me' : '';
+          li.append(Object.assign(document.createElement('span'), { className: 'who', textContent: r.who }), Object.assign(document.createElement('span'), { className: 'what', textContent: r.what }));
+          return li;
+        })
+      : [item(t('boardEmpty'), 'empty')]),
+  );
+  const rank = boardTab === 'daily' ? boards.rank.daily : boards.rank.all;
+  $('board-me').textContent = rank ? `${player.name} · ${t(boardTab === 'daily' ? 'yourRankToday' : 'yourRankAll', { n: rank })}` : player.name;
+}
+
+let afterJoin: (() => void) | null = null;
+function openJoin(then: () => void) {
+  afterJoin = then;
+  ($('join-name') as HTMLInputElement).value = player.name || randomNick();
+  $('join').classList.remove('hidden');
+  ($('join-name') as HTMLInputElement).select();
+}
+
+$('join-dice').addEventListener('click', () => {
+  ($('join-name') as HTMLInputElement).value = randomNick();
+  sound.play('click');
+});
+$('join-later').addEventListener('click', () => $('join').classList.add('hidden'));
+$('join-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = ($('join-name') as HTMLInputElement).value.trim().slice(0, 14);
+  if (!name) return;
+  player.name = name;
+  player.joined = true;
+  savePlayer(player);
+  $('join').classList.add('hidden');
+  sound.play('buy');
+  // Send what's been earned so far, then show the boards.
+  void report(player, totalStars(progress), progress.unlocked, progress.daily.date === today() ? { date: today(), score: progress.daily.best } : undefined).then(() => {
+    const then = afterJoin;
+    afterJoin = null;
+    then?.();
+  });
+});
+$('board-tab-daily').addEventListener('click', () => {
+  boardTab = 'daily';
+  drawBoard();
+});
+$('board-tab-all').addEventListener('click', () => {
+  boardTab = 'all';
+  drawBoard();
+});
+$('board-rename').addEventListener('click', () => {
+  $('board').classList.add('hidden');
+  openJoin(() => openBoard());
+});
+$('board-leave').addEventListener('click', async () => {
+  if (!confirm(t('leaveConfirm'))) return;
+  await leave(player);
+  player.joined = false;
+  savePlayer(player);
+  $('board').classList.add('hidden');
+  say(t('leftBoard'));
+});
+
+/** On the daily challenge's results: today's place, once the server has it. */
+async function showDailyRank(date: string) {
+  if (!player.joined) return;
+  const b = await fetchBoards(player, date);
+  const rank = b?.rank.daily;
+  if (!rank || mode !== 'result' || !result?.daily) return;
+  const note = $('result-note');
+  if (!note.textContent?.includes('🏆')) note.textContent = `${note.textContent} · 🏆 ${t('yourRankToday', { n: rank })}`;
+}
+
 // --- After the results ----------------------------------------------------------------------------------
 
 function startMop() {
@@ -420,6 +532,7 @@ $('home-album').addEventListener('click', () => {
   $('album').classList.remove('hidden');
 });
 $('home-daily').addEventListener('click', () => startDaily());
+$('home-board').addEventListener('click', () => openBoard());
 $('intro-go').addEventListener('click', () => startLevel());
 $('intro-assist').addEventListener('click', () => startLevel(false, true));
 $('intro-shop').addEventListener('click', () => openShop());
@@ -618,7 +731,7 @@ canvas.addEventListener('pointercancel', up);
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!$('menu').classList.contains('hidden')) return closeMenu();
-    for (const id of ['page', 'shop', 'chapters', 'album']) {
+    for (const id of ['page', 'shop', 'chapters', 'album', 'board', 'join']) {
       if (!$(id).classList.contains('hidden')) {
         $(id).classList.add('hidden');
         if (id === 'shop') afterShop();

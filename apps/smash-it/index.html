@@ -96,6 +96,7 @@
         <div class="row">
           <button class="secondary" id="home-chapters"><span aria-hidden="true">🗺️</span> <span data-i18n="chapters"></span></button>
           <button class="secondary" id="home-shop"><span aria-hidden="true">🛒</span> <span data-i18n="shop"></span></button>
+          <button class="secondary" id="home-board"><span aria-hidden="true">🏆</span> <span data-i18n="leaderboard"></span></button>
           <button class="secondary" id="home-album"><span aria-hidden="true">📖</span> <span data-i18n="album"></span></button>
         </div>
         <button class="secondary daily-btn" id="home-daily"><span aria-hidden="true">📅</span> <span data-i18n="daily"></span> <small id="home-daily-best"></small></button>
@@ -218,6 +219,45 @@
           <button class="link-btn hidden" id="reveal-later" data-i18n="prizeLater"></button>
         </div>
       </div>
+    </section>
+
+    <!-- Leaderboards -->
+    <section class="screen overlay hidden" id="board" aria-labelledby="board-title">
+      <div class="card wide">
+        <header class="card-head">
+          <h2 id="board-title" data-i18n="boardTitle"></h2>
+          <button class="icon" data-close data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <div class="tabs" role="tablist">
+          <button role="tab" id="board-tab-daily" aria-selected="true" data-i18n="boardToday"></button>
+          <button role="tab" id="board-tab-all" aria-selected="false" data-i18n="boardAll"></button>
+        </div>
+        <p class="board-me" id="board-me"></p>
+        <ol class="board-list" id="board-list" role="tabpanel"></ol>
+        <div class="actions">
+          <button class="secondary" id="board-rename" data-i18n="changeNick"></button>
+          <button class="link-btn" id="board-leave" data-i18n="leaveBoard"></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen overlay hidden" id="join" aria-labelledby="join-title">
+      <form class="card" id="join-form">
+        <div class="card-art" aria-hidden="true">🏆</div>
+        <h2 id="join-title" data-i18n="joinTitle"></h2>
+        <p class="lead" data-i18n="joinLead"></p>
+        <label class="field">
+          <span class="field-label" data-i18n="nickLabel"></span>
+          <span class="nick-row">
+            <input id="join-name" maxlength="14" autocomplete="off" dir="auto" required />
+            <button type="button" class="icon" id="join-dice" data-i18n-attr="aria-label:randomNick;title:randomNick">🎲</button>
+          </span>
+        </label>
+        <div class="actions">
+          <button type="submit" class="primary big" data-i18n="join"></button>
+          <button type="button" class="link-btn" id="join-later" data-i18n="notNow"></button>
+        </div>
+      </form>
     </section>
 
     <!-- The bug album -->

@@ -1,6 +1,6 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec).
 # Mancala: one web service for the static build + multiplayer WebSocket on the same port.
-# Sukkah World and Smash It: static sites (PWAs with no server).
+# Sukkah World: a static site (a PWA with no server). Smash It: a web service for its leaderboards.
 # All deploy from the Blueprint's branch (main); each only rebuilds when its own files change.
 services:
   - type: web
@@ -52,20 +52,15 @@ services:
       - key: NODE_VERSION
         value: "24"
 
-  # Smash It: a static PWA (a slingshot game, single-player), a free static site like Sukkah World.
+  # Smash It: the game and its leaderboards API on one port (a Node web service, like Mancala).
   - type: web
     name: smash-it
-    runtime: static
+    runtime: node
+    plan: free
+    # Build from the monorepo root so npm workspaces resolve.
     buildCommand: npm ci --include=dev && npm run build -w smash-it
-    staticPublishPath: apps/smash-it/dist
-    headers:
-      # The service worker and the page must never be cached, or installed apps get stuck on an old version.
-      - path: /sw.js
-        name: Cache-Control
-        value: no-cache
-      - path: /index.html
-        name: Cache-Control
-        value: no-cache
+    startCommand: npm run start -w smash-it
+    healthCheckPath: /
     buildFilter:
       paths:
         - apps/smash-it/**
@@ -73,5 +68,12 @@ services:
         - package-lock.json
         - render.yaml
     envVars:
+      # The server runs TypeScript directly via Node's built-in type stripping (Node >= 23.6).
       - key: NODE_VERSION
         value: "24"
+      # Leaderboards database (Turso; can be the same database as Mancala's, the tables are separate).
+      # Secrets: set their values in the Render dashboard.
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
