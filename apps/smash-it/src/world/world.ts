@@ -9,14 +9,25 @@ import type { Arena, Body, GameEvent } from '../game/arena';
 import type { Bug } from '../game/bugs';
 import { FOODS, type FoodId } from '../game/foods';
 import type { Level } from '../game/levels';
-import { type Aim, aimDir, COUNTER_Y, groundAt, launchVelocity, predictPath, rangeFor, SLING, type Vec3 } from '../game/physics';
+import { type Aim, aimDir, COUNTER_Y, DISC_RADIUS, groundAt, launchVelocity, predictPath, rangeFor, SLING, type Vec3 } from '../game/physics';
 import { Effects } from './effects';
-import { backdrop, dotTexture, initialQuality, type Quality } from './look';
+import { backdrop, blobTexture, dotTexture, grassField, initialQuality, type Quality, setWindTime } from './look';
+import { Post } from './post';
 import { bugModel, type BugModel, disc, foodModel, kitchen, mop, obstacleModel, SINK, slingshot, stretchBand } from './models';
+
+/** A soft round shadow right under something, so it's easy to see where it is above the ground. */
+const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const blobMat = new THREE.MeshBasicMaterial({ map: blobTexture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+function blob(): THREE.Mesh {
+  const m = new THREE.Mesh(blobGeo, blobMat);
+  m.renderOrder = 1;
+  return m;
+}
 
 interface BugView {
   bug: Bug;
   model: BugModel;
+  shadow: THREE.Mesh;
   scale: number;
   /** Squash after landing. */
   squash: number;
@@ -28,6 +39,7 @@ interface BodyView {
   body: Body;
   root: THREE.Group;
   spinner: THREE.Group;
+  shadow: THREE.Mesh;
   wobble: number;
 }
 
@@ -108,12 +120,16 @@ export class World {
   private quality: Quality = initialQuality();
   private time = 0;
   private slowFrames = 0;
+  private readonly post: Post;
+  private grass: THREE.InstancedMesh | null = null;
 
   constructor(stage: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // Soft, blurred shadows.
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 0.78;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     stage.appendChild(this.renderer.domElement);
     this.cam = new CameraRig(this.camera);
@@ -121,19 +137,28 @@ export class World {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.add(backdrop());
-    this.scene.add(new THREE.HemisphereLight('#fff6e0', '#ffcf9a', 1.4));
-    this.sun = new THREE.DirectionalLight('#fff3dd', 2.2);
-    this.sun.position.set(-8, 20, 10);
+    this.scene.add(new THREE.HemisphereLight('#fff3df', '#c98a5a', 0.7));
+    // A warm sun from the window side, a cool light from behind for bright edges, and a soft fill.
+    this.sun = new THREE.DirectionalLight('#ffe9c9', 2.6);
+    this.sun.position.set(-9, 18, 6);
     this.sun.castShadow = true;
     const sc = this.sun.shadow.camera;
     sc.left = sc.bottom = -16;
     sc.right = sc.top = 16;
     sc.near = 1;
     sc.far = 60;
-    this.sun.shadow.bias = -0.0005;
-    this.sun.shadow.normalBias = 0.03;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.02;
+    this.sun.shadow.radius = 8;
+    this.sun.shadow.blurSamples = 16;
     this.sun.target.position.set(2, 0, 0);
     this.scene.add(this.sun, this.sun.target);
+    const back = new THREE.DirectionalLight('#dff1ff', 1.5);
+    back.position.set(4, 10, -18);
+    const fill = new THREE.DirectionalLight('#ffe6f0', 0.6);
+    fill.position.set(10, 6, 16);
+    this.scene.add(back, fill);
+    this.post = new Post(this.renderer, this.scene, this.camera);
 
     const k = kitchen();
     this.water = k.getObjectByName('sinkWater')!;
@@ -159,6 +184,7 @@ export class World {
 
     this.applyQuality();
     this.resize();
+    this.homeCamera(0);
     addEventListener('resize', () => this.resize());
     this.homeCamera(0);
     this.cam.jump();
@@ -179,6 +205,7 @@ export class World {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.post?.resize();
   }
 
   setBatterySaver(on: boolean) {
@@ -192,6 +219,12 @@ export class World {
     this.sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
+    this.post.setQuality(high);
+    this.post.resize();
+    // Fewer grass blades on slower devices.
+    if (this.grass) this.scene.remove(this.grass);
+    this.grass = grassField(DISC_RADIUS, high ? 8000 : 3000);
+    this.scene.add(this.grass);
   }
 
   // --- Level and arena ----------------------------------------------------------------------------
@@ -306,6 +339,7 @@ export class World {
     const look = new THREE.Vector3(Math.sin(a) * 1.5, portrait ? -1 : -1.6, portrait ? -0.5 : 0.6);
     if (follow) look.lerp(v3(follow), 0.15);
     this.cam.want(pos, look, rate, portrait ? 62 : 48);
+    this.post.setFocus(1, [0.02, portrait ? 0.68 : 0.66]);
   }
 
   /** A close-up of a spot, from the side of the flight. */
@@ -316,12 +350,14 @@ export class World {
       .add(new THREE.Vector3(from.x * -distance * 0.6, distance * 0.42 + 0.6, from.z * -distance * 0.6));
     pos.y = Math.max(pos.y, 1.2);
     this.cam.want(pos, v3(at).add(new THREE.Vector3(0, 0.5, 0)), rate, 45);
+    this.post.setFocus(1.8, [0.3, 0.6]);
   }
 
   /** Looking at a spot from an angle around it (the replay's cuts). */
   orbitCamera(at: Vec3, angle: number, distance: number, height: number, rate = 3) {
     const pos = new THREE.Vector3(at.x + Math.sin(angle) * distance, at.y + height, at.z + Math.cos(angle) * distance);
     this.cam.want(pos, v3(at).add(new THREE.Vector3(0, 0.4, 0)), rate, 48);
+    this.post.setFocus(1.8, [0.3, 0.62]);
   }
 
   /** High above, with the sink in view (the mop). */
@@ -333,6 +369,7 @@ export class World {
       rate,
       portrait ? 62 : 48,
     );
+    this.post.setFocus(0.5, [0.15, 0.75]);
   }
 
   /** A slow turn around the whole world (menus). */
@@ -340,6 +377,7 @@ export class World {
     const a = Math.sin(t * 0.12) * 0.5;
     const r = this.portrait ? 30 : 22;
     this.cam.want(new THREE.Vector3(Math.sin(a) * r, this.portrait ? 16 : 11, Math.cos(a) * r), new THREE.Vector3(0, 0, 0), 2, this.portrait ? 58 : 46);
+    this.post.setFocus(1.2, [0.2, 0.62]);
   }
 
   /** Where a 3D point is on the screen, in CSS pixels. */
@@ -428,7 +466,9 @@ export class World {
     this.updateSling(dt);
     this.updateSink(dt);
     this.cam.update(dt);
-    this.renderer.render(this.scene, this.camera);
+    setWindTime(this.time);
+    if (this.quality === 'high') this.post.render();
+    else this.renderer.render(this.scene, this.camera);
     this.watchSpeed(dt);
   }
 
@@ -450,9 +490,9 @@ export class World {
       let v = this.bugViews.get(b.id);
       if (!v) {
         const model = bugModel(b.kind);
-        v = { bug: b, model, scale: b.def.radius * 1.4, squash: 0, sink: 0 };
+        v = { bug: b, model, shadow: blob(), scale: b.def.radius * 1.4, squash: 0, sink: 0 };
         model.root.scale.setScalar(0.01);
-        this.bugLayer.add(model.root);
+        this.bugLayer.add(model.root, v.shadow);
         this.bugViews.set(b.id, v);
       }
       this.animateBug(v, dt);
@@ -462,8 +502,9 @@ export class World {
         // Pop away.
         const s = v.model.root.scale.x * (1 - Math.min(1, dt * 10));
         v.model.root.scale.setScalar(s);
+        v.shadow.visible = false;
         if (s < 0.02 || !seen.has(id)) {
-          this.bugLayer.remove(v.model.root);
+          this.bugLayer.remove(v.model.root, v.shadow);
           this.bugViews.delete(id);
         }
       }
@@ -484,6 +525,13 @@ export class World {
     }
     root.position.set(b.x, b.y, b.z);
     root.rotation.y = b.heading;
+    // The contact shadow shrinks and fades as the bug goes up.
+    const ground = groundAt(b.x, b.z);
+    const lift = Math.max(0, b.y - ground);
+    v.shadow.visible = true;
+    v.shadow.position.set(b.x, ground + 0.02, b.z);
+    v.shadow.scale.setScalar(Math.max(0.2, b.def.radius * 2.6 * (root.scale.x / v.scale) * (1 - Math.min(0.6, lift * 0.15))));
+
     // Grow in when arriving.
     const grow = Math.min(1, root.scale.x / v.scale + dt * 4);
     let sx = v.scale * grow;
@@ -552,15 +600,16 @@ export class World {
           spinner.add(foodModel(b.food.id, b.piece));
           root.add(spinner);
           root.scale.setScalar(b.piece === 'whole' ? b.food.radius : b.radius);
-          this.foodLayer.add(root);
-          v = { body: b, root, spinner, wobble: 0 };
+          const shadow = blob();
+          this.foodLayer.add(root, shadow);
+          v = { body: b, root, spinner, shadow, wobble: 0 };
           this.bodyViews.set(b.id, v);
         }
         this.animateBody(v, dt);
       }
     for (const [id, v] of this.bodyViews)
       if (!live.has(id)) {
-        this.foodLayer.remove(v.root);
+        this.foodLayer.remove(v.root, v.shadow);
         this.bodyViews.delete(id);
       }
   }
@@ -569,6 +618,10 @@ export class World {
     const b = v.body;
     const root = v.root;
     root.position.set(b.x, b.y, b.z);
+    // A shadow straight below shows where the food will come down.
+    const ground = groundAt(b.x, b.z);
+    v.shadow.position.set(b.x, ground + 0.03, b.z);
+    v.shadow.scale.setScalar(Math.max(0.3, b.radius * 2.4 * (1 - Math.min(0.7, (b.y - ground) * 0.08))));
     const base = b.piece === 'whole' ? b.food.radius : b.radius;
     if (b.mode === 'roll') {
       // Roll along the ground.

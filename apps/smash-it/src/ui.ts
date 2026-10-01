@@ -2,11 +2,10 @@
  * The DOM screens around the game: chapter list, shop, chapter intro, HUD goals, the food tray and the
  * results card. Each function renders from the current progress and calls back for actions.
  */
-import { levelBugs } from './game/arena';
 import { BUGS } from './game/bugs';
 import { areaRank, FOOD_ORDER, FOODS, type FoodId } from './game/foods';
 import { type Goal, type Level, LEVELS } from './game/levels';
-import { type Progress, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice } from './game/progress';
+import { type Progress, shopOpen, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice, upgradesOpen } from './game/progress';
 import type { Session } from './game/session';
 import { type StringKey, t } from './i18n';
 
@@ -105,6 +104,9 @@ export interface ShopActions {
 
 export function renderShop(p: Progress, tab: 'foods' | 'upgrades', a: ShopActions) {
   $('shop-coins').textContent = num(p.coins);
+  // Upgrades come later; until then the shop is just food.
+  $('tab-upgrades').parentElement!.classList.toggle('hidden', !upgradesOpen(p));
+  if (!upgradesOpen(p)) tab = 'foods';
   $('tab-foods').setAttribute('aria-selected', String(tab === 'foods'));
   $('tab-upgrades').setAttribute('aria-selected', String(tab === 'upgrades'));
   const list = $('shop-list');
@@ -159,17 +161,15 @@ export function renderShop(p: Progress, tab: 'foods' | 'upgrades', a: ShopAction
 export function renderIntro(p: Progress, level: Level) {
   $('intro-kicker').textContent = `${t('chapter', { n: level.id })} · ${t('timeLimit', { t: clock(level.time) })}`;
   $('intro-goals').replaceChildren(...level.goals.map((g) => el('li', {}, `${goalIcon(g)} ${goalText(g)}`)));
-  $('intro-bugs').replaceChildren(
-    ...levelBugs(level).map((k) => el('span', {}, `${BUGS[k].emoji} ${t(`bug_${k}` as StringKey)} · ${t('bugPoints', { n: BUGS[k].value })}`)),
-  );
-  const tip = FOODS[level.tip];
-  $('intro-tip').textContent = `${tip.emoji} ${t(p.owned.includes(level.tip) ? 'tip' : 'tipLocked', { food: foodName(level.tip) })}`;
+  $('intro-shop').classList.toggle('hidden', !shopOpen(p));
   const best = p.best[level.id];
   $('intro-best').textContent = best ? t('best', { n: num(best) }) : '';
 }
 
 /** The food buttons at the bottom while playing. */
 export function renderTray(p: Progress, selected: FoodId, onPick: (id: FoodId) => void) {
+  // Nothing to choose from yet with a single food.
+  $('tray').classList.toggle('hidden', p.owned.length < 2);
   $('tray').replaceChildren(
     ...p.owned.map((id, i) => {
       const b = el('button', { 'aria-pressed': String(id === selected), 'aria-label': foodName(id), title: foodName(id), 'data-food': id }, FOODS[id].emoji, el('kbd', { 'aria-hidden': 'true' }, String(i + 1)));
@@ -196,6 +196,8 @@ export interface ResultInfo {
   newBest: boolean;
   unlocked: number | null;
   lastChapter: boolean;
+  /** A food the coins can now buy (the results offer the shop). */
+  canBuy: FoodId | null;
 }
 
 export function renderResult(r: ResultInfo) {
@@ -236,7 +238,11 @@ export function renderResult(r: ResultInfo) {
   if (r.lastChapter && r.success) notes.push(t('allClear'));
   else if (r.unlocked) notes.push(t('unlocked', { n: r.unlocked }));
   if (r.newBest) notes.push(t('newBest'));
+  if (r.canBuy) notes.push(t('coachShop', { food: foodName(r.canBuy) }));
   $('result-note').textContent = notes.join(' · ');
+  const shop = $('result-shop');
+  shop.classList.toggle('hidden', !r.canBuy);
+  shop.classList.toggle('glow', !!r.canBuy);
   $('result-next').textContent = r.success ? (r.lastChapter ? t('back') : t('next')) : t('retry');
 }
 

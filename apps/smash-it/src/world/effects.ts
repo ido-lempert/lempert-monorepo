@@ -127,7 +127,7 @@ export class Effects {
   /** A puff of sparkles (also used when a bug gets hit). */
   sparkle(p: Vec3, n: number, color: string, size = 0.5) {
     for (let i = 0; i < n; i++) {
-      const m = new THREE.SpriteMaterial({ map: sparkleTexture, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      const m = new THREE.SpriteMaterial({ map: sparkleTexture, color, transparent: true, depthWrite: false });
       const s = new THREE.Sprite(m);
       s.position.set(p.x, p.y + 0.3, p.z);
       const a = this.rand() * Math.PI * 2;
@@ -139,7 +139,7 @@ export class Effects {
   }
 
   private piece(geo: THREE.BufferGeometry, color: string, p: Vec3, v: THREE.Vector3, size: number, life: number) {
-    const m = new THREE.Mesh(geo, mat(color, { rough: 0.7, rim: 0.3 }));
+    const m = new THREE.Mesh(geo, mat(color, { rough: 0.4, rim: 0.2, clearcoat: 0.7 }));
     m.position.set(p.x, Math.max(p.y, groundAt(p.x, p.z)) + 0.2, p.z);
     m.scale.setScalar(size);
     m.rotation.set(this.rand() * 6, this.rand() * 6, this.rand() * 6);
@@ -156,7 +156,7 @@ export class Effects {
     const ground = groundAt(p.x, p.z);
     const m = new THREE.Mesh(
       G.splat,
-      new THREE.MeshStandardMaterial({ map: splatTexture, color, transparent: true, roughness: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+      new THREE.MeshPhysicalMaterial({ map: splatTexture, color, transparent: true, opacity: 0.94, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
     );
     m.rotation.x = -Math.PI / 2;
     m.rotation.z = this.rand() * 6;
@@ -282,7 +282,7 @@ export class Effects {
       if (s.position.x < x) {
         s.userData.wiped = true;
         s.scale.multiplyScalar(1 - Math.min(0.5, dt * 6));
-        (s.material as THREE.MeshStandardMaterial).opacity *= 1 - Math.min(0.5, dt * 5);
+        (s.material as THREE.MeshPhysicalMaterial).opacity *= 1 - Math.min(0.5, dt * 5);
         if (s.scale.x < 0.1) {
           this.group.remove(s);
           (s.material as THREE.Material).dispose();

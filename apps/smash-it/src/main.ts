@@ -7,16 +7,17 @@ import { registerSW } from 'virtual:pwa-register';
 import { Sound } from './audio';
 import { MopScene, Replay } from './finale';
 import { Arena } from './game/arena';
-import type { FoodId } from './game/foods';
+import { FOODS, type FoodId } from './game/foods';
 import { type Level, levelById, LEVELS } from './game/levels';
-import { buyFood, buyUpgrade, finishLevel, KEY, loadProgress, newProgress, saveProgress, type UpgradeId } from './game/progress';
+import { affordableFood, buyFood, buyUpgrade, chaptersOpen, finishLevel, firstTime, KEY, loadProgress, newProgress, saveProgress, shopOpen, type UpgradeId } from './game/progress';
+import { Coach } from './coach';
 import { bestShots } from './game/replay';
 import { MAX_RANGE, MIN_RANGE, SLING, type Vec3 } from './game/physics';
 import { applyDocument, t } from './i18n';
 import { Notice } from './notice';
 import { Play } from './play';
 import { canFullscreen, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
-import { clock, foodName, num, renderChapters, renderHudGoals, renderIntro, renderResult, renderShop, renderTray, type ResultInfo, updateTray } from './ui';
+import { clock, foodName, goalText, num, renderChapters, renderHudGoals, renderIntro, renderResult, renderShop, renderTray, type ResultInfo, updateTray } from './ui';
 import { World } from './world/world';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -52,6 +53,7 @@ world.setBatterySaver(prefs.battery);
 // --- Small UI helpers ----------------------------------------------------------------------------------
 
 const toast = new Notice($('toast'));
+const coach = new Coach($('coach'), $('live'));
 function say(text: string) {
   $('toast').textContent = text;
   toast.show(2600);
@@ -87,6 +89,7 @@ const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'combo', 'r
 function show(...ids: string[]) {
   for (const id of screens) $(id).classList.toggle('hidden', !ids.includes(id));
   closeMenu();
+  if (!ids.includes('hud')) coach.clear();
 }
 
 // --- Flow ----------------------------------------------------------------------------------------------
@@ -125,7 +128,19 @@ function toMenu() {
 
 function renderHome() {
   $('home-coins').textContent = num(progress.coins);
-  $('home-play').textContent = t('playChapter', { n: progress.unlocked });
+  // The very first time there is just one big button; the rest appears as it becomes useful.
+  const first = !progress.seen.includes('intro');
+  $('home-play').textContent = first ? t('play') : t('playChapter', { n: progress.unlocked });
+  $('home-chapters').classList.toggle('hidden', !chaptersOpen(progress));
+  $('home-shop').classList.toggle('hidden', !shopOpen(progress));
+}
+
+/** A tip shown only once ever (remembered in the save). */
+function tip(id: string, icon: string, text: string): boolean {
+  if (!firstTime(progress, id)) return false;
+  save();
+  coach.say(icon, text);
+  return true;
 }
 
 function openIntro(id: number) {
@@ -137,13 +152,26 @@ function openIntro(id: number) {
   $('intro-go').focus();
 }
 
-function startLevel() {
+function startLevel(withMission = false) {
   mode = 'play';
-  play = new Play(world, sound, progress, level, { popup, banner, toast: say, shot: () => $('aim-hint').classList.add('hidden') }, () => prefs.calm);
-  renderTray(progress, play.food, pickFood);
+  const shot = () => {
+    $('aim-hint').classList.add('hidden');
+    if (firstTime(progress, 'aim')) save();
+  };
+  play = new Play(world, sound, progress, level, { popup, banner, toast: say, shot, tip }, () => prefs.calm);
   sound.setTheme('play');
-  show('hud', 'tray', ...(level.id === 1 && !progress.best[1] ? ['aim-hint'] : []));
+  show('hud', 'tray', ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
+  renderTray(progress, play.food, pickFood);
   banner(t('chapter', { n: level.id }), '', 1100);
+  // Tips for this moment, in order: the mission (when there was no intro card), the food tray, the best food here.
+  if (withMission) coach.say('🎯', t('coachMission', { goal: level.goals.map(goalText).join(' · ') }));
+  if (progress.owned.length > 1 && tip('tray', '👇', t('coachTray'))) {
+    $('tray').classList.remove('pulse');
+    void $('tray').offsetWidth;
+    $('tray').classList.add('pulse');
+  }
+  const best = FOODS[level.tip];
+  if (level.id > 1 && progress.owned.includes(best.id) && best.id !== play.food) tip(`tip:${level.id}`, best.emoji, t('coachTip', { food: foodName(best.id) }));
 }
 
 function pickFood(id: FoodId) {
@@ -168,7 +196,10 @@ function endLevel() {
     newBest: s.score > before && before > 0,
     unlocked: opened ? progress.unlocked : null,
     lastChapter: level.id === LEVELS.length,
+    canBuy: affordableFood(progress),
   };
+  // The shop opens for good the first time there is something to buy.
+  if (result.canBuy && firstTime(progress, 'shop')) save();
   const shots = bestShots(arena, 3);
   sound.setTheme('quiet');
   if (!shots.length) return showResult();
@@ -214,7 +245,16 @@ function afterMop() {
 
 // --- Buttons -------------------------------------------------------------------------------------------
 
-$('home-play').addEventListener('click', () => openIntro(progress.unlocked));
+$('home-play').addEventListener('click', () => {
+  // The first game goes straight in: the mission is told while playing.
+  if (firstTime(progress, 'intro')) {
+    save();
+    level = levelById(1);
+    world.setLevel(level);
+    return startLevel(true);
+  }
+  openIntro(progress.unlocked);
+});
 $('home-chapters').addEventListener('click', () => {
   renderChapters(progress, (id) => openIntro(id));
   $('chapters').classList.remove('hidden');
@@ -264,6 +304,10 @@ function drawShop() {
 }
 function afterShop() {
   renderHome();
+  if (result && !$('result').classList.contains('hidden')) {
+    result.canBuy = affordableFood(progress);
+    $('result-shop').classList.toggle('glow', !!result.canBuy);
+  }
   if (!$('intro').classList.contains('hidden')) renderIntro(progress, level);
   world.loadPouch(progress.food);
 }

@@ -1079,3 +1079,58 @@ a:focus-visible {
 #page {
   z-index: 25;
 }
+
+/* --- Tips while playing ------------------------------------------------------------------------------ */
+
+.coach {
+  position: fixed;
+  top: calc(max(10px, var(--safe-top)) + 118px);
+  inset-inline: 0;
+  margin-inline: auto;
+  width: max-content;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(460px, calc(100% - 32px));
+  padding: 10px 18px 10px 12px;
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: var(--lift);
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.coach-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--paper-2);
+  font-size: 1.6rem;
+}
+
+.tray.pulse {
+  animation: tray-pulse 0.7s ease-in-out 4 alternate;
+}
+
+@keyframes tray-pulse {
+  to {
+    box-shadow: 0 0 0 6px var(--sun), var(--lift);
+  }
+}
+
+.secondary.glow {
+  background: var(--sun);
+  box-shadow: 0 4px 0 var(--sun-edge), 0 0 0 5px rgba(255, 201, 60, 0.45);
+  animation: pulse 0.6s ease-in-out infinite alternate;
+}
+
+@media (max-width: 560px) {
+  .coach {
+    top: calc(max(10px, var(--safe-top)) + 160px);
+  }
+}

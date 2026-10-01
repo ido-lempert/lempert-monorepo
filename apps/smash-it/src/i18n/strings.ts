@@ -40,12 +40,28 @@ export const he = {
 
   // Chapter intro
   mission: 'המשימה',
-  bugsHere: 'מי מסתובב פה',
-  tip: 'טיפ: בשלב הזה כדאי לזרוק {food}!',
-  tipLocked: 'טיפ: בשלב הזה כדאי לזרוק {food} – יש בחנות!',
   go: 'יאללה!',
   best: 'השיא שלכם: {n}',
   timeLimit: 'זמן: {t}',
+
+  // Tips while playing (each shows once, when it matters)
+  coachMission: 'המשימה: {goal}',
+  coachShort: 'קצת יותר חזק! ככה האוכל עף רחוק יותר',
+  coachLong: 'קצת פחות חזק! האוכל עף רחוק מדי',
+  coachGuide: 'הנקודות הלבנות מראות לאן האוכל יעוף',
+  coachCombo: 'קומבו! כשפוגעים שוב מהר, הנקודות מוכפלות',
+  coachHide: 'מישהו התחבא מתחת לפטרייה! תחכו שייצא',
+  coachTray: 'יש לכם עוד אוכל! בוחרים מה לזרוק כאן למטה',
+  coachTip: 'בשלב הזה כדאי לזרוק {food}',
+  coachBug: '{name}! שווה {n} נקודות. {about}',
+  coachShop: 'יש לכם מספיק מטבעות ל{food}! החנות נפתחה',
+  bugAbout_snail: 'איטי וקל לפגוע בו.',
+  bugAbout_ladybug: 'לא ממהרת לשום מקום.',
+  bugAbout_ant: 'קטנה ומהירה – תכוונו קצת לפניה.',
+  bugAbout_beetle: 'אוהבת להתחבא מתחת לפטריות.',
+  bugAbout_butterfly: 'מחליף כיוון כל הזמן.',
+  bugAbout_fly: 'הכי קטן והכי מהיר – והכי שווה!',
+  bugAbout_golden: 'נדירה ובורחת מהר, אבל מאריכה את הקומבו!',
 
   // Goals
   goalHits: 'לפגוע ב־{n} חרקים',
@@ -70,7 +86,7 @@ export const he = {
   multi: '{n} בזריקה אחת!',
   cheerWow: 'וואו!',
   cheerRare: 'חיפושית זהב!',
-  goldenHere: 'חיפושית זהב! מהר!',
+  goldenHere: 'חיפושית זהב! מהר, לפני שהיא בורחת!',
   goldenEscaped: 'אוף, היא ברחה!',
   goalDone: 'יש! עוד משימה בכיס!',
   timeUp: 'נגמר הזמן!',

@@ -7,9 +7,10 @@ import { Arena, type GameEvent } from './game/arena';
 import type { Sound, Sfx } from './audio';
 import { type Effect, FOODS, type FoodId } from './game/foods';
 import type { Level } from './game/levels';
-import { type Aim, aimFromPull, MAX_YAW, type Vec3 } from './game/physics';
+import { type Aim, aimFromPull, dist2D, MAX_YAW, SLING, type Vec3 } from './game/physics';
+import { BUGS, hittable } from './game/bugs';
 import { comboWindow, guideLength, type Progress, reloadTime } from './game/progress';
-import { t } from './i18n';
+import { type StringKey, t } from './i18n';
 import type { World } from './world/world';
 
 export interface PlayUi {
@@ -20,6 +21,8 @@ export interface PlayUi {
   toast(text: string): void;
   /** Hides the "pull back" hint after the first shot. */
   shot(): void;
+  /** A tip shown only the first time (`id`); returns whether it was shown. */
+  tip(id: string, icon: string, text: string): boolean;
 }
 
 const EFFECT_SOUND: Record<Effect, Sfx> = {
@@ -60,6 +63,10 @@ export class Play {
   private ending: number | null = null;
   private goalsMet: boolean[];
   paused = false;
+  /** Hits per shot still in the air, and where it last came down (to tell a miss). */
+  private readonly shotHits = new Map<number, number>();
+  private readonly landed = new Map<number, Vec3>();
+  private misses = 0;
 
   constructor(
     private readonly world: World,
@@ -181,6 +188,8 @@ export class Play {
     this.reloadFor = reloadTime(this.progress, FOODS[this.food].reload);
     this.reloadLeft = 1;
     this.ui.shot();
+    const f = FOODS[this.food];
+    if (f.id !== 'cookie') this.ui.tip(`food:${f.id}`, f.emoji, t(`foodInfo_${f.id}` as StringKey));
   }
 
   // --- Frame --------------------------------------------------------------------------------------
@@ -299,6 +308,12 @@ export class Play {
       switch (e.type) {
         case 'impact':
         case 'roll-hit': {
+          this.shotHits.set(e.shot.id, (this.shotHits.get(e.shot.id) ?? 0) + e.hits.length);
+          this.landed.set(e.shot.id, e.point);
+          for (const h of e.hits) {
+            const d = BUGS[h.bug.kind];
+            this.ui.tip(`bug:${d.kind}`, d.emoji, t('coachBug', { name: t(`bug_${d.kind}` as StringKey), n: d.value, about: t(`bugAbout_${d.kind}` as StringKey) }));
+          }
           if (e.type === 'impact') this.sound.play(EFFECT_SOUND[e.body.piece === 'slice' ? 'slices' : e.body.food.effect]);
           if (e.hits.length && this.impact?.phase === 'approach') [this.impact.phase, this.impact.t] = ['freeze', 0];
           e.hits.forEach((h, i) => {
@@ -316,6 +331,7 @@ export class Play {
           break;
         }
         case 'combo':
+          if (e.chain === 2) this.ui.tip('combo', '🔥', t('coachCombo'));
           if (e.mega) {
             this.ui.banner(t('mega'), 'pink', 1600);
             this.sound.play('mega');
@@ -324,14 +340,26 @@ export class Play {
           break;
         case 'spawn':
           if (e.bug.def.rare) {
-            this.ui.toast(t('goldenHere'));
+            if (!this.ui.tip('golden', '✨', `${t('goldenHere')} ${t('bugAbout_golden')}`)) this.ui.toast(t('goldenHere'));
             this.sound.play('coin');
           }
+          break;
+        case 'hide':
+          this.ui.tip('hide', '🍄', t('coachHide'));
           break;
         case 'escape':
           this.ui.toast(t('goldenEscaped'));
           break;
       }
+    }
+    // Shots that are over: a miss gets a hint (early on), a hit resets the count.
+    for (const [id, hits] of this.shotHits) {
+      if (this.arena.shots.some((s) => s.id === id)) continue;
+      const at = this.landed.get(id);
+      this.shotHits.delete(id);
+      this.landed.delete(id);
+      if (hits > 0) this.misses = 0;
+      else if (at) this.missed(at);
     }
     // A goal just completed (but not the last one: the ending has its own banner).
     this.level.goals.forEach((g, i) => {
@@ -342,5 +370,26 @@ export class Play {
         this.sound.play('coin');
       }
     });
+  }
+
+  /** A shot hit nothing: early on, say whether it was too short or too long; after a few, point at the guide. */
+  private missed(at: Vec3) {
+    this.misses++;
+    if (this.misses >= 3 && this.guide > 0 && this.ui.tip('guide', '⚪', t('coachGuide'))) return;
+    if (this.level.id > 2) return;
+    let nearest: { x: number; z: number } | null = null;
+    let best = Infinity;
+    for (const b of this.arena.bugs) {
+      if (!hittable(b)) continue;
+      const d = dist2D(b, at);
+      if (d < best) [nearest, best] = [b, d];
+    }
+    if (!nearest) return;
+    const short = dist2D(at, SLING) < dist2D(nearest, SLING) - 1;
+    const long = dist2D(at, SLING) > dist2D(nearest, SLING) + 1;
+    if (!short && !long) return;
+    const key = short ? 'short' : 'long';
+    const text = t(short ? 'coachShort' : 'coachLong');
+    if (!this.ui.tip(`${key}1`, '💪', text)) this.ui.tip(`${key}2`, '💪', text);
   }
 }
