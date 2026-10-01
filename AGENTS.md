@@ -39,6 +39,18 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - on touch screens the camera pad is hidden (two fingers turn and zoom); the accessibility menu can switch it back on
   - pop-up notices (toasts, hint, side-quest pill, install and update banners) go through `Notice` (`src/notice.ts`): they leave on their own after a few seconds and can be swiped away; never add one that stays on screen
   - `World.photoSukkah` renders the player's sukkah off-screen for the shareable greeting card (`sukkahCard` in `main.ts`)
+- `smash-it` (3D slingshot game for kids: throw food at cartoon bugs, Vite + three.js PWA, single-player):
+  - dev server: `npx nx run smash-it:dev` (http://localhost:5175, also on the LAN)
+  - tests: `npx nx run smash-it:test`; typecheck + build: `npx nx run smash-it:build`
+  - the concept and the slice plan live in `_bmad-output/planning-artifacts/smash-it/`
+  - layers: `src/game/` is pure and tested (physics, foods, bugs, levels, `Session` for score/combo/goals, `Arena` for the field, replay staging, `progress.ts` for saves and the shop); `src/world/` renders whatever `Arena` it is bound to; `src/play.ts` is the slingshot input and the Impact Cam director; `src/finale.ts` is the replay and the mop; `src/main.ts` is the screen flow
+  - a food's character is data in `FOODS` (`src/game/foods.ts`: launch angle and gravity = speed, `area`, `reload`, `after` = bounce / roll / rings / split); levels in `LEVELS` (`src/game/levels.ts`) are built around what foods can do, not only faster and smaller bugs
+  - the replay records shots, not frames: `stage` in `src/game/replay.ts` throws the same food again and walks each hit bug in a straight line to where it was hit, so keep flights deterministic (no randomness in `Arena` body motion)
+  - save migrations live in `parseProgress`, so old saves keep working
+  - every model and sound is procedural (`src/world/models.ts`, `src/audio.ts`), so the game works offline
+  - deployed as a Render static site (`smash-it` in `render.yaml`), from `main`: work on the `smash-it` branch, merge to `main` to release
+  - in dev, `window.__game` (start, shootAt, coins, play, progress) lets Playwright drive the game; it is not in production builds
+  - UI text is Hebrew only for now, in `src/i18n/strings.ts`; address kids in the plural and use infinitives on buttons; wrap `×n` in LRI/PDI marks inside Hebrew strings
 
 ## Conventions that differ from defaults
 
