@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FOODS } from './foods';
 import { LEVELS } from './levels';
-import { buyFood, buyUpgrade, finishLevel, guideLength, newProgress, parseProgress, reloadTime, upgradePrice } from './progress';
+import { affordableFood, buyFood, buyUpgrade, finishLevel, firstTime, guideLength, newProgress, parseProgress, reloadTime, shopOpen, upgradePrice } from './progress';
 
 describe('progress', () => {
   it('starts with the cookie and chapter 1', () => {
@@ -55,5 +55,23 @@ describe('progress', () => {
     expect(p).toMatchObject({ coins: 215, unlocked: 2, stars: { 1: 2 }, best: { 1: 900 } });
     finishLevel(p, { levelId: 1, success: true, score: 100, stars: 1, coins: 0 });
     expect(p.stars[1]).toBe(2);
+  });
+
+  it('shows each tip once and remembers it', () => {
+    const p = newProgress();
+    expect(firstTime(p, 'combo')).toBe(true);
+    expect(firstTime(p, 'combo')).toBe(false);
+    expect(parseProgress(JSON.parse(JSON.stringify(p))).seen).toEqual(['combo']);
+    expect(parseProgress({ seen: ['a', 'a', 3] }).seen).toEqual(['a']);
+  });
+
+  it('keeps the shop hidden until there is something to buy', () => {
+    const p = newProgress();
+    expect(shopOpen(p)).toBe(false);
+    expect(affordableFood(p)).toBeNull();
+    p.coins = FOODS.popcorn.price;
+    expect(affordableFood(p)).toBe('popcorn');
+    // Old saves that already bought food keep their shop.
+    expect(shopOpen(parseProgress({ owned: ['cookie', 'jelly'] }))).toBe(true);
   });
 });

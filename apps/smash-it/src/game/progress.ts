@@ -36,12 +36,14 @@ export interface Progress {
   stars: Record<number, number>;
   best: Record<number, number>;
   food: FoodId;
+  /** Tips already shown and parts of the game already opened (shown once, when they matter). */
+  seen: string[];
 }
 
 export const KEY = 'smashIt.progress';
 
 export function newProgress(): Progress {
-  return { v: 1, coins: 0, owned: ['cookie'], upgrades: { guide: 0, combo: 0, reload: 0 }, unlocked: 1, stars: {}, best: {}, food: 'cookie' };
+  return { v: 1, coins: 0, owned: ['cookie'], upgrades: { guide: 0, combo: 0, reload: 0 }, unlocked: 1, stars: {}, best: {}, food: 'cookie', seen: [] };
 }
 
 const count = (v: unknown, max = Infinity) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
@@ -69,6 +71,9 @@ export function parseProgress(raw: unknown): Progress {
   p.stars = numberMap(r.stars, 3);
   p.best = numberMap(r.best, Infinity);
   p.food = isFoodId(r.food) && p.owned.includes(r.food) ? r.food : 'cookie';
+  p.seen = Array.isArray(r.seen) ? [...new Set(r.seen.filter((s): s is string => typeof s === 'string'))].slice(0, 200) : [];
+  // Saves from before the shop was hidden at first: whoever already bought something has seen it.
+  if (p.owned.length > 1 && !p.seen.includes('shop')) p.seen.push('shop');
   return p;
 }
 
@@ -86,6 +91,35 @@ export function saveProgress(p: Progress, storage: Pick<Storage, 'setItem'> = lo
   } catch {
     /* private mode or full: play on without saving */
   }
+}
+
+// --- What to show when -------------------------------------------------------------------------------
+
+/** Marks a tip as shown; returns false when it already was. */
+export function firstTime(p: Progress, id: string): boolean {
+  if (p.seen.includes(id)) return false;
+  p.seen.push(id);
+  return true;
+}
+
+/** The cheapest food not bought yet that the coins can pay for. */
+export function affordableFood(p: Progress): FoodId | null {
+  return FOOD_ORDER.find((f) => !p.owned.includes(f) && FOODS[f].price <= p.coins) ?? null;
+}
+
+/** The shop shows up once there is something to buy in it, and stays from then on. */
+export function shopOpen(p: Progress): boolean {
+  return p.seen.includes('shop');
+}
+
+/** Upgrades join the shop after a few chapters. */
+export function upgradesOpen(p: Progress): boolean {
+  return p.unlocked >= 4;
+}
+
+/** The chapter list is only worth showing once there is more than one chapter. */
+export function chaptersOpen(p: Progress): boolean {
+  return p.unlocked >= 2;
 }
 
 // --- Shop -------------------------------------------------------------------------------------------

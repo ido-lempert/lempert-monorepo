@@ -48,6 +48,8 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - the replay records shots, not frames: `stage` in `src/game/replay.ts` throws the same food again and walks each hit bug in a straight line to where it was hit, so keep flights deterministic (no randomness in `Arena` body motion)
   - save migrations live in `parseProgress`, so old saves keep working
   - every model and sound is procedural (`src/world/models.ts`, `src/audio.ts`), so the game works offline
+  - the look: physical toy materials (`mat` in `src/world/look.ts`: clearcoat, sheen, glass/jelly transmission, iridescence), instanced swaying grass, soft VSM shadows plus contact shadows under bugs and food, and `src/world/post.ts` (ambient occlusion, a tilt-shift blur that keeps the little world sharp, glow on bright highlights only, a colour grade); low quality skips post-processing and thins the grass
+  - teach while playing, never up front: tips go through `Coach` (`src/coach.ts`) and show once each (`firstTime` in `progress.ts`, remembered in `seen`) at the moment they matter (first hit on a bug kind shows what it's worth, first combo, a shot that fell short); the shop, upgrades, chapter list and food tray only appear once they are useful (`shopOpen`, `upgradesOpen`, `chaptersOpen`)
   - deployed as a Render static site (`smash-it` in `render.yaml`), from `main`: work on the `smash-it` branch, merge to `main` to release
   - in dev, `window.__game` (start, shootAt, coins, play, progress) lets Playwright drive the game; it is not in production builds
   - UI text is Hebrew only for now, in `src/i18n/strings.ts`; address kids in the plural and use infinitives on buttons; wrap `×n` in LRI/PDI marks inside Hebrew strings

@@ -17,6 +17,17 @@ export interface MatOptions {
   transparent?: number;
   double?: boolean;
   map?: THREE.Texture;
+  /** A glossy varnish on top (toy plastic, candy, wet eyes). */
+  clearcoat?: number;
+  /** Soft velvet sheen (fuzzy bodies, sponge, cake). */
+  sheen?: number;
+  /** See-through like glass or jelly (0..1), with its thickness. */
+  transmission?: number;
+  thickness?: number;
+  /** Colour light takes on travelling through a see-through material. */
+  tint?: string;
+  /** Soap-bubble colours (fly wings, bubbles). */
+  iridescence?: number;
 }
 
 const mats = new Map<string, THREE.MeshStandardMaterial>();
@@ -31,33 +42,52 @@ function withRim(m: THREE.MeshStandardMaterial, strength: number) {
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         float rimDot = 1.0 - saturate(dot(normal, normalize(vViewPosition)));
-        totalEmissiveRadiance += (diffuseColor.rgb * 0.6 + 0.4) * pow(rimDot, 3.0) * rimStrength;`,
+        totalEmissiveRadiance += (diffuseColor.rgb * 0.5 + 0.5) * pow(rimDot, 3.0) * rimStrength;`,
       );
   };
   m.customProgramCacheKey = () => 'rim';
 }
 
-/** Shared material per colour and options. */
+/** Shared material per colour and options. Physical (clearcoat, sheen, glass) when any of those is asked for. */
 export function mat(color: string, o: MatOptions = {}): THREE.MeshStandardMaterial {
   const key = `${color}|${o.map?.uuid ?? ''}|${JSON.stringify({ ...o, map: undefined })}`;
   let m = mats.get(key);
   if (!m) {
     const c = new THREE.Color(color);
-    m = new THREE.MeshStandardMaterial({
+    const physical = o.clearcoat || o.sheen || o.transmission || o.iridescence;
+    const params: THREE.MeshPhysicalMaterialParameters = {
       color: c,
       map: o.map ?? null,
-      roughness: o.rough ?? 0.55,
+      roughness: o.rough ?? 0.5,
       metalness: o.metal ?? 0,
       flatShading: o.flat ?? false,
       emissive: o.emissive ? c : new THREE.Color(0),
       emissiveIntensity: o.emissive ?? 0,
       transparent: o.transparent !== undefined,
       opacity: o.transparent ?? 1,
-      envMapIntensity: 0.7,
+      envMapIntensity: 0.6,
       side: o.double ? THREE.DoubleSide : THREE.FrontSide,
-    });
-    const rim = o.rim ?? 0.4;
-    if (rim > 0 && !o.flat) withRim(m, rim);
+    };
+    if (physical) {
+      const p = new THREE.MeshPhysicalMaterial({
+        ...params,
+        clearcoat: o.clearcoat ?? 0,
+        clearcoatRoughness: 0.12,
+        sheen: o.sheen ?? 0,
+        sheenRoughness: 0.5,
+        sheenColor: new THREE.Color('#ffffff'),
+        transmission: o.transmission ?? 0,
+        thickness: o.thickness ?? 0.5,
+        ior: 1.35,
+        attenuationColor: new THREE.Color(o.tint ?? '#ffffff'),
+        attenuationDistance: o.tint ? 0.6 : Infinity,
+        iridescence: o.iridescence ?? 0,
+        iridescenceIOR: 1.3,
+      });
+      m = p;
+    } else m = new THREE.MeshStandardMaterial(params);
+    const rim = o.rim ?? 0.3;
+    if (rim > 0 && !o.flat && !o.transmission) withRim(m, rim);
     mats.set(key, m);
   }
   return m;
@@ -66,7 +96,7 @@ export function mat(color: string, o: MatOptions = {}): THREE.MeshStandardMateri
 // --- Outlines -------------------------------------------------------------------------------------
 
 function outlineMaterial(width: number) {
-  const m = new THREE.MeshBasicMaterial({ color: '#2a1d3d', side: THREE.BackSide });
+  const m = new THREE.MeshBasicMaterial({ color: '#3a2238', side: THREE.BackSide });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.outlineWidth = { value: width };
     shader.vertexShader = shader.vertexShader
@@ -79,7 +109,7 @@ function outlineMaterial(width: number) {
 const outlineMats = new Map<number, THREE.MeshBasicMaterial>();
 
 /** Gives every mesh in a model a dark cartoon outline (the "inverted hull" trick: one extra draw each). */
-export function outline(root: THREE.Object3D, width = 0.03) {
+export function outline(root: THREE.Object3D, width = 0.022) {
   let m = outlineMats.get(width);
   if (!m) outlineMats.set(width, (m = outlineMaterial(width)));
   const meshes: THREE.Mesh[] = [];
@@ -138,31 +168,81 @@ export function canvasTexture(size: number, draw: (g: CanvasRenderingContext2D, 
   return tex;
 }
 
-/** Soft, lumpy lawn with lighter tufts. */
+/** Lawn: soft patches of lighter and darker green, with tiny clover and blades drawn in. */
 export const grassTexture = (() => {
-  const tex = canvasTexture(256, (g, s) => {
-    g.fillStyle = '#6fcf4f';
+  const tex = canvasTexture(512, (g, s) => {
+    g.fillStyle = '#5fbf45';
     g.fillRect(0, 0, s, s);
-    for (let i = 0; i < 900; i++) {
-      const x = (i * 97) % s;
-      const y = (i * 61 + ((i * i) % 37)) % s;
-      g.fillStyle = i % 3 ? 'rgba(160, 235, 110, 0.5)' : 'rgba(60, 160, 60, 0.45)';
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    // Big soft patches.
+    for (let i = 0; i < 40; i++) {
+      const x = rnd() * s;
+      const y = rnd() * s;
+      const r = 30 + rnd() * 70;
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      const light = rnd() < 0.5;
+      grad.addColorStop(0, light ? 'rgba(170, 230, 110, 0.35)' : 'rgba(40, 130, 50, 0.3)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // Little strokes.
+    for (let i = 0; i < 5000; i++) {
+      const x = rnd() * s;
+      const y = rnd() * s;
+      g.strokeStyle = rnd() < 0.5 ? 'rgba(190, 245, 130, 0.45)' : 'rgba(35, 120, 45, 0.4)';
+      g.lineWidth = 1 + rnd();
       g.beginPath();
-      g.ellipse(x, y, 3 + (i % 4), 1.5 + (i % 3), (i % 7) * 0.4, 0, Math.PI * 2);
-      g.fill();
+      g.moveTo(x, y);
+      g.lineTo(x + (rnd() - 0.5) * 4, y - 3 - rnd() * 5);
+      g.stroke();
     }
   });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(5, 5);
+  tex.repeat.set(3, 3);
   return tex;
 })();
+
+/** A soft dark round blot, for contact shadows under bugs and flying food. */
+export const blobTexture = canvasTexture(64, (g, s) => {
+  const h = s / 2;
+  const grad = g.createRadialGradient(h, h, 0, h, h, h);
+  grad.addColorStop(0, 'rgba(20,10,30,0.55)');
+  grad.addColorStop(0.5, 'rgba(20,10,30,0.3)');
+  grad.addColorStop(1, 'rgba(20,10,30,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, s, s);
+});
+
+/** A sunny window: sky, a cloud and a hint of garden. */
+export const windowTexture = canvasTexture(256, (g, s) => {
+  const sky = g.createLinearGradient(0, 0, 0, s);
+  sky.addColorStop(0, '#6cc6ff');
+  sky.addColorStop(0.7, '#d9f3ff');
+  sky.addColorStop(1, '#9fe08a');
+  g.fillStyle = sky;
+  g.fillRect(0, 0, s, s);
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  for (const [x, y, r] of [[70, 70, 26], [100, 60, 32], [130, 74, 24], [190, 120, 18], [210, 112, 22]]) {
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = '#5fbf45';
+  for (let i = 0; i < 8; i++) {
+    g.beginPath();
+    g.arc(i * 40, s, 40 + (i % 3) * 12, 0, Math.PI * 2);
+    g.fill();
+  }
+});
 
 /** Warm wooden planks for the kitchen counter. */
 export const woodTexture = (() => {
   const tex = canvasTexture(256, (g, s) => {
     const planks = 4;
     for (let p = 0; p < planks; p++) {
-      g.fillStyle = `hsl(${30 + p * 3}, 55%, ${66 + (p % 2) * 5}%)`;
+      g.fillStyle = `hsl(${26 + p * 3}, 44%, ${56 + (p % 2) * 5}%)`;
       g.fillRect(0, (p * s) / planks, s, s / planks);
       g.strokeStyle = 'rgba(120, 70, 30, 0.18)';
       g.lineWidth = 2;
@@ -316,6 +396,69 @@ export function wingTexture(color: string, dots: string): THREE.CanvasTexture {
     g.ellipse(s * 0.5, s * 0.36, s * 0.43, s * 0.3, 0, 0, Math.PI * 2);
     g.stroke();
   });
+}
+
+// --- Grass ----------------------------------------------------------------------------------------
+
+const wind = { value: 0 };
+
+export function setWindTime(t: number) {
+  wind.value = t;
+}
+
+/**
+ * Thousands of little grass blades in one draw call, swaying in the wind, darker at the root and sunlit
+ * at the tip. `radius`: the circle to fill; `count` depends on quality.
+ */
+export function grassField(radius: number, count: number): THREE.InstancedMesh {
+  // A blade: a thin, slightly bent triangle strip.
+  const geo = new THREE.BufferGeometry();
+  const w = 0.07;
+  const pos = [-w, 0, 0, w, 0, 0, -w * 0.6, 0.5, 0.02, w * 0.6, 0.5, 0.02, 0, 1, 0.08];
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex([0, 1, 2, 2, 1, 3, 2, 3, 4]);
+  geo.computeVertexNormals();
+  const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.75, side: THREE.DoubleSide });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.windTime = wind;
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'uniform float windTime;\nvarying float vH;\nvoid main() {')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vH = position.y;
+        vec4 root = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        float bend = position.y * position.y;
+        transformed.x += sin(windTime * 1.7 + root.x * 0.6 + root.z * 0.4) * bend * 0.12;
+        transformed.z += cos(windTime * 1.3 + root.z * 0.5) * bend * 0.06;`,
+      );
+    // Normals point up so blades light like the lawn rather than flickering paper.
+    shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'varying float vH;\nvoid main() {')
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.55, 1.15, vH);');
+  };
+  m.customProgramCacheKey = () => 'grassBlade';
+  const mesh = new THREE.InstancedMesh(geo, m, count);
+  const d = new THREE.Object3D();
+  const c = new THREE.Color();
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < count; i++) {
+    const r = Math.sqrt(rnd()) * (radius - 0.3);
+    const a = rnd() * Math.PI * 2;
+    d.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    d.rotation.set(0, rnd() * Math.PI, (rnd() - 0.5) * 0.4);
+    const h = 0.09 + rnd() * 0.14;
+    d.scale.set(0.8 + rnd() * 0.6, h, 1);
+    d.updateMatrix();
+    mesh.setMatrixAt(i, d.matrix);
+    c.setHSL(0.26 + rnd() * 0.06, 0.42 + rnd() * 0.15, 0.36 + rnd() * 0.12);
+    mesh.setColorAt(i, c);
+  }
+  mesh.receiveShadow = true;
+  mesh.raycast = () => {};
+  return mesh;
 }
 
 // --- Quality ----------------------------------------------------------------------------------------
