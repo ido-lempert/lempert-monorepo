@@ -1,0 +1,166 @@
+/**
+ * UI text, Hebrew for now. Voice: like Israeli kids' TV – energetic, warm and playful, short sentences,
+ * talking straight to the kids in the plural, never babyish. Buttons use the infinitive ("לשחק").
+ */
+export const he = {
+  appName: 'Smash It!',
+  tagline: 'זורקים אוכל על חרקים מצחיקים וממלאים את העולם בפירורים!',
+  loading: 'טוען…',
+  sceneLabel: 'עולם קטן ועגול מלא חרקים, ורוגטקה בתחתית המסך',
+
+  // Home
+  play: 'לשחק',
+  playChapter: 'לשחק · שלב {n}',
+  chapters: 'שלבים',
+  shop: 'חנות',
+  coins: 'מטבעות',
+  menu: 'תפריט',
+  back: 'חזרה',
+  close: 'לסגור',
+  locked: 'נעול',
+  chapter: 'שלב {n}',
+
+  // Settings
+  music: 'מוזיקה',
+  sfx: 'צלילים',
+  lessMotion: 'פחות תנועה (בלי זום ורעידות)',
+  batterySaver: 'חיסכון בסוללה',
+  fullscreen: 'מסך מלא',
+  exitFullscreen: 'יציאה ממסך מלא',
+  install: 'להתקין את המשחק',
+  installIos: 'כדי להתקין באייפון: כפתור השיתוף ואז "הוספה למסך הבית".',
+  privacy: 'פרטיות',
+  terms: 'תנאי שימוש',
+  reset: 'להתחיל הכול מההתחלה',
+  resetConfirm: 'למחוק את כל ההתקדמות, המטבעות והאוכל שקניתם?',
+  version: 'גרסה',
+  keyboardHelp: 'במקלדת: חצים כדי לכוון, רווח כדי לזרוק, 1–8 כדי לבחור אוכל, Esc להפסקה.',
+  updateAvailable: 'יש גרסה חדשה!',
+  updateNow: 'לעדכן',
+
+  // Chapter intro
+  mission: 'המשימה',
+  bugsHere: 'מי מסתובב פה',
+  tip: 'טיפ: בשלב הזה כדאי לזרוק {food}!',
+  tipLocked: 'טיפ: בשלב הזה כדאי לזרוק {food} – יש בחנות!',
+  go: 'יאללה!',
+  best: 'השיא שלכם: {n}',
+  timeLimit: 'זמן: {t}',
+
+  // Goals
+  goalHits: 'לפגוע ב־{n} חרקים',
+  goalScore: 'לצבור {n} נקודות',
+  goalBug: 'לפגוע ב־{n} {bug}',
+  goalSmall: 'לפגוע ב־{n} חרקים קטנים',
+  goalCombo: 'להגיע לקומבו \u2066×{n}\u2069',
+  goalMulti: 'לפגוע ב־{n} חרקים בזריקה אחת',
+
+  // Play
+  time: 'זמן',
+  score: 'נקודות',
+  pause: 'הפסקה',
+  paused: 'הפסקה!',
+  resume: 'להמשיך לשחק',
+  restart: 'להתחיל את השלב מחדש',
+  quit: 'לצאת לתפריט',
+  tray: 'מה זורקים?',
+  aimHint: 'תמשכו אחורה, תכוונו ותשחררו!',
+  combo: 'קומבו \u2066×{n}\u2069',
+  mega: 'מגה קומבו!!!',
+  multi: '{n} בזריקה אחת!',
+  cheerWow: 'וואו!',
+  cheerRare: 'חיפושית זהב!',
+  goldenHere: 'חיפושית זהב! מהר!',
+  goldenEscaped: 'אוף, היא ברחה!',
+  goalDone: 'יש! עוד משימה בכיס!',
+  timeUp: 'נגמר הזמן!',
+  allDone: 'הצלחתם!',
+
+  // Replay and results
+  slowMotion: 'הילוך איטי',
+  replayBest: 'הפגיעות הכי טובות',
+  skip: 'לדלג',
+  success: 'הצלחתם!',
+  tryAgain: 'כמעט!',
+  statBugs: 'חרקים שנפגעו',
+  statBest: 'הזריקה הכי טובה',
+  statCombo: 'קומבו',
+  statCoins: 'מטבעות',
+  statScore: 'נקודות',
+  newBest: 'שיא חדש!',
+  unlocked: 'שלב {n} נפתח!',
+  next: 'לשלב הבא',
+  retry: 'לנסות שוב',
+  allClear: 'סיימתם את כל השלבים! אלופים!',
+
+  // The mop
+  mopTitle: 'זמן לנקות!',
+  mopHint: 'תגררו את המגב לכיור',
+
+  // Shop
+  shopFoods: 'אוכל',
+  shopUpgrades: 'שדרוגים',
+  buy: 'לקנות · {price}',
+  owned: 'שלכם',
+  chosen: 'נבחר',
+  choose: 'לבחור',
+  maxed: 'מקסימום',
+  tier: 'רמה {n} מתוך {max}',
+  missing: 'חסרים {n}',
+  bought: '{name} שלכם!',
+  speed: 'מהירות',
+  area: 'גודל פגיעה',
+
+  // Foods
+  food_cookie: 'עוגייה',
+  food_popcorn: 'פופקורן',
+  food_cheese: 'כדור גבינה',
+  food_jelly: "ג'לי",
+  food_watermelon: 'אבטיח',
+  food_donut: 'דונאט',
+  food_pie: 'פאי קצפת',
+  food_pizza: 'פיצה',
+  foodInfo_cookie: 'הקלאסיקה. מתפוררת לפירורים בכל פגיעה.',
+  foodInfo_popcorn: 'הכי מהיר שיש! פגיעה קטנה, אבל פופקורן עף לכל הכיוונים.',
+  foodInfo_cheese: 'טס מהר, ואחרי הנחיתה ממשיך להתגלגל על כל מי שבדרך.',
+  foodInfo_jelly: 'קופץ עוד פעמיים אחרי הנחיתה, ככה פוגעים בכמה חרקים!',
+  foodInfo_watermelon: 'כבד ואיטי, אבל כשהוא נוחת – בום ענק!',
+  foodInfo_donut: 'מתפרק לשלוש טבעות שמתגלגלות לכל הצדדים.',
+  foodInfo_pie: 'עף לאט, אבל מכסה בקצפת אזור ענק.',
+  foodInfo_pizza: 'מתפצלת באוויר לארבעה משולשים.',
+
+  // Upgrades
+  up_guide: 'קו כיוון ארוך',
+  up_combo: 'קומבו ארוך',
+  up_reload: 'טעינה מהירה',
+  upInfo_guide: 'רואים יותר מהמסלול, גם בשלבים הקשים.',
+  upInfo_combo: 'יותר זמן בין פגיעה לפגיעה בלי לאבד את הקומבו.',
+  upInfo_reload: 'הרוגטקה מוכנה לזריקה הבאה מהר יותר.',
+
+  // Bugs (one, many)
+  bug_snail: 'שבלול',
+  bug_ladybug: 'פרת משה רבנו',
+  bug_ant: 'נמלה',
+  bug_beetle: 'חיפושית',
+  bug_butterfly: 'פרפר',
+  bug_fly: 'זבוב',
+  bug_golden: 'חיפושית זהב',
+  bugs_snail: 'שבלולים',
+  bugs_ladybug: 'פרות משה רבנו',
+  bugs_ant: 'נמלים',
+  bugs_beetle: 'חיפושיות',
+  bugs_butterfly: 'פרפרים',
+  bugs_fly: 'זבובים',
+  bugs_golden: 'חיפושיות זהב',
+  bugPoints: '{n} נק׳',
+
+  // Pages
+  privacyTitle: 'פרטיות',
+  privacyBody:
+    'המשחק לא אוסף מידע אישי, לא מבקש הרשמה ולא מציג פרסומות. ההתקדמות, המטבעות וההגדרות נשמרים רק במכשיר שלכם (בזיכרון הדפדפן), ואפשר למחוק אותם מהתפריט בכל רגע.',
+  termsTitle: 'תנאי שימוש',
+  termsBody:
+    'המשחק חינמי ונועד להנאה. החרקים במשחק מצוירים ולא נפגעים באמת – הם רק מסתחררים, ואז המגב שוטף אותם לכיור. בעולם האמיתי לא זורקים אוכל על אף אחד 🙂 המשחק ניתן כמו שהוא, ואנחנו עשויים לשנות אותו מדי פעם.',
+};
+
+export type Dict = typeof he;

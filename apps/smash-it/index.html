@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffb84d" />
+    <meta name="description" content="Smash It! – משחק רוגטקה תלת־ממדי לילדים: זורקים אוכל על חרקים מצחיקים, צוברים קומבו ופותחים אוכל חדש. בדפדפן ובלי התקנה." />
+    <link rel="canonical" href="%SITE_URL%/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Smash It!" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:title" content="Smash It! 🍉 רוגטקה, אוכל וחרקים מצחיקים" />
+    <meta property="og:description" content="זורקים עוגיות, אבטיחים ופאי קצפת על חרקים מצחיקים! משחק תלת־ממד לילדים, בדפדפן ובלי התקנה." />
+    <meta property="og:image" content="%SITE_URL%/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Smash It" />
+    <title>Smash It!</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <style>
+      /* Critical styles: show the splash immediately and keep the rest hidden until the world is ready. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #ffb84d;
+        color: #2a1d3d;
+        font-family: 'Rubik Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      body:not(.ready) > :not(#splash):not(script) {
+        visibility: hidden;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: radial-gradient(circle at 50% 40%, #ffe08a 0%, #ffb84d 70%);
+        transition: opacity 0.45s ease;
+      }
+      #splash.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash img {
+        width: min(36vmin, 190px);
+        height: auto;
+        animation: splash-bounce 0.8s ease-in-out infinite alternate;
+      }
+      #splash .splash-title {
+        font-size: clamp(34px, 9vmin, 56px);
+        font-weight: 900;
+        letter-spacing: 1px;
+      }
+      @keyframes splash-bounce {
+        to {
+          transform: translateY(-14px) rotate(-4deg) scale(1.04);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash" role="status" aria-live="polite">
+      <img src="icon.svg" alt="" width="190" height="190" />
+      <div class="splash-title" dir="ltr">Smash It!</div>
+      <div data-i18n="loading" style="font-weight: 700">טוען…</div>
+    </div>
+
+    <main id="stage" data-i18n-attr="aria-label:sceneLabel"></main>
+    <div class="vignette hidden" id="vignette" aria-hidden="true"></div>
+    <div class="popups" id="popups" aria-hidden="true"></div>
+    <div class="sr-only" id="live" aria-live="polite"></div>
+
+    <!-- Home -->
+    <section class="screen home hidden" id="home" aria-labelledby="home-title">
+      <div class="coins-pill"><span aria-hidden="true">⭐</span> <b id="home-coins">0</b><span class="sr-only" data-i18n="coins"></span></div>
+      <button class="icon menu-btn" id="menu-btn" aria-expanded="false" aria-controls="menu" data-i18n-attr="title:menu;aria-label:menu">☰</button>
+      <div class="home-center">
+        <h1 class="logo" id="home-title" dir="ltr">Smash<span>It!</span></h1>
+        <p class="tagline" data-i18n="tagline"></p>
+        <button class="primary big" id="home-play"></button>
+        <div class="row">
+          <button class="secondary" id="home-chapters"><span aria-hidden="true">🗺️</span> <span data-i18n="chapters"></span></button>
+          <button class="secondary" id="home-shop"><span aria-hidden="true">🛒</span> <span data-i18n="shop"></span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Chapter select -->
+    <section class="screen overlay hidden" id="chapters" aria-labelledby="chapters-title">
+      <div class="card wide">
+        <header class="card-head">
+          <h2 id="chapters-title" data-i18n="chapters"></h2>
+          <button class="icon" data-close data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <div class="chapter-grid" id="chapter-grid"></div>
+      </div>
+    </section>
+
+    <!-- Shop -->
+    <section class="screen overlay hidden" id="shop" aria-labelledby="shop-title">
+      <div class="card wide shop-card">
+        <header class="card-head">
+          <h2 id="shop-title" data-i18n="shop"></h2>
+          <div class="coins-pill small"><span aria-hidden="true">⭐</span> <b id="shop-coins">0</b><span class="sr-only" data-i18n="coins"></span></div>
+          <button class="icon" data-close data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tab-foods" aria-selected="true" data-i18n="shopFoods"></button>
+          <button role="tab" id="tab-upgrades" aria-selected="false" data-i18n="shopUpgrades"></button>
+        </div>
+        <div class="shop-list" id="shop-list" role="tabpanel"></div>
+      </div>
+    </section>
+
+    <!-- Chapter intro -->
+    <section class="screen overlay hidden" id="intro" aria-labelledby="intro-title">
+      <div class="card">
+        <p class="kicker" id="intro-kicker"></p>
+        <h2 id="intro-title" data-i18n="mission"></h2>
+        <ul class="goals" id="intro-goals"></ul>
+        <p class="muted small-head" data-i18n="bugsHere"></p>
+        <div class="bug-chips" id="intro-bugs"></div>
+        <p class="tip" id="intro-tip"></p>
+        <p class="muted" id="intro-best"></p>
+        <div class="actions">
+          <button class="primary big" id="intro-go" data-i18n="go"></button>
+          <button class="secondary" id="intro-shop"><span aria-hidden="true">🛒</span> <span data-i18n="shop"></span></button>
+          <button class="link-btn" id="intro-back" data-i18n="back"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Playing -->
+    <header class="hud hidden" id="hud">
+      <div class="hud-time" id="hud-time" role="timer"><span class="hud-label" data-i18n="time"></span> <b id="time-text" dir="ltr">03:00</b></div>
+      <div class="hud-goals" id="hud-goals"></div>
+      <div class="hud-score"><b id="score-text">0</b> <span class="hud-label" data-i18n="score"></span></div>
+      <button class="icon" id="pause-btn" data-i18n-attr="aria-label:pause;title:pause">⏸</button>
+    </header>
+    <div class="combo hidden" id="combo" aria-hidden="true"><b id="combo-text"></b><i id="combo-bar"></i></div>
+    <div class="banner hidden" id="banner" aria-hidden="true"></div>
+    <div class="aim-hint hidden" id="aim-hint"><span class="hand" aria-hidden="true">👆</span> <span data-i18n="aimHint"></span></div>
+    <nav class="tray hidden" id="tray" data-i18n-attr="aria-label:tray"></nav>
+
+    <!-- Replay -->
+    <div class="replay-bar hidden" id="replay-bar">
+      <div><b data-i18n="slowMotion"></b> <span data-i18n="replayBest"></span></div>
+      <button class="secondary" id="replay-skip" data-i18n="skip"></button>
+    </div>
+
+    <!-- Results -->
+    <section class="screen overlay hidden" id="result" aria-labelledby="result-title">
+      <div class="card result-card">
+        <h2 class="result-title" id="result-title"></h2>
+        <div class="stars" id="result-stars" aria-hidden="true"></div>
+        <dl class="stats" id="result-stats"></dl>
+        <p class="lead" id="result-note"></p>
+        <div class="actions">
+          <button class="primary big" id="result-next"></button>
+          <button class="secondary" id="result-shop"><span aria-hidden="true">🛒</span> <span data-i18n="shop"></span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- The mop -->
+    <div class="mop-hint hidden" id="mop-hint">
+      <b data-i18n="mopTitle"></b>
+      <span><span data-i18n="mopHint"></span> <span class="swipe" aria-hidden="true">→</span></span>
+    </div>
+
+    <!-- Pause -->
+    <section class="screen overlay hidden" id="pause" aria-labelledby="pause-title">
+      <div class="card">
+        <h2 id="pause-title" data-i18n="paused"></h2>
+        <div class="actions column">
+          <button class="primary big" id="pause-resume" data-i18n="resume"></button>
+          <button class="secondary" id="pause-restart" data-i18n="restart"></button>
+          <button class="secondary" id="pause-quit" data-i18n="quit"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <nav class="menu hidden" id="menu" data-i18n-attr="aria-label:menu">
+      <button id="m-music" aria-pressed="true"><span aria-hidden="true">🎵</span> <span data-i18n="music"></span></button>
+      <button id="m-sfx" aria-pressed="true"><span aria-hidden="true">🔊</span> <span data-i18n="sfx"></span></button>
+      <button id="m-motion" aria-pressed="false"><span aria-hidden="true">🌙</span> <span data-i18n="lessMotion"></span></button>
+      <button id="m-battery" aria-pressed="false"><span aria-hidden="true">🔋</span> <span data-i18n="batterySaver"></span></button>
+      <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
+      <button id="m-install"><span aria-hidden="true">⤓</span> <span data-i18n="install"></span></button>
+      <hr />
+      <p class="menu-note" data-i18n="keyboardHelp"></p>
+      <button data-page="privacy"><span aria-hidden="true">🔒</span> <span data-i18n="privacy"></span></button>
+      <button data-page="terms"><span aria-hidden="true">📜</span> <span data-i18n="terms"></span></button>
+      <hr />
+      <button id="m-reset"><span aria-hidden="true">↺</span> <span data-i18n="reset"></span></button>
+      <p class="version"><span data-i18n="version"></span> <span id="app-version" dir="ltr"></span></p>
+    </nav>
+
+    <section class="screen overlay hidden" id="page" aria-labelledby="page-title">
+      <article class="card">
+        <header class="card-head">
+          <h2 id="page-title"></h2>
+          <button class="icon" data-close data-i18n-attr="aria-label:close;title:close">✕</button>
+        </header>
+        <p class="page-body" id="page-body"></p>
+      </article>
+    </section>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    <div class="update hidden" id="update" role="status">
+      <span data-i18n="updateAvailable"></span>
+      <button class="primary" id="update-now" data-i18n="updateNow"></button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

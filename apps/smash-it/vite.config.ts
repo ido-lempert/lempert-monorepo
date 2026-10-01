@@ -1,0 +1,70 @@
+import { execSync } from 'node:child_process';
+import { defineConfig, type Plugin } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
+
+/** Short commit id shown in the menu, so it's easy to tell which version is running. */
+function appVersion(): string {
+  const fromRender = process.env.RENDER_GIT_COMMIT?.slice(0, 7);
+  if (fromRender) return fromRender;
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+/**
+ * The public address, for link previews (Open Graph needs absolute URLs). Render provides it while
+ * building; SITE_URL can override it. Without either, the tags fall back to relative paths.
+ */
+const siteUrl = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+const siteUrlInHtml = (): Plugin => ({
+  name: 'site-url',
+  transformIndexHtml: (html) => html.replaceAll('%SITE_URL%', siteUrl),
+});
+
+export default defineConfig({
+  base: './',
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
+  plugins: [
+    siteUrlInHtml(),
+    VitePWA({
+      // main.ts offers an "Update" button instead of reloading mid-level.
+      registerType: 'prompt',
+      injectRegister: false,
+      includeAssets: ['icon.svg', 'apple-touch-icon.png'],
+      manifest: {
+        id: './',
+        name: 'Smash It!',
+        short_name: 'Smash It',
+        description: 'משחק רוגטקה תלת־ממדי לילדים: יורים אוכל על חרקים מצחיקים, צוברים קומבו ופותחים אוכל חדש.',
+        lang: 'he',
+        dir: 'rtl',
+        start_url: './',
+        scope: './',
+        display: 'standalone',
+        orientation: 'any',
+        background_color: '#ffb84d',
+        theme_color: '#ffb84d',
+        categories: ['games', 'kids'],
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+        ],
+      },
+      workbox: {
+        // Every model and sound is procedural, so precaching the bundle makes the whole game playable offline.
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
+        navigateFallback: 'index.html',
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+      },
+    }),
+  ],
+  // host: true exposes the dev server on the LAN for phone testing. 5175 so it can run next to the other games.
+  server: { host: true, port: 5175, allowedHosts: true },
+  preview: { host: true, port: 4175, allowedHosts: true },
+});

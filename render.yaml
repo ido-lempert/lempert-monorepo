@@ -1,7 +1,7 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec).
 # Mancala: one web service for the static build + multiplayer WebSocket on the same port.
-# Sukkah World: a static site (a PWA with no server yet).
-# Both deploy from the Blueprint's branch (main); each only rebuilds when its own files change.
+# Sukkah World and Smash It: static sites (PWAs with no server).
+# All deploy from the Blueprint's branch (main); each only rebuilds when its own files change.
 services:
   - type: web
     name: mancala
@@ -45,6 +45,30 @@ services:
     buildFilter:
       paths:
         - apps/sukkah-world/**
+        - package.json
+        - package-lock.json
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+
+  # Smash It: a static PWA (a slingshot game, single-player), a free static site like Sukkah World.
+  - type: web
+    name: smash-it
+    runtime: static
+    buildCommand: npm ci --include=dev && npm run build -w smash-it
+    staticPublishPath: apps/smash-it/dist
+    headers:
+      # The service worker and the page must never be cached, or installed apps get stuck on an old version.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+    buildFilter:
+      paths:
+        - apps/smash-it/**
         - package.json
         - package-lock.json
         - render.yaml

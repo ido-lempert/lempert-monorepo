@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#ffe58a"/>
+      <stop offset="1" stop-color="#ff9f43"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- splat -->
+  <g fill="#ff5b85" stroke="#2a1d3d" stroke-width="10" stroke-linejoin="round">
+    <path d="M300 118c22-30 58-6 46 22 30-10 54 22 30 44 34 6 32 48 0 50 20 26-6 58-34 42 0 34-44 40-56 12-20 26-60 10-50-20-34 8-52-30-24-48-30-16-14-56 18-50-8-32 34-48 52-24 4-14 12-24 18-28z"/>
+  </g>
+  <!-- ladybug, dizzy -->
+  <g transform="translate(222 300) rotate(-14)" stroke="#2a1d3d" stroke-width="10" stroke-linejoin="round">
+    <path d="M-120 20 l-34 26 M-80 52 l-24 40 M40 52 l24 40 M80 20 l34 26" fill="none" stroke-linecap="round"/>
+    <ellipse cx="-20" cy="10" rx="120" ry="92" fill="#ff3b3b"/>
+    <path d="M-20 -82 V100" fill="none"/>
+    <circle cx="-70" cy="-10" r="18" fill="#2a1d3d" stroke="none"/>
+    <circle cx="30" cy="-20" r="16" fill="#2a1d3d" stroke="none"/>
+    <circle cx="-62" cy="50" r="14" fill="#2a1d3d" stroke="none"/>
+    <circle cx="30" cy="48" r="15" fill="#2a1d3d" stroke="none"/>
+    <circle cx="-20" cy="-108" r="58" fill="#2a1d3d"/>
+    <circle cx="-44" cy="-118" r="24" fill="#fff"/>
+    <circle cx="4" cy="-118" r="24" fill="#fff"/>
+    <path d="M-52 -126 l16 16 m0 -16 l-16 16 M-4 -126 l16 16 m0 -16 l-16 16" stroke-width="7" stroke-linecap="round"/>
+    <path d="M-38 -82 q18 14 36 0" fill="none" stroke="#ff8fb1" stroke-width="7" stroke-linecap="round"/>
+  </g>
+  <!-- flying cookie -->
+  <g transform="translate(350 372)" stroke="#2a1d3d" stroke-width="10">
+    <path d="M84 -20 h44 M90 20 h50 M80 56 h34" stroke="#fff" stroke-width="14" stroke-linecap="round" opacity="0.9"/>
+    <circle r="66" fill="#e3a35c"/>
+    <circle cx="-22" cy="-20" r="11" fill="#5a2d14" stroke="none"/>
+    <circle cx="24" cy="-6" r="10" fill="#5a2d14" stroke="none"/>
+    <circle cx="-8" cy="28" r="11" fill="#5a2d14" stroke="none"/>
+    <circle cx="30" cy="34" r="8" fill="#5a2d14" stroke="none"/>
+  </g>
+  <!-- dizzy stars -->
+  <g fill="#ffd23f" stroke="#2a1d3d" stroke-width="6" stroke-linejoin="round">
+    <path d="M110 120l10 22 24 3-18 16 5 24-21-12-21 12 5-24-18-16 24-3z"/>
+    <path d="M200 78l7 15 16 2-12 11 3 16-14-8-14 8 3-16-12-11 16-2z"/>
+  </g>
+</svg>
