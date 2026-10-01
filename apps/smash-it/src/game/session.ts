@@ -36,6 +36,9 @@ export class Session {
   shots = 0;
   readonly byKind: Partial<Record<BugKind, number>> = {};
   small = 0;
+  /** The king's hits taken and whether it is down. */
+  bossHits = 0;
+  bossDown = false;
   private readonly shotPoints = new Map<number, { points: number; bugs: number }>();
 
   constructor(
@@ -84,6 +87,27 @@ export class Session {
     return { points, multiplier, chain: this.chain, mega: this.chain === MEGA };
   }
 
+  /** A hit on a king: points (with the combo), but it only counts as a bug once it's down. */
+  hitBoss(shotId: number, down: boolean): HitResult {
+    this.chain = this.clock <= this.comboUntil ? this.chain + 1 : 1;
+    this.maxChain = Math.max(this.maxChain, this.chain);
+    this.comboUntil = Math.max(this.comboUntil, this.clock + this.comboWindow);
+    const multiplier = this.multiplier;
+    const points = (down ? 1000 : BUGS.king.value) * multiplier;
+    this.score += points;
+    this.bossHits++;
+    if (down) {
+      this.bossDown = true;
+      this.hits++;
+    }
+    const s = this.shotPoints.get(shotId) ?? { points: 0, bugs: 0 };
+    s.points += points;
+    s.bugs++;
+    this.shotPoints.set(shotId, s);
+    this.bestShot = Math.max(this.bestShot, s.points);
+    return { points, multiplier, chain: this.chain, mega: this.chain === MEGA };
+  }
+
   pointsOf(shotId: number): number {
     return this.shotPoints.get(shotId)?.points ?? 0;
   }
@@ -101,6 +125,8 @@ export class Session {
         return [this.maxChain, g.n];
       case 'multi':
         return [this.maxMulti, g.n];
+      case 'boss':
+        return [this.bossDown ? 1 : 0, 1];
     }
   }
 

@@ -7,8 +7,9 @@ import { Arena, type GameEvent } from './game/arena';
 import type { Sound, Sfx } from './audio';
 import { type Effect, FOODS, type FoodId } from './game/foods';
 import type { Level } from './game/levels';
-import { type Aim, aimFromPull, dist2D, MAX_YAW, SLING, type Vec3 } from './game/physics';
-import { BUGS, hittable } from './game/bugs';
+import { type Aim, aimFromPull, dist2D, field, MAX_YAW, slingAt, type Vec3 } from './game/physics';
+import { type Bug, BUGS, hittable } from './game/bugs';
+import type { Voice } from './audio';
 import { comboWindow, guideLength, type Progress, reloadTime } from './game/progress';
 import { type StringKey, t } from './i18n';
 import type { World } from './world/world';
@@ -67,6 +68,8 @@ export class Play {
   private readonly shotHits = new Map<number, number>();
   private readonly landed = new Map<number, Vec3>();
   private misses = 0;
+  /** Walking the slingshot around the world: -1, 0 or 1. */
+  spin = 0;
 
   constructor(
     private readonly world: World,
@@ -130,7 +133,14 @@ export class Play {
     this.setAim(null);
   }
 
-  /** Arrows aim, space or Enter throws, 1–8 picks a food. */
+  /** Moves the slingshot around the world (chapters where that's allowed). */
+  turn(by: number) {
+    if (!this.level.rotate || this.ending !== null) return;
+    field.angle += by;
+    this.world.setSlingAngle(field.angle);
+  }
+
+  /** Arrows aim, Q and E walk around the world, space or Enter throws, 1–8 picks a food. */
   key(e: KeyboardEvent): boolean {
     if (!this.canAim()) return false;
     const k = this.kb;
@@ -148,6 +158,13 @@ export class Play {
       case 'ArrowDown':
         k.power = Math.max(0.05, k.power - step * 0.6);
         break;
+      case 'q':
+      case 'Q':
+      case 'e':
+      case 'E':
+        if (!this.level.rotate) return false;
+        this.turn(e.key.toLowerCase() === 'q' ? -0.12 : 0.12);
+        return true;
       case ' ':
       case 'Enter':
         if (k.on) this.fire({ yaw: k.yaw, power: k.power });
@@ -200,6 +217,7 @@ export class Play {
       this.world.frame(dt, 0);
       return false;
     }
+    if (this.spin) this.turn(this.spin * 1.3 * dt);
     this.direct(dt);
     const gameDt = dt * this.timeScale;
     const events = this.arena.update(gameDt);
@@ -311,16 +329,32 @@ export class Play {
           this.shotHits.set(e.shot.id, (this.shotHits.get(e.shot.id) ?? 0) + e.hits.length);
           this.landed.set(e.shot.id, e.point);
           for (const h of e.hits) {
+            if (h.bug.boss) continue;
             const d = BUGS[h.bug.kind];
             this.ui.tip(`bug:${d.kind}`, d.emoji, t('coachBug', { name: t(`bug_${d.kind}` as StringKey), n: d.value, about: t(`bugAbout_${d.kind}` as StringKey) }));
           }
           if (e.type === 'impact') this.sound.play(EFFECT_SOUND[e.body.piece === 'slice' ? 'slices' : e.body.food.effect]);
           if (e.hits.length && this.impact?.phase === 'approach') [this.impact.phase, this.impact.t] = ['freeze', 0];
           e.hits.forEach((h, i) => {
-            this.sound.play('squeak', s.hits + i);
+            const at = { x: h.bug.x, y: h.bug.y + 1 + (h.bug.boss ? 1 : 0), z: h.bug.z };
+            if (h.blocked) {
+              // A king in its bubble, or too heavy for this food.
+              this.sound.play('tink');
+              this.sound.voice(voiceOf(h.bug), 'hmph');
+              this.ui.popup('🛡️', at, 'cheer');
+              if (h.bug.shelled > 0) this.ui.tip('kingShell', '🫧', t('coachKingShell'));
+              else this.ui.tip('kingArmor', '🍉', t('coachKingArmor'));
+              return;
+            }
+            if (h.down) {
+              this.sound.voice(voiceOf(h.bug), 'ohno');
+              this.sound.play('fanfare');
+              this.ui.banner(t('kingDown'), 'mint', 1800);
+              this.world.cam.shake(0.5);
+            } else this.sound.voice(voiceOf(h.bug), i % 3 === 2 ? 'whee' : 'ouch', s.hits + i);
             const r = h.result;
             const text = r.multiplier > 1 ? `+${r.points} <small>×${r.multiplier}</small>` : `+${r.points}`;
-            this.ui.popup(text, { x: h.bug.x, y: h.bug.y + 1, z: h.bug.z }, h.bug.def.rare ? 'gold' : '');
+            this.ui.popup(text, at, h.bug.def.rare || h.bug.boss ? 'gold' : '');
             if (h.bug.def.rare) this.ui.banner(t('cheerRare'), '', 1200);
           });
           if (e.hits.length >= 2) {
@@ -349,6 +383,10 @@ export class Play {
           break;
         case 'escape':
           this.ui.toast(t('goldenEscaped'));
+          this.sound.voice('golden', 'giggle');
+          break;
+        case 'land':
+          this.sound.voice(voiceOf(e.bug), 'dizzy');
           break;
       }
     }
@@ -385,11 +423,17 @@ export class Play {
       if (d < best) [nearest, best] = [b, d];
     }
     if (!nearest) return;
-    const short = dist2D(at, SLING) < dist2D(nearest, SLING) - 1;
-    const long = dist2D(at, SLING) > dist2D(nearest, SLING) + 1;
+    const sling = slingAt();
+    const short = dist2D(at, sling) < dist2D(nearest, sling) - 1;
+    const long = dist2D(at, sling) > dist2D(nearest, sling) + 1;
     if (!short && !long) return;
     const key = short ? 'short' : 'long';
     const text = t(short ? 'coachShort' : 'coachLong');
     if (!this.ui.tip(`${key}1`, '💪', text)) this.ui.tip(`${key}2`, '💪', text);
   }
+}
+
+/** Whose voice a bug has (kings speak like their kind, only deeper). */
+export function voiceOf(b: Bug): Voice {
+  return b.boss ? 'king' : (b.kind as Voice);
 }

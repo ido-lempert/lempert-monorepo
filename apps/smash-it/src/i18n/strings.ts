@@ -63,6 +63,34 @@ export const he = {
   bugAbout_fly: 'הכי קטן והכי מהיר – והכי שווה!',
   bugAbout_golden: 'נדירה ובורחת מהר, אבל מאריכה את הקומבו!',
 
+  // Worlds and kings
+  world: 'עולם {n}',
+  world_garden: 'הגינה',
+  world_meadow: 'האחו',
+  world_beach: 'החוף',
+  world_autumn: 'הסתיו',
+  world_candy: 'ארץ הממתקים',
+  world_forest: 'היער',
+  world_desert: 'המדבר',
+  world_snow: 'השלג',
+  world_night: 'הלילה',
+  world_castle: 'הטירה',
+  king_ladybug: 'המלך נקודי',
+  king_ant: 'המלך נמלון',
+  king_snail: 'המלך שבלולון',
+  king_beetle: 'המלך חיפושון',
+  king_butterfly: 'המלכה פרפרית',
+  king_fly: 'המלך זמזומון',
+  goalBoss: 'לנצח את {name}',
+  kingDown: 'ניצחתם! 👑',
+  coachKing: '{name}! {n} פגיעות וזה ניצחון',
+  coachKingShell: 'בועת הגנה! תחכו שתתפוצץ ואז תזרקו',
+  coachKingArmor: 'האוכל הזה קל מדי בשבילו! תנסו משהו כבד – אבטיח או פאי',
+  coachRotate: 'חדש! אפשר להסתובב מסביב לעולם עם ⟲ ⟳',
+  coachFence: 'גדר! תסתובבו מסביב, או תזרקו משהו שעף גבוה מעליה',
+  rotateCw: 'להסתובב עם כיוון השעון',
+  rotateCcw: 'להסתובב נגד כיוון השעון',
+
   // Goals
   goalHits: 'לפגוע ב־{n} חרקים',
   goalScore: 'לצבור {n} נקודות',
@@ -111,7 +139,7 @@ export const he = {
 
   // The mop
   mopTitle: 'זמן לנקות!',
-  mopHint: 'תגררו את המגב לכיור',
+  mopHint: 'תגררו את המגב ותנקו הכול',
 
   // Shop
   shopFoods: 'אוכל',

@@ -4,7 +4,7 @@
  */
 import { BUGS } from './game/bugs';
 import { areaRank, FOOD_ORDER, FOODS, type FoodId } from './game/foods';
-import { type Goal, type Level, LEVELS } from './game/levels';
+import { type Goal, type Level, levelById, LEVELS, WORLDS } from './game/levels';
 import { type Progress, shopOpen, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice, upgradesOpen } from './game/progress';
 import type { Session } from './game/session';
 import { type StringKey, t } from './i18n';
@@ -25,8 +25,15 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<
 
 export const foodName = (id: FoodId) => t(`food_${id}` as StringKey);
 
-export function goalText(g: Goal): string {
+/** "מלך הנמלים" and so on. */
+export const kingName = (level: Level) => (level.boss ? t(`king_${level.boss.look}` as StringKey) : '');
+
+export const worldName = (world: number) => t(`world_${WORLDS[world - 1].theme}` as StringKey);
+
+export function goalText(g: Goal, level?: Level): string {
   switch (g.kind) {
+    case 'boss':
+      return t('goalBoss', { name: level ? kingName(level) : '' });
     case 'hits':
       return t('goalHits', { n: g.n });
     case 'score':
@@ -42,6 +49,8 @@ export function goalText(g: Goal): string {
 
 function goalIcon(g: Goal): string {
   switch (g.kind) {
+    case 'boss':
+      return '👑';
     case 'hits':
       return '🎯';
     case 'score':
@@ -56,40 +65,59 @@ function goalIcon(g: Goal): string {
 }
 
 /** The goal pills at the top while playing. */
-export function renderHudGoals(level: Level, s: Session) {
+export function renderHudGoals(level: Level, s: Session, king?: { hp: number; max: number }) {
   const box = $('hud-goals');
   if (box.childElementCount !== level.goals.length) {
-    box.replaceChildren(...level.goals.map((g) => el('div', { title: goalText(g), 'aria-label': goalText(g) })));
+    box.replaceChildren(...level.goals.map((g) => el('div', { title: goalText(g, level), 'aria-label': goalText(g, level) })));
   }
   level.goals.forEach((g, i) => {
     const [have, need] = s.progress(g);
     const done = have >= need;
     const pill = box.children[i] as HTMLElement;
     const x = g.kind === 'combo' ? '×' : '';
-    const text = `${goalIcon(g)} ${done ? '✓' : `${x}${num(Math.min(have, need))} / ${x}${num(need)}`}`;
-    if (pill.textContent !== text) {
-      pill.replaceChildren(el('span', { 'aria-hidden': 'true' }, goalIcon(g)), ' ', el('b', { dir: 'ltr' }, done ? '✓' : `${x}${num(Math.min(have, need))} / ${x}${num(need)}`));
+    let value = done ? '✓' : `${x}${num(Math.min(have, need))} / ${x}${num(need)}`;
+    // A king's hearts.
+    if (g.kind === 'boss' && !done && king) value = king.max <= 8 ? '❤️'.repeat(Math.max(0, king.hp)) + '🤍'.repeat(king.max - Math.max(0, king.hp)) : `❤️ ${king.hp}/${king.max}`;
+    if (pill.dataset.value !== value) {
+      pill.dataset.value = value;
+      pill.replaceChildren(el('span', { 'aria-hidden': 'true' }, goalIcon(g)), ' ', el('b', { dir: 'ltr' }, value));
       pill.classList.toggle('done', done);
+      pill.classList.toggle('hearts', g.kind === 'boss');
     }
   });
 }
 
+/** Chapters by world: every world reached so far, and a peek at the next one. */
 export function renderChapters(p: Progress, onPick: (id: number) => void) {
-  $('chapter-grid').replaceChildren(
-    ...LEVELS.map((l) => {
-      const open = l.id <= p.unlocked;
-      const stars = p.stars[l.id] ?? 0;
-      const b = el(
-        'button',
-        { 'aria-label': `${t('chapter', { n: l.id })}${open ? '' : `, ${t('locked')}`}` },
-        el('span', {}, open ? String(l.id) : '🔒'),
-        el('small', { 'aria-hidden': 'true' }, open ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : ''),
-      );
-      b.disabled = !open;
-      b.addEventListener('click', () => onPick(l.id));
-      return b;
-    }),
-  );
+  const lastWorld = Math.min(WORLDS.length, levelById(p.unlocked).world + 1);
+  const sections: HTMLElement[] = [];
+  for (const w of WORLDS.slice(0, lastWorld)) {
+    const levels = LEVELS.filter((l) => l.world === w.id);
+    const reached = levels[0].id <= p.unlocked;
+    sections.push(
+      el('h3', { class: 'world-head' }, `${t('world', { n: w.id })} · ${worldName(w.id)}${reached ? '' : ' 🔒'}`),
+      el(
+        'div',
+        { class: 'chapter-grid' },
+        ...levels.map((l) => {
+          const open = l.id <= p.unlocked;
+          const stars = p.stars[l.id] ?? 0;
+          const b = el(
+            'button',
+            { class: l.boss ? 'king' : '', 'aria-label': `${t('chapter', { n: l.id })}${l.boss ? `, ${kingName(l)}` : ''}${open ? '' : `, ${t('locked')}`}` },
+            el('span', {}, open ? (l.boss ? `👑 ${l.id}` : String(l.id)) : '🔒'),
+            el('small', { 'aria-hidden': 'true' }, open ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : ''),
+          );
+          b.disabled = !open;
+          b.addEventListener('click', () => onPick(l.id));
+          return b;
+        }),
+      ),
+    );
+  }
+  $('chapter-list').replaceChildren(...sections);
+  // Open at the newest chapter.
+  requestAnimationFrame(() => $('chapter-list').querySelector<HTMLElement>(`button:not([disabled]):last-of-type`)?.scrollIntoView({ block: 'center' }));
 }
 
 function bars(label: string, n: number) {
@@ -159,8 +187,9 @@ export function renderShop(p: Progress, tab: 'foods' | 'upgrades', a: ShopAction
 }
 
 export function renderIntro(p: Progress, level: Level) {
-  $('intro-kicker').textContent = `${t('chapter', { n: level.id })} · ${t('timeLimit', { t: clock(level.time) })}`;
-  $('intro-goals').replaceChildren(...level.goals.map((g) => el('li', {}, `${goalIcon(g)} ${goalText(g)}`)));
+  $('intro-kicker').textContent = `${t('world', { n: level.world })} · ${worldName(level.world)} · ${t('chapter', { n: level.id })}`;
+  $('intro-title').textContent = level.boss ? kingName(level) : t('mission');
+  $('intro-goals').replaceChildren(...level.goals.map((g) => el('li', {}, `${goalIcon(g)} ${goalText(g, level)}`)));
   $('intro-shop').classList.toggle('hidden', !shopOpen(p));
   const best = p.best[level.id];
   $('intro-best').textContent = best ? t('best', { n: num(best) }) : '';

@@ -3,10 +3,10 @@
  * rendering): `update` advances it and returns what happened, and the world draws the current state and
  * plays effects for the events. The replay builds a second, scripted Arena from recorded shots.
  */
-import { active, type Bug, BUGS, type BugKind, hittable, knock, makeBug, moveBug, type Obstacle } from './bugs';
+import { active, type BossDef, type Bug, BUGS, type BugKind, footprint, hittable, knock, makeBug, moveBug, type Obstacle } from './bugs';
 import { type Food, FOODS, type FoodId } from './foods';
 import type { Level } from './levels';
-import { COUNTER_Y, DISC_RADIUS, groundAt, launchVelocity, rangeFor, SLING, SURFACE_Y, type Vec3 } from './physics';
+import { COUNTER_Y, field, groundAt, launchVelocity, rangeFor, setField, slingAt, SURFACE_Y, type Vec3 } from './physics';
 import { makeRng, type Rng, weighted } from './rng';
 import { type HitResult, Session } from './session';
 
@@ -52,12 +52,16 @@ export interface ShotRecord {
   food: FoodId;
   origin: Vec3;
   velocity: Vec3;
-  hits: { bugId: number; kind: BugKind; after: number; age: number; x: number; y: number; z: number; vx: number; vz: number }[];
+  hits: { bugId: number; kind: BugKind; after: number; age: number; x: number; y: number; z: number; vx: number; vz: number; boss?: BossDef; hp?: number }[];
 }
 
 export interface BugHit {
   bug: Bug;
   result: HitResult;
+  /** A king that took no damage (in its shell, or the food was too light). */
+  blocked?: boolean;
+  /** A king that went down. */
+  down?: boolean;
 }
 
 export type GameEvent =
@@ -73,7 +77,9 @@ export type GameEvent =
   | { type: 'combo'; chain: number; mega: boolean }
   /** A rare bug ran away. */
   | { type: 'escape'; bug: Bug }
-  | { type: 'hide'; bug: Bug };
+  | { type: 'hide'; bug: Bug }
+  /** A thrown bug came down, dizzy. */
+  | { type: 'land'; bug: Bug };
 
 export interface ArenaOptions {
   seed?: number;
@@ -110,6 +116,13 @@ export class Arena {
     this.scripted = !!o.scripted;
     this.groupIn = (level.groups ?? []).map((g) => Math.min(6, g.every * 0.4));
     this.rareIn = level.rareEvery ?? Infinity;
+    setField(level.radius);
+    if (level.boss && !this.scripted) this.addBug('king', 0, -level.radius * 0.3, 0, level.boss).state = 'walk';
+  }
+
+  /** The king, while there is one standing. */
+  get king(): Bug | undefined {
+    return this.bugs.find((b) => b.boss && b.state !== 'gone');
   }
 
   /** Bugs still running about (not hit). */
@@ -138,6 +151,7 @@ export class Arena {
       moveBug(b, dt, this.rng, { obstacles: this.obstacles, pace: this.level.pace });
       if (b.state === 'hidden' && was !== 'hidden') events.push({ type: 'hide', bug: b });
       if (b.state === 'gone' && was === 'leaving') events.push({ type: 'escape', bug: b });
+      if (b.state === 'dazed' && was === 'knocked') events.push({ type: 'land', bug: b });
       // A rare bug only stays for a while.
       if (b.def.rare && b.state === 'walk' && b.age > 9 && !b.script) {
         b.state = 'leaving';
@@ -163,12 +177,25 @@ export class Arena {
       this.groupIn[i] -= dt;
       if (this.groupIn[i] > 0) return;
       this.groupIn[i] = g.every;
-      for (const bug of this.spawnGroup(g.kind, g.count, g.formation)) events.push({ type: 'spawn', bug });
+      for (const bug of this.spawnGroup(g.kind, g.count, g.formation, g.at)) events.push({ type: 'spawn', bug });
     });
     this.rareIn -= dt;
     if (this.rareIn <= 0) {
       this.rareIn = lv.rareEvery ?? Infinity;
       events.push({ type: 'spawn', bug: this.spawnAtEdge('golden') });
+    }
+    // Kings call in helpers.
+    for (const k of this.bugs) {
+      const s = k.boss?.summon;
+      if (!s || !hittable(k)) continue;
+      k.summonIn -= dt;
+      if (k.summonIn > 0) continue;
+      k.summonIn = s.every;
+      for (let i = 0; i < s.count && this.activeBugs < lv.max + 5; i++) {
+        const a = (i / s.count) * Math.PI * 2 + this.rng();
+        const b = this.addBug(s.kind, k.x + Math.sin(a) * (k.def.radius + 0.8), k.z + Math.cos(a) * (k.def.radius + 0.8), a);
+        events.push({ type: 'spawn', bug: b });
+      }
     }
     // Keep the disc from filling up with dizzy bugs.
     const dazed = this.bugs.filter((b) => b.state === 'dazed');
@@ -177,29 +204,38 @@ export class Arena {
 
   /** Spawns a bug over the edge, facing roughly into the middle. Avoids the edge nearest the slingshot. */
   spawnAtEdge(kind: BugKind, angle?: number): Bug {
-    // Angles measured from -z (the far side): ±150° keeps clear of the near edge.
-    const a = angle ?? (this.rng() - 0.5) * ((300 * Math.PI) / 180);
-    const r = DISC_RADIUS - 0.5;
+    // Angles measured from the side opposite the slingshot: ±150° keeps clear of the near edge.
+    const a = (angle ?? (this.rng() - 0.5) * ((300 * Math.PI) / 180)) - field.angle;
+    const r = field.radius - 0.5;
     const x = Math.sin(a) * r;
     const z = -Math.cos(a) * r;
     return this.addBug(kind, x, z, Math.atan2(-x, -z) + (this.rng() - 0.5) * 1.2);
   }
 
-  addBug(kind: BugKind, x: number, z: number, heading: number): Bug {
-    const b = makeBug(this.nextId++, kind, x, z, heading, this.rng);
+  addBug(kind: BugKind, x: number, z: number, heading: number, boss?: BossDef): Bug {
+    const b = makeBug(this.nextId++, kind, x, z, heading, this.rng, boss);
     this.bugs.push(b);
     return b;
   }
 
-  spawnGroup(kind: BugKind, count: number, formation: 'line' | 'cluster'): Bug[] {
+  spawnGroup(kind: BugKind, count: number, formation: 'line' | 'cluster' | 'guard', at?: { x: number; z: number }): Bug[] {
     const out: Bug[] = [];
-    if (formation === 'line') {
+    if (formation === 'guard' && at) {
+      // A crowd that stays in its spot behind a fence.
+      for (let i = 0; i < count; i++) {
+        const ang = (i / count) * Math.PI * 2;
+        const b = this.addBug(kind, at.x + Math.cos(ang) * 0.9, at.z + Math.sin(ang) * 0.9, ang);
+        b.state = 'walk';
+        b.home = { x: at.x, z: at.z, r: 1.3 };
+        out.push(b);
+      }
+    } else if (formation === 'line') {
       const radius = 3.4 + this.rng() * 2;
       const dir = this.rng() < 0.5 ? 1 : -1;
       const start = this.rng() * Math.PI * 2;
       for (let i = 0; i < count; i++) {
         const angle = start - dir * i * (0.95 / radius);
-        const b = this.addBug(kind, Math.cos(angle) * DISC_RADIUS * 0.95, Math.sin(angle) * DISC_RADIUS * 0.95, 0);
+        const b = this.addBug(kind, Math.cos(angle) * field.radius * 0.95, Math.sin(angle) * field.radius * 0.95, 0);
         b.march = { radius, angle, dir };
         out.push(b);
       }
@@ -224,7 +260,7 @@ export class Arena {
   /** Throws `food` with a slingshot aim (yaw and pull power). */
   fire(foodId: FoodId, yaw: number, power: number): Shot {
     const food = FOODS[foodId];
-    return this.launch(food, { ...SLING }, launchVelocity(yaw, rangeFor(power), food.angle, food.gravity));
+    return this.launch(food, slingAt(), launchVelocity(yaw, rangeFor(power), food.angle, food.gravity));
   }
 
   launch(food: Food, origin: Vec3, velocity: Vec3, shotId?: number): Shot {
@@ -280,11 +316,10 @@ export class Arena {
     );
     if (target) return this.impact(shot, b, { x: b.x, y: b.y, z: b.z }, events, true);
 
-    // Into a mushroom or a cup?
+    // Into a mushroom, a cup, a sugar cube or a fence?
     for (const o of this.obstacles) {
       const top = groundAt(o.x, o.z) + o.height;
-      const d = Math.hypot(b.x - o.x, b.z - o.z);
-      if (d < o.radius + b.radius * 0.5 && b.y < top && b.y > groundAt(o.x, o.z)) {
+      if (footprint(o, b.x, b.z).d < b.radius * 0.5 && b.y < top && b.y > groundAt(o.x, o.z)) {
         return this.impact(shot, b, { x: b.x, y: Math.min(b.y, top), z: b.z }, events, false);
       }
     }
@@ -350,23 +385,21 @@ export class Arena {
     b.vz = (b.vz / n) * b.rollSpeed * (0.25 + 0.75 * k);
     b.x += b.vx * dt;
     b.z += b.vz * dt;
-    // Bump off mushrooms and cups.
+    // Bump off obstacles.
     for (const o of this.obstacles) {
-      const dx = b.x - o.x;
-      const dz = b.z - o.z;
-      const d = Math.hypot(dx, dz);
-      const min = o.radius * (o.kind === 'mushroom' ? 0.45 : 1) + b.radius;
-      if (d < min && d > 0) {
-        const nx = dx / d;
-        const nz = dz / d;
-        const dot = b.vx * nx + b.vz * nz;
-        b.vx -= 2 * dot * nx;
-        b.vz -= 2 * dot * nz;
-        b.x = o.x + nx * min;
-        b.z = o.z + nz * min;
+      const f = footprint(o, b.x, b.z, true);
+      const gap = f.d - b.radius;
+      if (gap < 0) {
+        const dot = b.vx * f.nx + b.vz * f.nz;
+        if (dot < 0) {
+          b.vx -= 2 * dot * f.nx;
+          b.vz -= 2 * dot * f.nz;
+        }
+        b.x -= f.nx * gap;
+        b.z -= f.nz * gap;
       }
     }
-    if (Math.hypot(b.x, b.z) > DISC_RADIUS) {
+    if (Math.hypot(b.x, b.z) > field.radius) {
       // Rolled off the edge.
       b.mode = 'fly';
       b.vy = 0;
@@ -406,14 +439,38 @@ export class Arena {
     if (rec) {
       const vx = Math.sin(bug.heading) * bug.speed;
       const vz = Math.cos(bug.heading) * bug.speed;
-      rec.hits.push({ bugId: bug.id, kind: bug.kind, after: this.session.clock - shot.at, age: bug.age, x: bug.x, y: bug.y, z: bug.z, vx, vz });
+      rec.hits.push({ bugId: bug.id, kind: bug.kind, after: this.session.clock - shot.at, age: bug.age, x: bug.x, y: bug.y, z: bug.z, vx, vz, boss: bug.boss, hp: bug.hp });
     }
     const n = Math.hypot(b.vx, b.vz) || 1;
-    knock(bug, from, { x: b.vx / n, z: b.vz / n }, b.food.knock, this.rng);
+    const dir = { x: b.vx / n, z: b.vz / n };
+    if (bug.boss) return this.hitKing(shot, b, bug, from, dir);
+    knock(bug, from, dir, b.food.knock, this.rng);
     const result = this.scripted
       ? { points: bug.def.value, multiplier: 1, chain: 1, mega: false }
       : this.session.hit(bug.kind, shot.id);
     return { bug, result };
+  }
+
+  /** Kings stagger back and lose a heart, unless they're in their shell or the food is too light. */
+  private hitKing(shot: Shot, b: Body, bug: Bug, from: { x: number; z: number }, dir: { x: number; z: number }): BugHit {
+    const boss = bug.boss!;
+    const none = { points: 0, multiplier: 1, chain: this.session.chain, mega: false };
+    if (bug.shelled > 0 || (boss.armor && b.food.knock < boss.armor)) return { bug, result: none, blocked: true };
+    bug.hp--;
+    const down = bug.hp <= 0;
+    if (down) knock(bug, from, dir, 2, this.rng);
+    else {
+      let dx = bug.x - from.x;
+      let dz = bug.z - from.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.1) [dx, dz] = [dir.x, dir.z];
+      const k = 3.5 / (Math.hypot(dx, dz) || 1);
+      bug.vx = dx * k;
+      bug.vz = dz * k;
+      bug.hurt = 0.6;
+    }
+    const result = this.scripted ? { ...none, points: BUGS.king.value } : this.session.hitBoss(shot.id, down);
+    return { bug, result, down };
   }
 
   private comboEvent(hits: BugHit[], events: GameEvent[]) {

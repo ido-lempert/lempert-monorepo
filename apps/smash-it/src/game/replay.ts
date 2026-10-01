@@ -19,7 +19,8 @@ export function bestShots(arena: Arena, count = 3): ShotRecord[] {
 export function stage(level: Level, rec: ShotRecord): Arena {
   const arena = new Arena({ ...level, obstacles: level.obstacles }, { scripted: true, seed: rec.shotId });
   for (const h of rec.hits) {
-    const b = arena.addBug(h.kind, h.x - h.vx * h.after, h.z - h.vz * h.after, Math.atan2(h.vx, h.vz));
+    const b = arena.addBug(h.kind, h.x - h.vx * h.after, h.z - h.vz * h.after, Math.atan2(h.vx, h.vz), h.boss);
+    if (h.hp) b.hp = h.hp;
     b.state = 'walk';
     b.y = h.y;
     b.age = h.age - h.after;
