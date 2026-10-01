@@ -109,6 +109,15 @@ export function tursoStore(url: string, authToken?: string): ScoreStore {
 
 /** Turso when TURSO_DATABASE_URL is set (with TURSO_AUTH_TOKEN), otherwise the JSON file. */
 export function storeFromEnv(env: NodeJS.ProcessEnv, defaultFile: string): ScoreStore {
-  if (env.TURSO_DATABASE_URL) return tursoStore(env.TURSO_DATABASE_URL, env.TURSO_AUTH_TOKEN);
+  // Values pasted into a dashboard often carry a stray newline or spaces.
+  const url = env.TURSO_DATABASE_URL?.trim();
+  if (url) {
+    try {
+      return tursoStore(url, env.TURSO_AUTH_TOKEN?.trim() || undefined);
+    } catch (err) {
+      // A broken address shouldn't take the game down: keep the boards in the file until it's fixed.
+      console.error('Invalid TURSO_DATABASE_URL; keeping the leaderboards in a file instead', err);
+    }
+  }
   return fileStore(env.SCORES_FILE ?? defaultFile);
 }
