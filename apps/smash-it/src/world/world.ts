@@ -6,12 +6,13 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Arena, Body, GameEvent } from '../game/arena';
-import type { Bug } from '../game/bugs';
+import { type Bug, footprint } from '../game/bugs';
 import { FOODS, type FoodId } from '../game/foods';
-import { type Level, LEVELS, worldOf } from '../game/levels';
-import { type Aim, aimDir, field, groundAt, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
-import { Effects } from './effects';
-import { backdrop, blobTexture, dotTexture, grassField, initialQuality, type Quality, setWindTime } from './look';
+import { type Level, LEVELS } from '../game/levels';
+import type { SkinId } from '../game/progress';
+import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
+import { Effects, SMEAR } from './effects';
+import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setWindTime } from './look';
 import { Post } from './post';
 import { bugModel, type BugModel } from './bugs3d';
 import { disc, foodModel, kitchen, mop, obstacleModel, slingshot, stretchBand } from './models';
@@ -37,6 +38,8 @@ interface BugView {
   swept: number;
   /** Seconds until the next blink. */
   blink: number;
+  /** Food smeared on it so far. */
+  goo: number;
 }
 
 interface BodyView {
@@ -48,6 +51,7 @@ interface BodyView {
 }
 
 const v3 = (p: Vec3) => new THREE.Vector3(p.x, p.y, p.z);
+const gooGeo = new THREE.SphereGeometry(1, 16, 12);
 
 /** Camera rig: eases towards where it is asked to be, plus a gentle shake. */
 export class CameraRig {
@@ -112,7 +116,7 @@ export class World {
   private readonly bugLayer = new THREE.Group();
   private readonly foodLayer = new THREE.Group();
   private readonly obstacleLayer = new THREE.Group();
-  private readonly sling = slingshot();
+  private sling = slingshot();
   private pouchFood: THREE.Group | null = null;
   private pouchFoodId: FoodId | null = null;
   private recoil = 0;
@@ -237,10 +241,10 @@ export class World {
       this.scene.remove(this.grass);
       this.grass.geometry.dispose();
     }
-    const look = THEMES[worldOf(this.level).theme].blades;
+    const look = THEMES[this.level.theme].blades;
     const area = (this.level.radius / 7.5) ** 2;
-    const count = Math.round((this.quality === 'high' ? 8000 : 3000) * area * look.amount);
-    this.grass = count > 0 ? grassField(this.level.radius, count, look) : null;
+    const count = Math.round((this.quality === 'high' ? 14000 : 5000) * area * look.amount);
+    this.grass = count > 0 ? grassField(this.level.radius, count, look, (x, z) => onDisc(x, z, 0.3)) : null;
     if (this.grass) this.scene.add(this.grass);
   }
 
@@ -248,16 +252,17 @@ export class World {
 
   /** Dresses the world for a chapter: its theme and size, obstacles, and the light (night is darker). */
   setLevel(level: Level) {
-    const theme = worldOf(level).theme;
-    const changed = !this.ground || worldOf(this.level).theme !== theme || this.level.radius !== level.radius;
+    const theme = level.theme;
+    const changed = !this.ground || this.level.theme !== theme || this.level.radius !== level.radius || this.level.shape !== level.shape;
     this.level = level;
     field.radius = level.radius;
+    field.shape = level.shape;
     this.obstacleLayer.clear();
     for (const o of level.obstacles) this.obstacleLayer.add(obstacleModel(o));
     this.setSlingAngle(field.angle);
     if (!changed) return;
     if (this.ground) this.scene.remove(this.ground);
-    this.ground = disc(theme, level.radius);
+    this.ground = disc(theme, level.radius, level.shape);
     this.scene.add(this.ground);
     this.plantGrass();
     this.scene.remove(this.mopModel);
@@ -273,6 +278,23 @@ export class World {
     u.top.value.set(night ? '#1a1f4a' : '#7fd0ff');
     u.middle.value.set(night ? '#3a2f6a' : '#ffe2b0');
     u.bottom.value.set(night ? '#5a3f6a' : '#ffc58a');
+  }
+
+  /** Repaints the slingshot (colours unlocked with stars). */
+  setSkin(skin: SkinId) {
+    const old = this.sling;
+    this.sling = slingshot(skin);
+    this.sling.root.position.copy(old.root.position);
+    this.sling.root.rotation.copy(old.root.rotation);
+    if (this.pouchFood) this.sling.root.add(this.pouchFood);
+    this.scene.remove(old.root);
+    this.scene.add(this.sling.root);
+  }
+
+  /** Clears every last crumb, splat and dizzy bug (after the mop). */
+  cleanUp() {
+    this.effects.clear();
+    for (const v of this.bugViews.values()) v.bug.state = 'gone';
   }
 
   /** Moves the slingshot around the world (it always faces the middle). */
@@ -405,20 +427,56 @@ export class World {
 
   /** A close-up of a spot, from the side of the flight. */
   impactCamera(at: Vec3, from: { x: number; z: number }, rate = 7, distance = 5) {
-    const side = new THREE.Vector3(-from.z, 0, from.x).normalize();
-    const pos = v3(at)
-      .addScaledVector(side, distance * 0.75)
-      .add(new THREE.Vector3(from.x * -distance * 0.6, distance * 0.42 + 0.6, from.z * -distance * 0.6));
-    pos.y = Math.max(pos.y, 1.2);
-    this.cam.want(pos, v3(at).add(new THREE.Vector3(0, 0.5, 0)), rate, 45);
+    // A narrow phone screen needs to step back to keep the whole bug (and its flight) in view.
+    distance *= this.closeUpScale;
+    const target = v3(at).add(new THREE.Vector3(0, 0.5, 0));
+    const place = (sideSign: number, lift: number) => {
+      const side = new THREE.Vector3(-from.z, 0, from.x).normalize().multiplyScalar(sideSign);
+      const pos = v3(at)
+        .addScaledVector(side, distance * 0.75)
+        .add(new THREE.Vector3(from.x * -distance * 0.6, distance * (0.42 + lift) + 0.6, from.z * -distance * 0.6));
+      pos.y = Math.max(pos.y, 1.2);
+      return pos;
+    };
+    // Pick the side where no mushroom, cup or fence is in the way; failing that, look from higher up.
+    const pick = this.lastSide ?? 1;
+    let pos = place(pick, 0);
+    if (this.blocked(pos, target)) {
+      const other = place(-pick, 0);
+      if (!this.blocked(other, target)) {
+        pos = other;
+        this.lastSide = -pick;
+      } else pos = place(pick, 0.9);
+    } else this.lastSide = pick;
+    this.cam.want(pos, target, rate, 45);
     this.post.setFocus(1.6, [0.2, 0.78]);
   }
+
+  private lastSide: number | null = null;
+
+  /** Whether an obstacle stands between the camera and what it looks at. */
+  private blocked(from: THREE.Vector3, to: THREE.Vector3): boolean {
+    for (const o of this.level.obstacles) {
+      for (let k = 0.15; k < 0.95; k += 0.1) {
+        const p = from.clone().lerp(to, k);
+        if (p.y > o.height + 0.3) continue;
+        if (footprint(o, p.x, p.z).d < 0.3) return true;
+      }
+    }
+    return false;
+  }
+
 
   /** Looking at a spot from an angle around it (the replay's cuts). */
   orbitCamera(at: Vec3, angle: number, distance: number, height: number, rate = 3) {
     const pos = new THREE.Vector3(at.x + Math.sin(angle) * distance, at.y + height, at.z + Math.cos(angle) * distance);
     this.cam.want(pos, v3(at).add(new THREE.Vector3(0, 0.4, 0)), rate, 48);
     this.post.setFocus(1.6, [0.2, 0.78]);
+  }
+
+  /** How much further a close-up must be on this screen (phones in portrait are narrow). */
+  get closeUpScale(): number {
+    return Math.max(1, 1 / Math.min(1, this.camera.aspect));
   }
 
   /** High above the whole world (the mop and the results). */
@@ -457,11 +515,17 @@ export class World {
           const view = this.bodyViews.get(e.body.id);
           if (view) view.wobble = 1;
           this.cam.shake(e.hits.length ? 0.25 + e.body.food.knock * 0.1 : 0.08);
-          for (const h of e.hits) this.effects.sparkle(h.bug, 6, h.bug.def.rare ? '#ffd23f' : '#ffffff', 0.7);
+          for (const h of e.hits) {
+            this.effects.sparkle(h.bug, 6, h.bug.def.rare ? '#ffd23f' : '#ffffff', 0.7);
+            if (!h.blocked) this.smearBug(h.bug, SMEAR[effect]);
+          }
           break;
         }
         case 'roll-hit':
-          for (const h of e.hits) this.effects.sparkle(h.bug, 6, '#ffffff', 0.7);
+          for (const h of e.hits) {
+            this.effects.sparkle(h.bug, 6, '#ffffff', 0.7);
+            this.smearBug(h.bug, SMEAR[e.body.piece === 'ring' ? 'rings' : e.body.food.effect]);
+          }
           this.cam.shake(0.15);
           break;
         case 'stop':
@@ -474,6 +538,31 @@ export class World {
           this.effects.sparkle(e.bug, 10, '#ffd23f');
           break;
       }
+    }
+  }
+
+  /** Food stuck on a bug that was hit: a glossy blob on its back and a splodge on its face, which stay. */
+  private smearBug(b: Bug, color: string) {
+    const v = this.bugViews.get(b.id);
+    if (!v || v.goo >= 3) return;
+    v.goo++;
+    const m = mat(color, { rough: 0.25, clearcoat: 1, rim: 0.15 });
+    const spots: [number, number, number, number][] = [
+      [0.05, 0.95, -0.25, 0.32],
+      [-0.12, 0.92, 0.55, 0.2],
+      [0.2, 0.7, -0.55, 0.22],
+    ];
+    const [x, y, z, r] = spots[v.goo - 1];
+    for (const p of v.model.parts) {
+      const blob = new THREE.Mesh(gooGeo, m);
+      blob.position.set(x, y, z);
+      blob.scale.set(r * 1.2, r * 0.55, r);
+      blob.rotation.y = v.goo;
+      // A drip running down.
+      const drip = new THREE.Mesh(gooGeo, m);
+      drip.position.set(x + r * 0.4, y - r * 0.5, z + r * 0.3);
+      drip.scale.set(r * 0.3, r * 0.6, r * 0.3);
+      p.body.add(blob, drip);
     }
   }
 
@@ -547,7 +636,7 @@ export class World {
       let v = this.bugViews.get(b.id);
       if (!v) {
         const model = bugModel(b.kind, b.boss);
-        v = { bug: b, model, shadow: blob(), scale: b.def.radius * 1.55, squash: 0, swept: 0, blink: 1 + Math.random() * 3 };
+        v = { bug: b, model, shadow: blob(), scale: b.def.radius * 1.55, squash: 0, swept: 0, blink: 1 + Math.random() * 3, goo: 0 };
         model.root.scale.setScalar(0.01);
         this.bugLayer.add(model.root, v.shadow);
         this.bugViews.set(b.id, v);
@@ -714,8 +803,9 @@ export class World {
       root.scale.setScalar(base);
       return;
     }
-    // Stretch along the flight and spin.
+    // Stretch along the flight and spin, with a puffy trail behind.
     const speed = Math.hypot(b.vx, b.vy, b.vz);
+    if (b.mode === 'fly') this.effects.trail(b, b.piece === 'slice' ? 'slices' : b.food.effect, dt);
     root.lookAt(b.x + b.vx, b.y + b.vy, b.z + b.vz);
     const stretch = 1 + Math.min(0.35, speed * 0.012);
     if (v.wobble > 0) {

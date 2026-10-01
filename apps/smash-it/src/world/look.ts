@@ -337,13 +337,33 @@ export function setWindTime(t: number) {
  * Thousands of little grass blades in one draw call, swaying in the wind, darker at the root and sunlit
  * at the tip. `radius`: the circle to fill; `count` depends on quality.
  */
-export function grassField(radius: number, count: number, palette: { h: [number, number]; s: [number, number]; l: [number, number]; height: number }): THREE.InstancedMesh {
-  // A blade: a thin, slightly bent triangle strip.
+export function grassField(
+  radius: number,
+  count: number,
+  palette: { h: [number, number]; s: [number, number]; l: [number, number]; height: number },
+  inside: (x: number, z: number) => boolean,
+): THREE.InstancedMesh {
+  // A blade: long, thin and tapering, gently curved, in four segments.
   const geo = new THREE.BufferGeometry();
-  const w = 0.07;
-  const pos = [-w, 0, 0, w, 0, 0, -w * 0.6, 0.5, 0.02, w * 0.6, 0.5, 0.02, 0, 1, 0.08];
+  const w = 0.022;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const segs = 4;
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const half = w * (1 - t * 0.85);
+    const bend = t * t * 0.18;
+    pos.push(-half, t, bend, half, t, bend);
+    if (i < segs) {
+      const k = i * 2;
+      idx.push(k, k + 1, k + 2, k + 2, k + 1, k + 3);
+    }
+  }
+  // A sharp tip.
+  pos.push(0, 1.08, 0.2);
+  idx.push(segs * 2, segs * 2 + 1, segs * 2 + 2);
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setIndex([0, 1, 2, 2, 1, 3, 2, 3, 4]);
+  geo.setIndex(idx);
   geo.computeVertexNormals();
   const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.75, side: THREE.DoubleSide });
   m.onBeforeCompile = (shader) => {
@@ -356,8 +376,8 @@ export function grassField(radius: number, count: number, palette: { h: [number,
         vH = position.y;
         vec4 root = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         float bend = position.y * position.y;
-        transformed.x += sin(windTime * 1.7 + root.x * 0.6 + root.z * 0.4) * bend * 0.12;
-        transformed.z += cos(windTime * 1.3 + root.z * 0.5) * bend * 0.06;`,
+        transformed.x += sin(windTime * 1.7 + root.x * 0.6 + root.z * 0.4) * bend * 0.08;
+        transformed.z += cos(windTime * 1.3 + root.z * 0.5) * bend * 0.05;`,
       );
     // Normals point up so blades light like the lawn rather than flickering paper.
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);');
@@ -372,12 +392,20 @@ export function grassField(radius: number, count: number, palette: { h: [number,
   let seed = 11;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   for (let i = 0; i < count; i++) {
-    const r = Math.sqrt(rnd()) * (radius - 0.3);
-    const a = rnd() * Math.PI * 2;
-    d.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
-    d.rotation.set(0, rnd() * Math.PI, (rnd() - 0.5) * 0.4);
-    const h = (0.09 + rnd() * 0.14) * palette.height;
-    d.scale.set(0.8 + rnd() * 0.6, h, 1);
+    let x = 0;
+    let z = 0;
+    for (let tries = 0; tries < 8; tries++) {
+      const r = Math.sqrt(rnd()) * (radius - 0.25);
+      const a = rnd() * Math.PI * 2;
+      x = Math.cos(a) * r;
+      z = Math.sin(a) * r;
+      if (inside(x, z)) break;
+      x = z = 0;
+    }
+    d.position.set(x, 0, z);
+    d.rotation.set(0, rnd() * Math.PI, (rnd() - 0.5) * 0.35);
+    const h = (0.22 + rnd() * 0.3) * palette.height;
+    d.scale.set(0.8 + rnd() * 0.5, h, h);
     d.updateMatrix();
     mesh.setMatrixAt(i, d.matrix);
     const lerp = (r: [number, number]) => r[0] + rnd() * (r[1] - r[0]);

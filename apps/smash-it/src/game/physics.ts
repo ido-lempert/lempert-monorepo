@@ -23,16 +23,75 @@ const SLING_HEIGHT = 1.3;
  * around the world (`angle`, radians; 0 = at +z, looking towards -z). Set by `Arena` for its level, so the
  * game, the guide and the replay all agree.
  */
-export const field = { radius: 7.5, angle: 0 };
+export const field: { radius: number; angle: number; shape: WorldShape } = { radius: 7.5, angle: 0, shape: 'circle' };
 
-export function setField(radius: number, angle = 0) {
-  field.radius = radius;
-  field.angle = angle;
+/**
+ * The world isn't always round: its edge is `radius × edgeFactor(angle)`, a curve that never goes past
+ * `radius` (circle, a six-petal flower, a hexagon, a rounded square, an oval, a soft blob).
+ */
+export type WorldShape = 'circle' | 'flower' | 'hex' | 'square' | 'oval' | 'blob';
+
+function rawEdge(shape: WorldShape, a: number): number {
+  switch (shape) {
+    case 'circle':
+      return 1;
+    case 'flower':
+      return 1 + 0.1 * Math.cos(6 * a);
+    case 'hex': {
+      const s = Math.PI / 3;
+      return Math.cos(Math.PI / 6) / Math.cos((((a % s) + s) % s) - Math.PI / 6);
+    }
+    case 'square': {
+      const n = 5;
+      return 1 / (Math.abs(Math.cos(a)) ** n + Math.abs(Math.sin(a)) ** n) ** (1 / n);
+    }
+    case 'oval':
+      return 1 / Math.sqrt(Math.cos(a) ** 2 + (Math.sin(a) / 0.8) ** 2);
+    case 'blob':
+      return 1 + 0.08 * Math.sin(3 * a + 1) + 0.05 * Math.sin(5 * a);
+  }
 }
 
-/** Where the pouch of the slingshot rests, for a place around the world. */
+const ranges = new Map<WorldShape, { max: number; min: number }>();
+function range(shape: WorldShape) {
+  let r = ranges.get(shape);
+  if (!r) {
+    let max = 0;
+    let min = Infinity;
+    for (let i = 0; i < 720; i++) {
+      const e = rawEdge(shape, (i / 720) * Math.PI * 2);
+      max = Math.max(max, e);
+      min = Math.min(min, e);
+    }
+    ranges.set(shape, (r = { max, min: min / max }));
+  }
+  return r;
+}
+
+/** 0..1: how far the edge is in direction `a` (atan2(z, x)), as a share of the radius. */
+export function edgeFactor(a: number, shape = field.shape): number {
+  return rawEdge(shape, a) / range(shape).max;
+}
+
+/** The distance from the middle to the edge, in the direction of a point. */
+export function edgeAt(x: number, z: number): number {
+  return field.radius * edgeFactor(Math.atan2(z, x));
+}
+
+/** The closest the edge comes to the middle (things placed inside this always fit). */
+export function innerRadius(shape = field.shape, radius = field.radius): number {
+  return radius * range(shape).min;
+}
+
+export function setField(radius: number, angle = 0, shape: WorldShape = 'circle') {
+  field.radius = radius;
+  field.angle = angle;
+  field.shape = shape;
+}
+
+/** Where the pouch of the slingshot rests, for a place around the world (just outside its edge). */
 export function slingAt(angle = field.angle): Vec3 {
-  const d = field.radius + SLING_GAP;
+  const d = edgeAt(Math.sin(angle), Math.cos(angle)) + SLING_GAP;
   return { x: Math.sin(angle) * d, y: SLING_HEIGHT, z: Math.cos(angle) * d };
 }
 
@@ -47,7 +106,7 @@ export const MAX_YAW = (40 * Math.PI) / 180;
 export const vec = (x = 0, y = 0, z = 0): Vec3 => ({ x, y, z });
 
 export function onDisc(x: number, z: number, margin = 0): boolean {
-  return x * x + z * z <= (field.radius - margin) ** 2;
+  return Math.hypot(x, z) <= edgeAt(x, z) - margin;
 }
 
 /** The height of whatever is underneath a point: the grass on the disc, otherwise the counter. */

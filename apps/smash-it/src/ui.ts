@@ -2,10 +2,10 @@
  * The DOM screens around the game: chapter list, shop, chapter intro, HUD goals, the food tray and the
  * results card. Each function renders from the current progress and calls back for actions.
  */
-import { BUGS } from './game/bugs';
-import { areaRank, FOOD_ORDER, FOODS, type FoodId } from './game/foods';
+import { BUGS, type BugKind } from './game/bugs';
+import { areaRank, BOOST, FOOD_ORDER, FOODS, type FoodId, MAX_TIER } from './game/foods';
 import { type Goal, type Level, levelById, LEVELS, WORLDS } from './game/levels';
-import { type Progress, shopOpen, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice, upgradesOpen } from './game/progress';
+import { FOOD_PRIZES, nextPrize, type Progress, shopOpen, SKINS, type SkinId, tierPrice, totalStars, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice } from './game/progress';
 import type { Session } from './game/session';
 import { type StringKey, t } from './i18n';
 
@@ -120,23 +120,39 @@ export function renderChapters(p: Progress, onPick: (id: number) => void) {
   requestAnimationFrame(() => $('chapter-list').querySelector<HTMLElement>(`button:not([disabled]):last-of-type`)?.scrollIntoView({ block: 'center' }));
 }
 
+/** A food's speed and hit size as little bars (the shop and the prize reveal). */
+export function foodBars(id: FoodId): HTMLElement[] {
+  const f = FOODS[id];
+  return [...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f))];
+}
+
 function bars(label: string, n: number) {
   return [el('span', {}, label), el('span', { class: 'bar', 'aria-label': `${n}/3` }, ...[1, 2, 3].map((i) => el('i', { class: i <= n ? 'on' : '' })))];
 }
 
 export interface ShopActions {
-  buyFood(id: FoodId): void;
+  buyTier(id: FoodId): void;
   chooseFood(id: FoodId): void;
   buyUpgrade(id: UpgradeId): void;
+  chooseSkin(id: SkinId): void;
 }
 
-export function renderShop(p: Progress, tab: 'foods' | 'upgrades', a: ShopActions) {
+export type ShopTab = 'foods' | 'upgrades' | 'skins';
+
+/** The chapter after which a food is won. */
+const prizeChapter = (id: FoodId) => Number(Object.entries(FOOD_PRIZES).find(([, f]) => f === id)?.[0] ?? 0);
+
+function priceButton(price: number | null, coins: number, onBuy: () => void): HTMLButtonElement {
+  const short = price === null ? 0 : price - coins;
+  const btn = el('button', { class: 'primary' }, price === null ? t('maxed') : short > 0 ? `⭐ ${t('missing', { n: num(short) })}` : t('buy', { price: `⭐ ${num(price)}` }));
+  btn.disabled = price === null || short > 0;
+  btn.addEventListener('click', onBuy);
+  return btn;
+}
+
+export function renderShop(p: Progress, tab: ShopTab, a: ShopActions) {
   $('shop-coins').textContent = num(p.coins);
-  // Upgrades come later; until then the shop is just food.
-  $('tab-upgrades').parentElement!.classList.toggle('hidden', !upgradesOpen(p));
-  if (!upgradesOpen(p)) tab = 'foods';
-  $('tab-foods').setAttribute('aria-selected', String(tab === 'foods'));
-  $('tab-upgrades').setAttribute('aria-selected', String(tab === 'upgrades'));
+  for (const id of ['foods', 'upgrades', 'skins'] as ShopTab[]) $(`tab-${id}`).setAttribute('aria-selected', String(tab === id));
   const list = $('shop-list');
   if (tab === 'foods') {
     list.replaceChildren(
@@ -144,41 +160,51 @@ export function renderShop(p: Progress, tab: 'foods' | 'upgrades', a: ShopAction
         const f = FOODS[id];
         const owned = p.owned.includes(id);
         const chosen = p.food === id;
-        let btn: HTMLButtonElement;
-        if (!owned) {
-          const short = f.price - p.coins;
-          btn = el('button', { class: 'primary' }, short > 0 ? `⭐ ${t('missing', { n: num(short) })}` : t('buy', { price: `⭐ ${num(f.price)}` }));
-          btn.disabled = short > 0;
-          btn.addEventListener('click', () => a.buyFood(id));
-        } else {
-          btn = el('button', { class: 'secondary' }, chosen ? `✓ ${t('chosen')}` : t('choose'));
-          btn.disabled = chosen;
-          btn.addEventListener('click', () => a.chooseFood(id));
-        }
+        const tier = p.tiers[id] ?? 0;
+        const head = el('div', { class: 'item-head' }, el('span', { class: 'item-emoji', 'aria-hidden': 'true' }, owned ? f.emoji : '🎁'), el('h3', {}, owned ? foodName(id) : '?'));
+        if (!owned) return el('div', { class: 'item locked' }, head, el('p', {}, t('foodLockedAt', { n: prizeChapter(id) })));
+        const choose = el('button', { class: 'secondary' }, chosen ? `✓ ${t('chosen')}` : t('choose'));
+        choose.disabled = chosen;
+        choose.addEventListener('click', () => a.chooseFood(id));
         return el(
           'div',
           { class: `item${chosen ? ' selected' : ''}` },
-          el('div', { class: 'item-head' }, el('span', { class: 'item-emoji', 'aria-hidden': 'true' }, f.emoji), el('h3', {}, foodName(id))),
+          head,
           el('p', {}, t(`foodInfo_${id}` as StringKey)),
           el('div', { class: 'bars' }, ...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f))),
-          btn,
+          el('p', { class: 'muted' }, `⬆️ ${t(`boost_${BOOST[id]}` as StringKey)} · ${t('tierOf', { n: tier, max: MAX_TIER })}`),
+          priceButton(tierPrice(p, id), p.coins, () => a.buyTier(id)),
+          choose,
         );
       }),
     );
-  } else {
+  } else if (tab === 'upgrades') {
     list.replaceChildren(
       ...UPGRADE_ORDER.map((id) => {
         const u = UPGRADES[id];
-        const price = upgradePrice(p, id);
-        const btn = el('button', { class: 'primary' }, price === null ? t('maxed') : p.coins < price ? `⭐ ${t('missing', { n: num(price - p.coins) })}` : t('buy', { price: `⭐ ${num(price)}` }));
-        btn.disabled = price === null || p.coins < price;
-        btn.addEventListener('click', () => a.buyUpgrade(id));
         return el(
           'div',
           { class: 'item' },
           el('div', { class: 'item-head' }, el('span', { class: 'item-emoji', 'aria-hidden': 'true' }, u.emoji), el('h3', {}, t(`up_${id}` as StringKey))),
           el('p', {}, t(`upInfo_${id}` as StringKey)),
           el('p', { class: 'muted' }, t('tier', { n: p.upgrades[id], max: u.prices.length })),
+          priceButton(upgradePrice(p, id), p.coins, () => a.buyUpgrade(id)),
+        );
+      }),
+    );
+  } else {
+    const stars = totalStars(p);
+    list.replaceChildren(
+      ...SKINS.map((s) => {
+        const open = stars >= s.stars;
+        const worn = p.skin === s.id;
+        const btn = el('button', { class: open ? 'secondary' : 'primary' }, !open ? t('skinNeed', { n: s.stars }) : worn ? `✓ ${t('worn')}` : t('wear'));
+        btn.disabled = !open || worn;
+        btn.addEventListener('click', () => a.chooseSkin(s.id));
+        return el(
+          'div',
+          { class: `item${worn ? ' selected' : ''}${open ? '' : ' locked'}` },
+          el('div', { class: 'item-head' }, el('span', { class: 'item-emoji', 'aria-hidden': 'true' }, open ? s.emoji : '🔒'), el('h3', {}, t(`skin_${s.id}` as StringKey))),
           btn,
         );
       }),
@@ -190,9 +216,44 @@ export function renderIntro(p: Progress, level: Level) {
   $('intro-kicker').textContent = `${t('world', { n: level.world })} · ${worldName(level.world)} · ${t('chapter', { n: level.id })}`;
   $('intro-title').textContent = level.boss ? kingName(level) : t('mission');
   $('intro-goals').replaceChildren(...level.goals.map((g) => el('li', {}, `${goalIcon(g)} ${goalText(g, level)}`)));
-  $('intro-shop').classList.toggle('hidden', !shopOpen(p));
+  $('intro-stars').textContent = t('starsGoal', { a: num(level.stars[0]), b: num(level.stars[1]) });
+  const prize = nextPrize(p);
+  $('intro-prize').classList.toggle('hidden', !prize);
+  if (prize) $('intro-prize').textContent = `🎁 ${t('nextPrize', { emoji: FOODS[prize.food].emoji, food: foodName(prize.food), n: prize.after })}`;
   const best = p.best[level.id];
   $('intro-best').textContent = best ? t('best', { n: num(best) }) : '';
+  $('intro-shop').classList.toggle('hidden', !shopOpen(p));
+  // After failing a chapter twice in a row, offer a longer aiming guide (openly, and only if wanted).
+  const help = p.fails.level === level.id && p.fails.n >= 2 && level.guide < 0.85;
+  $('intro-assist').classList.toggle('hidden', !help);
+  $('intro-assist-note').classList.toggle('hidden', !help);
+}
+
+/** The star meter in the HUD: how far the score is towards the 2nd and 3rd star. Returns the stars reached. */
+export function updateStarMeter(level: Level, score: number): number {
+  const [two, three] = level.stars;
+  const meter = $('star-meter');
+  meter.style.setProperty('--fill', `${Math.min(100, (score / three) * 100)}%`);
+  meter.style.setProperty('--m2', `${(two / three) * 100}%`);
+  const reached = score >= three ? 3 : score >= two ? 2 : 1;
+  meter.querySelector('.m2')!.classList.toggle('on', reached >= 2);
+  meter.querySelector('.m3')!.classList.toggle('on', reached >= 3);
+  return reached;
+}
+
+/** Every bug met, how often it was hit, and the kings beaten. */
+export function renderAlbum(p: Progress) {
+  const kinds: BugKind[] = ['snail', 'ladybug', 'ant', 'beetle', 'butterfly', 'fly', 'golden'];
+  const kings = LEVELS.filter((l) => l.boss && (p.stars[l.id] ?? 0) > 0);
+  $('album-list').replaceChildren(
+    ...kinds.map((k) => {
+      const n = p.album[k] ?? 0;
+      return n
+        ? el('div', { class: 'album-item' }, el('div', { class: 'emoji', 'aria-hidden': 'true' }, BUGS[k].emoji), el('h3', {}, t(`bug_${k}` as StringKey)), el('p', {}, t('albumHits', { n: num(n) })), el('p', { class: 'muted' }, t(`bugAbout_${k}` as StringKey)))
+        : el('div', { class: 'album-item unknown' }, el('div', { class: 'emoji', 'aria-hidden': 'true' }, '❔'), el('h3', {}, '?'), el('p', {}, t('albumUnknown')));
+    }),
+    el('p', { class: 'album-kings' }, `👑 ${t('kingsBeaten')}: ${kings.length ? kings.map((l) => `${kingName(l)} (${l.id})`).join(' · ') : '–'}`),
+  );
 }
 
 /** The food buttons at the bottom while playing. */
@@ -219,14 +280,17 @@ export function updateTray(selected: FoodId, reload: number) {
 
 export interface ResultInfo {
   success: boolean;
+  level: Level;
   session: Session;
   coins: number;
   stars: number;
   newBest: boolean;
   unlocked: number | null;
   lastChapter: boolean;
-  /** A food the coins can now buy (the results offer the shop). */
-  canBuy: FoodId | null;
+  /** The shop has something the coins can buy. */
+  canBuy: boolean;
+  /** The daily challenge: a new best of the day, and that best. */
+  daily?: { best: number; isNew: boolean };
 }
 
 export function renderResult(r: ResultInfo) {
@@ -242,6 +306,15 @@ export function renderResult(r: ResultInfo) {
   );
   $('result-stars').setAttribute('aria-label', `${r.stars}/3`);
   const s = r.session;
+  // What was done and what was missing.
+  $('result-goals').replaceChildren(
+    ...r.level.goals.map((g) => {
+      const [have, need] = s.progress(g);
+      const done = have >= need;
+      const x = g.kind === 'combo' ? '×' : '';
+      return el('li', { class: done ? 'done' : 'miss' }, `${done ? '✓' : '✗'} ${goalText(g, r.level)}`, g.kind === 'boss' ? '' : el('span', { dir: 'ltr' }, ` (${x}${num(Math.min(have, need))}/${x}${num(need)})`));
+    }),
+  );
   const coins = el('dd', { dir: 'ltr' }, '0');
   $('result-stats').replaceChildren(
     el('dt', {}, `🎯 ${t('statBugs')}`),
@@ -263,16 +336,21 @@ export function renderResult(r: ResultInfo) {
     if (k < 1) requestAnimationFrame(count);
   };
   requestAnimationFrame(count);
+  // The next star, so there's always something to aim for.
+  const [two, three] = r.level.stars;
+  $('result-star-note').textContent = !r.success ? '' : s.score < two ? t('nextStar2', { n: num(two - s.score) }) : s.score < three ? t('nextStar3', { n: num(three - s.score) }) : t('allStars');
   const notes: string[] = [];
-  if (r.lastChapter && r.success) notes.push(t('allClear'));
+  if (r.daily) notes.push(r.daily.isNew ? t('dailyNew') : t('dailyBest', { n: num(r.daily.best) }));
+  else if (r.lastChapter && r.success) notes.push(t('allClear'));
   else if (r.unlocked) notes.push(t('unlocked', { n: r.unlocked }));
   if (r.newBest) notes.push(t('newBest'));
-  if (r.canBuy) notes.push(t('coachShop', { food: foodName(r.canBuy) }));
+  if (r.canBuy) notes.push(t('coachShop'));
   $('result-note').textContent = notes.join(' · ');
+  $('result-next').textContent = r.daily ? t('back') : r.success ? (r.lastChapter ? t('back') : t('next')) : t('retry');
+  $('result-again').classList.toggle('hidden', !r.success || r.stars >= 3 || !!r.daily);
   const shop = $('result-shop');
   shop.classList.toggle('hidden', !r.canBuy);
-  shop.classList.toggle('glow', !!r.canBuy);
-  $('result-next').textContent = r.success ? (r.lastChapter ? t('back') : t('next')) : t('retry');
+  shop.classList.toggle('glow', r.canBuy);
 }
 
 export function clock(seconds: number): string {

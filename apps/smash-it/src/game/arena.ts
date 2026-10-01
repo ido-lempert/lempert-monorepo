@@ -4,9 +4,9 @@
  * plays effects for the events. The replay builds a second, scripted Arena from recorded shots.
  */
 import { active, type BossDef, type Bug, BUGS, type BugKind, footprint, hittable, knock, makeBug, moveBug, type Obstacle } from './bugs';
-import { type Food, FOODS, type FoodId } from './foods';
+import { type Food, FOODS, type FoodId, withTier } from './foods';
 import type { Level } from './levels';
-import { COUNTER_Y, field, groundAt, launchVelocity, rangeFor, setField, slingAt, SURFACE_Y, type Vec3 } from './physics';
+import { COUNTER_Y, edgeAt, field, groundAt, innerRadius, launchVelocity, onDisc, rangeFor, setField, slingAt, SURFACE_Y, type Vec3 } from './physics';
 import { makeRng, type Rng, weighted } from './rng';
 import { type HitResult, Session } from './session';
 
@@ -50,6 +50,7 @@ export interface Shot {
 export interface ShotRecord {
   shotId: number;
   food: FoodId;
+  tier: number;
   origin: Vec3;
   velocity: Vec3;
   hits: { bugId: number; kind: BugKind; after: number; age: number; x: number; y: number; z: number; vx: number; vz: number; boss?: BossDef; hp?: number }[];
@@ -86,6 +87,8 @@ export interface ArenaOptions {
   comboWindow?: number;
   /** Scripted (replay): no spawning, no clock. */
   scripted?: boolean;
+  /** Upgrade tier of each food. */
+  tiers?: Partial<Record<FoodId, number>>;
 }
 
 const STEP = 1 / 120;
@@ -99,6 +102,7 @@ export class Arena {
   readonly records = new Map<number, ShotRecord>();
   readonly obstacles: readonly Obstacle[];
   readonly rng: Rng;
+  private readonly tiers: Partial<Record<FoodId, number>>;
   private nextId = 1;
   private spawnIn = 0.3;
   private groupIn: number[];
@@ -114,9 +118,10 @@ export class Arena {
     this.session = new Session(level, o.comboWindow);
     this.obstacles = level.obstacles;
     this.scripted = !!o.scripted;
+    this.tiers = o.tiers ?? {};
     this.groupIn = (level.groups ?? []).map((g) => Math.min(6, g.every * 0.4));
     this.rareIn = level.rareEvery ?? Infinity;
-    setField(level.radius);
+    setField(level.radius, 0, level.shape);
     if (level.boss && !this.scripted) this.addBug('king', 0, -level.radius * 0.3, 0, level.boss).state = 'walk';
   }
 
@@ -206,7 +211,7 @@ export class Arena {
   spawnAtEdge(kind: BugKind, angle?: number): Bug {
     // Angles measured from the side opposite the slingshot: ±150° keeps clear of the near edge.
     const a = (angle ?? (this.rng() - 0.5) * ((300 * Math.PI) / 180)) - field.angle;
-    const r = field.radius - 0.5;
+    const r = edgeAt(Math.sin(a), -Math.cos(a)) - 0.5;
     const x = Math.sin(a) * r;
     const z = -Math.cos(a) * r;
     return this.addBug(kind, x, z, Math.atan2(-x, -z) + (this.rng() - 0.5) * 1.2);
@@ -230,12 +235,13 @@ export class Arena {
         out.push(b);
       }
     } else if (formation === 'line') {
-      const radius = 3.4 + this.rng() * 2;
+      const radius = Math.min(3.4 + this.rng() * 2, innerRadius() - 1.3);
       const dir = this.rng() < 0.5 ? 1 : -1;
       const start = this.rng() * Math.PI * 2;
       for (let i = 0; i < count; i++) {
         const angle = start - dir * i * (0.95 / radius);
-        const b = this.addBug(kind, Math.cos(angle) * field.radius * 0.95, Math.sin(angle) * field.radius * 0.95, 0);
+        const e = edgeAt(Math.cos(angle), Math.sin(angle)) * 0.95;
+        const b = this.addBug(kind, Math.cos(angle) * e, Math.sin(angle) * e, 0);
         b.march = { radius, angle, dir };
         out.push(b);
       }
@@ -259,7 +265,7 @@ export class Arena {
 
   /** Throws `food` with a slingshot aim (yaw and pull power). */
   fire(foodId: FoodId, yaw: number, power: number): Shot {
-    const food = FOODS[foodId];
+    const food = withTier(FOODS[foodId], this.tiers[foodId] ?? 0);
     return this.launch(food, slingAt(), launchVelocity(yaw, rangeFor(power), food.angle, food.gravity));
   }
 
@@ -268,7 +274,7 @@ export class Arena {
     shot.bodies.push(this.body(shot, 'whole', origin, velocity, food.radius, food.area));
     this.shots.push(shot);
     this.session.shot();
-    this.records.set(shot.id, { shotId: shot.id, food: food.id, origin: { ...origin }, velocity: { ...velocity }, hits: [] });
+    this.records.set(shot.id, { shotId: shot.id, food: food.id, tier: this.tiers[food.id] ?? 0, origin: { ...origin }, velocity: { ...velocity }, hits: [] });
     return shot;
   }
 
@@ -399,7 +405,7 @@ export class Arena {
         b.z -= f.nz * gap;
       }
     }
-    if (Math.hypot(b.x, b.z) > field.radius) {
+    if (!onDisc(b.x, b.z)) {
       // Rolled off the edge.
       b.mode = 'fly';
       b.vy = 0;

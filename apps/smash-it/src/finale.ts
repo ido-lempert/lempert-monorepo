@@ -4,6 +4,7 @@
  */
 import type { Sound } from './audio';
 import type { Arena, ShotRecord } from './game/arena';
+import type { Bug } from './game/bugs';
 import type { Level } from './game/levels';
 import { field, type Vec3 } from './game/physics';
 import { stage, stageLength } from './game/replay';
@@ -18,6 +19,8 @@ export class Replay {
   private time = 0;
   private length = 0;
   private hitAt: Vec3 | null = null;
+  /** The first bug hit: the camera follows it through the air. */
+  private flyer: Bug | null = null;
 
   constructor(
     private readonly world: World,
@@ -41,6 +44,7 @@ export class Replay {
     this.time = 0;
     this.length = stageLength(this.rec);
     this.hitAt = null;
+    this.flyer = null;
     // Start beside the slingshot.
     const first = this.rec.hits[0];
     this.world.orbitCamera(first, this.angle, 9, 4, 50);
@@ -65,13 +69,19 @@ export class Replay {
     for (const e of events)
       if ((e.type === 'impact' || e.type === 'roll-hit') && e.hits.length) {
         this.hitAt ??= e.point;
+        this.flyer ??= e.hits[0].bug;
         this.sound.play('squeak', e.hits.length);
         if (e.type === 'impact') this.sound.play('crunch');
       }
     const body = this.arena.shots[0]?.bodies.find((b) => b.mode !== 'done');
     // Kings are big: step back for them.
-    const k = this.rec.hits.some((h) => h.boss) ? 1.8 : 1;
-    if (this.hitAt) this.world.orbitCamera(this.hitAt, this.angle + this.time * 0.8, 5.5 * k, 2.2 * k, 3);
+    const k = (this.rec.hits.some((h) => h.boss) ? 1.8 : 1) * this.world.closeUpScale;
+    if (this.hitAt) {
+      const f = this.flyer;
+      const at = f ? { x: (this.hitAt.x + f.x) / 2, y: (this.hitAt.y + f.y) / 2, z: (this.hitAt.z + f.z) / 2 } : this.hitAt;
+      const spread = f ? Math.hypot(f.x - this.hitAt.x, f.y - this.hitAt.y, f.z - this.hitAt.z) : 0;
+      this.world.orbitCamera(at, this.angle + this.time * 0.8, 5.5 * k + spread * 0.7, 2.2 * k, 3);
+    }
     else if (body) this.world.orbitCamera(body, this.angle, 6 * k, 2.5 * k, 4);
     this.world.frame(dt, gameDt);
     if (this.time > this.length) {
@@ -117,6 +127,13 @@ export class MopScene {
     }
   }
 
+  /** Ends now: everything left is cleaned away. */
+  finish(): true {
+    this.world.mopTo(null, 0);
+    this.world.cleanUp();
+    return true;
+  }
+
   /** Returns true when the world is clean and the mop has gone. */
   update(dt: number): boolean {
     this.idle += dt;
@@ -133,10 +150,7 @@ export class MopScene {
     this.world.overviewCamera(2.5);
     this.world.frame(dt, dt);
     if (this.x >= end) this.done += dt;
-    if (this.done > 1.6) {
-      this.world.mopTo(null, dt);
-      return true;
-    }
+    if (this.done > 1.6) return this.finish();
     return false;
   }
 }

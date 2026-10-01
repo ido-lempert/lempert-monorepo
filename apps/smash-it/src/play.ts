@@ -10,7 +10,7 @@ import type { Level } from './game/levels';
 import { type Aim, aimFromPull, dist2D, field, MAX_YAW, slingAt, type Vec3 } from './game/physics';
 import { type Bug, BUGS, hittable } from './game/bugs';
 import type { Voice } from './audio';
-import { comboWindow, guideLength, type Progress, reloadTime } from './game/progress';
+import { comboWindow, guideLength, type Progress } from './game/progress';
 import { type StringKey, t } from './i18n';
 import type { World } from './world/world';
 
@@ -24,6 +24,8 @@ export interface PlayUi {
   shot(): void;
   /** A tip shown only the first time (`id`); returns whether it was shown. */
   tip(id: string, icon: string, text: string): boolean;
+  /** A short vibration (phones that support it). */
+  buzz(ms: number): void;
 }
 
 const EFFECT_SOUND: Record<Effect, Sfx> = {
@@ -44,6 +46,8 @@ interface ImpactCam {
   dir: { x: number; z: number };
   /** A rare or small bug: a longer, more dramatic moment. */
   big: boolean;
+  /** The bug about to be hit: the camera follows it as it flies off. */
+  bug: Bug;
 }
 
 export class Play {
@@ -78,8 +82,10 @@ export class Play {
     readonly level: Level,
     private readonly ui: PlayUi,
     private readonly calm: () => boolean,
+    /** A longer aiming guide, offered after failing a chapter twice. */
+    private readonly assist = false,
   ) {
-    this.arena = new Arena(level, { comboWindow: comboWindow(progress) });
+    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers });
     this.food = progress.owned.includes(progress.food) ? progress.food : 'cookie';
     this.goalsMet = level.goals.map(() => false);
     world.setLevel(level);
@@ -89,7 +95,7 @@ export class Play {
   }
 
   get guide(): number {
-    return guideLength(this.progress, this.level.guide);
+    return Math.max(this.assist ? 0.85 : 0, guideLength(this.progress, this.level.guide));
   }
 
   get over(): boolean {
@@ -202,7 +208,7 @@ export class Play {
     this.arena.fire(this.food, aim.yaw, aim.power);
     this.world.fired();
     this.sound.play('launch');
-    this.reloadFor = reloadTime(this.progress, FOODS[this.food].reload);
+    this.reloadFor = FOODS[this.food].reload;
     this.reloadLeft = 1;
     this.ui.shot();
     const f = FOODS[this.food];
@@ -270,10 +276,15 @@ export class Play {
           this.timeScale = 0;
           if (ic.t > (ic.big ? 0.16 : 0.09)) [ic.phase, ic.t] = ['slow', 0];
           break;
-        case 'slow':
+        case 'slow': {
           this.timeScale = ic.big ? 0.15 : 0.22;
+          // Follow the bug up into the air, stepping back to keep all of it in view.
+          const b = ic.bug;
+          const mid = { x: (ic.at.x + b.x) / 2, y: (ic.at.y + b.y) / 2 + 0.3, z: (ic.at.z + b.z) / 2 };
+          w.impactCamera(mid, ic.dir, 3.5, (ic.big ? 4 : 5) * 1.5 + Math.hypot(b.x - ic.at.x, b.y - ic.at.y, b.z - ic.at.z) * 0.6);
           if (ic.t > (ic.big ? 1.5 : 1)) this.leaveImpact();
           break;
+        }
         case 'out':
           this.timeScale = Math.min(1, this.timeScale + dt * 2.5);
           w.homeCamera(this.lastYaw, undefined, 3.5);
@@ -309,6 +320,7 @@ export class Play {
       at: { x: bug.x, y: bug.y, z: bug.z },
       dir: { x: pred.body.vx / n, z: pred.body.vz / n },
       big: !!bug.def.rare || bug.def.radius < 0.4,
+      bug,
     };
   }
 
@@ -346,7 +358,9 @@ export class Play {
               else this.ui.tip('kingArmor', '🍉', t('coachKingArmor'));
               return;
             }
+            this.ui.buzz(h.bug.boss ? 30 : 12);
             if (h.down) {
+              this.ui.buzz(60);
               this.sound.voice(voiceOf(h.bug), 'ohno');
               this.sound.play('fanfare');
               this.ui.banner(t('kingDown'), 'mint', 1800);
@@ -367,6 +381,7 @@ export class Play {
         case 'combo':
           if (e.chain === 2) this.ui.tip('combo', '🔥', t('coachCombo'));
           if (e.mega) {
+            this.ui.buzz(40);
             this.ui.banner(t('mega'), 'pink', 1600);
             this.sound.play('mega');
             this.world.cam.shake(0.4);

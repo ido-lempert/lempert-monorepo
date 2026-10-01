@@ -2,7 +2,7 @@
  * The bugs: what each kind is like (size, speed, value, how it moves) and how one moves around the disc.
  * Small means hard to hit, fast means hard to follow, and the harder a bug is the more points it is worth.
  */
-import { COUNTER_Y, field, groundAt } from './physics';
+import { COUNTER_Y, edgeAt, groundAt } from './physics';
 import type { Rng } from './rng';
 
 export type BugKind = 'snail' | 'ladybug' | 'ant' | 'beetle' | 'butterfly' | 'fly' | 'golden' | 'king';
@@ -282,7 +282,7 @@ export function moveBug(b: Bug, dt: number, rng: Rng, ctx: MoveContext) {
   b.z += Math.cos(b.heading) * b.speed * dt;
 
   if (b.state === 'leaving') {
-    if (Math.hypot(b.x, b.z) > field.radius + 0.8) setState(b, 'gone');
+    if (Math.hypot(b.x, b.z) > edgeAt(b.x, b.z) + 0.8) setState(b, 'gone');
   } else {
     keepOnDisc(b, dt);
     if (!def.hover) avoid(b, ctx.obstacles);
@@ -355,7 +355,7 @@ function smoothTurn(b: Bug, dt: number, rng: Rng) {
 /** Turns back towards the middle near the edge. */
 function keepOnDisc(b: Bug, dt: number) {
   const r = Math.hypot(b.x, b.z);
-  const limit = field.radius - 0.4 - b.def.radius;
+  const limit = edgeAt(b.x, b.z) - 0.4 - b.def.radius;
   if (r > limit - 0.6 && b.state !== 'enter') steer(b, Math.atan2(-b.x, -b.z), 5 * dt);
   if (r > limit && b.state !== 'enter') {
     b.x *= limit / r;

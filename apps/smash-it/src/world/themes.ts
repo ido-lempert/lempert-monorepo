@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { Theme } from '../game/levels';
 import { canvasTexture } from './look';
 
-export type Decor = 'flowers' | 'shells' | 'leaves' | 'candy' | 'pinecones' | 'cactus' | 'snow' | 'glow' | 'stones';
+export type Decor = 'flowers' | 'shells' | 'leaves' | 'candy' | 'pinecones' | 'cactus' | 'snow' | 'glow' | 'stones' | 'cherries' | 'veggies' | 'reeds' | 'crumbs';
 
 export interface ThemeLook {
   /** Ground colours: base, light patches, dark patches. */
@@ -19,6 +19,10 @@ export interface ThemeLook {
   colors: string[];
   /** Darker, bluish light. */
   night?: boolean;
+  /** A pattern drawn on the ground instead of plain patches (a picnic cloth, wood grain, icing, a lily pad). */
+  pattern?: 'checks' | 'wood' | 'icing' | 'lily';
+  /** Shiny ground (icing, a lily pad). */
+  gloss?: boolean;
 }
 
 export const THEMES: Record<Theme, ThemeLook> = {
@@ -62,6 +66,22 @@ export const THEMES: Record<Theme, ThemeLook> = {
     ground: ['#b8b0c8', '#d8d2e4', '#8a82a0'], blades: { h: [0.25, 0.32], s: [0.4, 0.55], l: [0.35, 0.45], amount: 0.3, height: 0.8 },
     lip: '#7a7090', soil: ['#8a8098', '#6a6078', '#9a90a8'], decor: 'stones', colors: ['#ff4d6d', '#ffd23f', '#4d8dff'],
   },
+  picnic: {
+    ground: ['#ffffff', '#ff6b6b', '#e04848'], blades: { h: [0, 0], s: [0, 0], l: [0, 0], amount: 0, height: 1 },
+    lip: '#e04848', soil: ['#ff6b6b', '#ffffff', '#e04848'], decor: 'crumbs', colors: ['#ffd166', '#ff6b6b', '#7ed957'], pattern: 'checks',
+  },
+  board: {
+    ground: ['#e3b57a', '#f0c993', '#c99355'], blades: { h: [0, 0], s: [0, 0], l: [0, 0], amount: 0, height: 1 },
+    lip: '#b47a3e', soil: ['#c98a4b', '#a86f36', '#d29a5c'], decor: 'veggies', colors: ['#ff4d4d', '#7ed957', '#ffd23f', '#ffffff'], pattern: 'wood',
+  },
+  cake: {
+    ground: ['#f7c6da', '#ffe0ec', '#ef9fc0'], blades: { h: [0, 0], s: [0, 0], l: [0, 0], amount: 0, height: 1 },
+    lip: '#f2a6c6', soil: ['#e8b46e', '#fff1df', '#d99e58'], decor: 'cherries', colors: ['#e0002a', '#ff4d8d', '#4dd0ff', '#ffe14d'], pattern: 'icing',
+  },
+  lily: {
+    ground: ['#58b94a', '#8ad46a', '#3f9a3a'], blades: { h: [0.25, 0.3], s: [0.5, 0.6], l: [0.4, 0.5], amount: 0.08, height: 1.4 },
+    lip: '#3f8a34', soil: ['#3f8a34', '#2f6f2a', '#4a9a3e'], decor: 'reeds', colors: ['#ffb3d9', '#ffffff', '#ffe14d'], pattern: 'lily', gloss: true,
+  },
 };
 
 const groundCache = new Map<Theme, THREE.CanvasTexture>();
@@ -89,6 +109,72 @@ export function groundTexture(theme: Theme): THREE.CanvasTexture {
       grad.addColorStop(1, tint(base, 0));
       g.fillStyle = grad;
       g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    const pattern = THEMES[theme].pattern;
+    if (pattern === 'checks') {
+      // A gingham picnic cloth.
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, s, s);
+      const n = 8;
+      for (let y = 0; y < n; y++)
+        for (let x = 0; x < n; x++) {
+          g.fillStyle = x % 2 && y % 2 ? '#e04848' : x % 2 || y % 2 ? 'rgba(224, 72, 72, 0.55)' : '#ffffff';
+          g.fillRect((x * s) / n, (y * s) / n, s / n, s / n);
+        }
+      return;
+    }
+    if (pattern === 'wood') {
+      for (let y = 0; y < s; y += 3) {
+        g.strokeStyle = tint(rnd() < 0.5 ? light : dark, 0.35);
+        g.lineWidth = 1 + rnd() * 2;
+        g.beginPath();
+        g.moveTo(0, y);
+        g.bezierCurveTo(s * 0.3, y + rnd() * 6 - 3, s * 0.7, y + rnd() * 6 - 3, s, y);
+        g.stroke();
+      }
+      g.fillStyle = tint(dark, 0.5);
+      for (let i = 0; i < 4; i++) {
+        g.beginPath();
+        g.ellipse(rnd() * s, rnd() * s, 10, 5, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+      return;
+    }
+    if (pattern === 'icing') {
+      // Swirls of icing and sprinkles.
+      g.strokeStyle = tint(light, 0.8);
+      g.lineWidth = 6;
+      for (let i = 0; i < 26; i++) {
+        g.beginPath();
+        g.arc(rnd() * s, rnd() * s, 10 + rnd() * 26, rnd() * 6, rnd() * 6 + 3);
+        g.stroke();
+      }
+      const sprinkles = ['#ff4d8d', '#4dd0ff', '#ffe14d', '#7dff8a', '#b98cff'];
+      for (let i = 0; i < 260; i++) {
+        g.save();
+        g.translate(rnd() * s, rnd() * s);
+        g.rotate(rnd() * 6);
+        g.fillStyle = sprinkles[i % sprinkles.length];
+        g.beginPath();
+        g.roundRect(-5, -1.5, 10, 3, 1.5);
+        g.fill();
+        g.restore();
+      }
+      return;
+    }
+    if (pattern === 'lily') {
+      // Veins of a lily pad.
+      g.strokeStyle = tint(light, 0.7);
+      g.lineWidth = 3;
+      for (let i = 0; i < 30; i++) {
+        const x = rnd() * s;
+        const y = rnd() * s;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.quadraticCurveTo(x + 20, y + rnd() * 40 - 20, x + 50, y + rnd() * 40 - 20);
+        g.stroke();
+      }
+      return;
     }
     if (theme === 'castle') {
       // Flagstones.
