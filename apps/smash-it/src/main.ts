@@ -96,7 +96,8 @@ function popup(html: string, at: Vec3, cls = '') {
   const d = document.createElement('div');
   d.className = `popup ${cls}`;
   d.innerHTML = html;
-  d.style.left = `${p.x}px`;
+  const edge = Math.min(70, innerWidth / 2);
+  d.style.left = `${Math.min(innerWidth - edge, Math.max(edge, p.x))}px`;
   d.style.top = `${p.y}px`;
   $('popups').append(d);
   setTimeout(() => d.remove(), 1150);
@@ -106,12 +107,51 @@ function buzz(ms: number) {
   if (prefs.haptics && !prefs.calm) navigator.vibrate?.(ms);
 }
 
-const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'reveal', 'album', 'board', 'join'];
+const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'combo', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'reveal', 'album', 'board', 'join'];
 function show(...ids: string[]) {
   for (const id of screens) $(id).classList.toggle('hidden', !ids.includes(id));
   closeMenu();
   if (!ids.includes('hud')) coach.clear();
+  else if (updateNotice.shown) {
+    updateNotice.hide(true);
+    updateWaiting = true;
+  }
 }
+
+// --- Layers: only the top-most overlay can be reached ---------------------------------------------------
+
+/** Overlays from the bottom of the stack to the top (a panel opened from another one is later in the list). */
+const overlayStack = ['pause', 'menu', 'chapters', 'album', 'board', 'join', 'shop', 'page'];
+/** The screens an overlay can sit on. */
+const baseLayers = ['home', 'intro', 'result', 'hud', 'tray', 'top-stack', 'rotate'];
+let focusBefore: HTMLElement | null = null;
+let topOverlay: string | null = null;
+
+/** Everything under the top-most open overlay stops taking taps and focus; focus moves in when one opens and back out when all are closed. */
+function syncLayers() {
+  const open = overlayStack.filter((id) => !$(id).classList.contains('hidden'));
+  const top = open.at(-1) ?? null;
+  for (const id of [...baseLayers, ...overlayStack]) $(id).inert = top !== null && id !== top;
+  $('menu-btn').setAttribute('aria-expanded', String(open.includes('menu')));
+  if (top === topOverlay) return;
+  const was = topOverlay;
+  topOverlay = top;
+  if (top) {
+    if (!was && document.activeElement instanceof HTMLElement) focusBefore = document.activeElement;
+    const el = $(top);
+    if (!el.contains(document.activeElement)) {
+      const heading = el.querySelector<HTMLElement>('h2');
+      const target = el.querySelector<HTMLElement>('[data-autofocus]') ?? heading;
+      heading?.setAttribute('tabindex', '-1');
+      target?.focus({ preventScroll: true });
+    }
+  } else {
+    focusBefore?.focus({ preventScroll: true });
+    focusBefore = null;
+  }
+}
+const layerObserver = new MutationObserver(syncLayers);
+for (const id of overlayStack) layerObserver.observe($(id), { attributes: true, attributeFilter: ['class'] });
 
 // The messages under the HUD start just below it, however tall it is (it wraps on phones).
 new ResizeObserver(() => {
@@ -161,6 +201,7 @@ function toMenu() {
   sound.setTheme('menu');
   renderHome();
   show('home');
+  offerUpdate();
 }
 
 function renderHome() {
@@ -558,6 +599,14 @@ document.querySelectorAll<HTMLElement>('[data-close]').forEach((b) =>
     if (b.closest('#shop')) afterShop();
   }),
 );
+// A tap on the dimmed area around a card closes it too (not the pause and prize screens, which need a choice).
+for (const id of ['menu', 'chapters', 'album', 'board', 'page', 'shop']) {
+  $(id).addEventListener('click', (e) => {
+    if (e.target !== $(id)) return;
+    $(id).classList.add('hidden');
+    if (id === 'shop') afterShop();
+  });
+}
 
 let shopTab: ShopTab = 'foods';
 function openShop() {
@@ -630,12 +679,10 @@ document.addEventListener('visibilitychange', () => {
 
 function closeMenu() {
   $('menu').classList.add('hidden');
-  $('menu-btn').setAttribute('aria-expanded', 'false');
 }
 $('menu-btn').addEventListener('click', () => {
-  const open = $('menu').classList.toggle('hidden') === false;
-  $('menu-btn').setAttribute('aria-expanded', String(open));
   refreshMenu();
+  $('menu').classList.remove('hidden');
 });
 function refreshMenu() {
   $('m-music').setAttribute('aria-pressed', String(sound.prefs.music));
@@ -732,7 +779,7 @@ canvas.addEventListener('pointercancel', up);
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!$('menu').classList.contains('hidden')) return closeMenu();
-    for (const id of ['page', 'shop', 'chapters', 'album', 'board', 'join']) {
+    for (const id of ['page', 'join', 'shop', 'chapters', 'album', 'board']) {
       if (!$(id).classList.contains('hidden')) {
         $(id).classList.add('hidden');
         if (id === 'shop') afterShop();
@@ -853,10 +900,18 @@ function tick(now: number) {
 
 // --- PWA -----------------------------------------------------------------------------------------------
 
+const updateNotice = new Notice($('update'));
+let updateWaiting = false;
+/** A new version is ready: say so, but only between games, never over the HUD while someone plays. */
+function offerUpdate() {
+  if (!updateWaiting || (mode !== 'menu' && mode !== 'title')) return;
+  updateWaiting = false;
+  updateNotice.show(12000);
+}
 const updateSW = registerSW({
   onNeedRefresh() {
-    $('update').classList.remove('hidden');
-    new Notice($('update')).show(12000);
+    updateWaiting = true;
+    offerUpdate();
   },
 });
 $('update-now').addEventListener('click', () => void updateSW(true));
@@ -893,6 +948,10 @@ if (import.meta.env.DEV) {
       startLevel();
     },
     daily: () => startDaily(),
+    update: () => {
+      updateWaiting = true;
+      offerUpdate();
+    },
     prize: (p: Prize) => showPrize(p),
     /** Throws the chosen food at a spot on the disc (leading nothing). */
     shootAt(x: number, z: number) {

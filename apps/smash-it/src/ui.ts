@@ -173,8 +173,7 @@ export function renderShop(p: Progress, tab: ShopTab, a: ShopActions) {
           el('p', {}, t(`foodInfo_${id}` as StringKey)),
           el('div', { class: 'bars' }, ...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f))),
           el('p', { class: 'muted' }, `⬆️ ${t(`boost_${BOOST[id]}` as StringKey)} · ${t('tierOf', { n: tier, max: MAX_TIER })}`),
-          priceButton(tierPrice(p, id), p.coins, () => a.buyTier(id)),
-          choose,
+          el('div', { class: 'item-actions' }, priceButton(tierPrice(p, id), p.coins, () => a.buyTier(id)), choose),
         );
       }),
     );
