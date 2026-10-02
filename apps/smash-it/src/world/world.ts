@@ -320,9 +320,9 @@ export class World {
   /** Draws `arena` from now on, with its own `effects` (the replay passes a fresh one). */
   bind(arena: Arena | null, effects: Effects = this.mess) {
     this.arena = arena;
-    for (const v of this.bugViews.values()) this.bugLayer.remove(v.model.root);
+    for (const v of this.bugViews.values()) this.bugLayer.remove(v.model.root, v.shadow);
     this.bugViews.clear();
-    for (const v of this.bodyViews.values()) this.foodLayer.remove(v.root);
+    for (const v of this.bodyViews.values()) this.foodLayer.remove(v.root, v.shadow);
     this.bodyViews.clear();
     if (effects !== this.effects) {
       this.scene.remove(this.effects.group);

@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { roundOff } from './smooth';
 
 const BASE = 'models/kenney-food/';
 
@@ -41,6 +42,9 @@ function polish(o: THREE.Object3D) {
       envMapIntensity: 0.7,
     });
     c.material = m;
+    const geo = c.geometry;
+    c.geometry = roundOff(geo, 5);
+    geo.dispose();
     c.castShadow = true;
     c.receiveShadow = true;
   });
