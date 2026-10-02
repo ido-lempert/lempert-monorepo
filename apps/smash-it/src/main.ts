@@ -27,6 +27,7 @@ import {
   clock, foodBars, foodName, goalText, kingName, num, renderAlbum, renderChapters, renderHudGoals, renderIntro, renderResult, renderShop,
   renderTray, type ResultInfo, type ShopTab, updateStarMeter, updateTray, worldName,
 } from './ui';
+import { loadAssets } from './world/assets';
 import { World } from './world/world';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -862,6 +863,9 @@ $('update-now').addEventListener('click', () => void updateSW(true));
 
 // --- Start ---------------------------------------------------------------------------------------------
 
+// The splash stays up while the ready-made models load (a few seconds at most; the game still starts without them).
+await Promise.race([loadAssets(), new Promise((r) => setTimeout(r, 6000))]);
+world.assetsLoaded();
 toMenu();
 world.cam.jump();
 requestAnimationFrame((now) => {

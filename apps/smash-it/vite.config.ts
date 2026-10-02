@@ -48,7 +48,7 @@ export default defineConfig({
       // main.ts offers an "Update" button instead of reloading mid-level.
       registerType: 'prompt',
       injectRegister: false,
-      includeAssets: ['icon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['icon.svg', 'apple-touch-icon.png', 'models/kenney-food/Textures/colormap.png'],
       manifest: {
         id: './',
         name: 'Smash It!',
@@ -72,7 +72,7 @@ export default defineConfig({
       },
       workbox: {
         // Every model and sound is procedural, so precaching the bundle makes the whole game playable offline.
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2,glb}'],
         navigateFallback: 'index.html',
         // The leaderboards are live: never answered from the cache.
         navigateFallbackDenylist: [/^\/api\//],
