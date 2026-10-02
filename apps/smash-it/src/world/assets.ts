@@ -19,6 +19,11 @@ export const ASSETS = [
 ] as const;
 export type AssetId = (typeof ASSETS)[number];
 
+/** Triangles each mesh may have after smoothing: big props are seen up close; small things and flying food are many, on phones. */
+const BIG = new Set<AssetId>(['plate', 'mug', 'cup-tea', 'bowl', 'bottle-ketchup', 'shaker-salt', 'shaker-pepper', 'pepper-mill', 'knife-block', 'loaf-round', 'cake-birthday', 'honey', 'pumpkin', 'apple', 'orange', 'banana', 'pear', 'lemon']);
+const FOODS = new Set<AssetId>(['cookie-chocolate', 'cheese', 'pudding', 'pie', 'pizza']);
+const budgetOf = (id: AssetId) => (BIG.has(id) ? 1500 : FOODS.has(id) ? 500 : 0);
+
 interface Template {
   scene: THREE.Object3D;
   /** Size of its bounding box. */
@@ -28,7 +33,7 @@ interface Template {
 const templates = new Map<AssetId, Template>();
 
 /** Toy-like finish: a little gloss and the environment's reflections on the flat colours. */
-function polish(o: THREE.Object3D) {
+function polish(o: THREE.Object3D, budget: number) {
   o.traverse((c) => {
     if (!(c instanceof THREE.Mesh)) return;
     const old = c.material as THREE.MeshStandardMaterial;
@@ -43,8 +48,10 @@ function polish(o: THREE.Object3D) {
     });
     c.material = m;
     const geo = c.geometry;
-    c.geometry = roundOff(geo, 5);
-    geo.dispose();
+    const tris = (geo.index ? geo.index.count : geo.getAttribute('position').count) / 3;
+    const cuts = Math.min(5, Math.floor(Math.sqrt(budget / Math.max(1, tris))));
+    c.geometry = cuts > 1 ? roundOff(geo, cuts) : geo;
+    if (c.geometry !== geo) geo.dispose();
     c.castShadow = true;
     c.receiveShadow = true;
   });
@@ -58,7 +65,7 @@ export async function loadAssets(): Promise<void> {
       try {
         const gltf = await loader.loadAsync(`${BASE}${id}.glb`);
         const scene = gltf.scene;
-        polish(scene);
+        polish(scene, budgetOf(id));
         const box = new THREE.Box3().setFromObject(scene);
         templates.set(id, { scene, size: box.getSize(new THREE.Vector3()) });
       } catch (err) {

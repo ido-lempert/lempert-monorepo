@@ -12,7 +12,7 @@ import { type Level, LEVELS } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
 import { Effects, SMEAR } from './effects';
-import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setWindTime } from './look';
+import { backdrop, blobTexture, dotTexture, grassField, initialQuality, LOW_GFX_KEY, mat, type Quality, setWindTime } from './look';
 import { Post } from './post';
 import { bugModel, type BugModel } from './bugs3d';
 import { disc, foodModel, kitchen, kitchenProps, mop, obstacleModel, slingshot, stretchBand } from './models';
@@ -143,6 +143,7 @@ export class World {
     this.renderer.toneMappingExposure = 0.66;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     stage.appendChild(this.renderer.domElement);
+    this.watchContext(this.renderer.domElement);
     this.cam = new CameraRig(this.camera);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -217,6 +218,27 @@ export class World {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.post?.resize();
+  }
+
+  /** A phone can drop the 3D view when it is overloaded: wait for it to come back, else restart in low quality. */
+  private watchContext(canvas: HTMLCanvasElement) {
+    let lost: number | undefined;
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      lost = window.setTimeout(() => {
+        try {
+          localStorage.setItem(LOW_GFX_KEY, '1');
+        } catch {
+          // storage blocked: reload anyway
+        }
+        location.reload();
+      }, 2500);
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      clearTimeout(lost);
+      this.quality = 'low';
+      this.applyQuality();
+    });
   }
 
   setBatterySaver(on: boolean) {

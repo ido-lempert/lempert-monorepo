@@ -421,7 +421,15 @@ export function grassField(
 export type Quality = 'high' | 'low';
 
 /** A first guess from the device; the world lowers it at runtime if frames are slow. */
+/** Set when a phone's graphics chip dropped the 3D view: from then on this device starts in low quality. */
+export const LOW_GFX_KEY = 'smashIt.lowGfx';
+
 export function initialQuality(): Quality {
+  try {
+    if (localStorage.getItem(LOW_GFX_KEY)) return 'low';
+  } catch {
+    // storage blocked: use the device guess
+  }
   const cores = navigator.hardwareConcurrency ?? 4;
   const mem = (navigator as { deviceMemory?: number }).deviceMemory ?? 4;
   return cores <= 4 || mem <= 2 ? 'low' : 'high';
