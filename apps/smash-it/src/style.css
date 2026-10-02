@@ -720,7 +720,7 @@ body:has(#pause:not(.hidden)) .popups {
 
 .aim-hint {
   position: fixed;
-  bottom: calc(max(12px, var(--safe-bottom)) + 150px);
+  bottom: max(24px, calc(var(--safe-bottom) + 12px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 8;
