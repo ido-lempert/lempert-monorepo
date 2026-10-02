@@ -35,8 +35,9 @@ export const THEMES: Record<Theme, ThemeLook> = {
     lip: '#3f7f2a', soil: ['#8a5a30', '#704426', '#a0703f'], decor: 'flowers', colors: ['#ffffff', '#ffe14d', '#ff8fb3', '#8fd3ff'],
   },
   beach: {
-    ground: ['#f3d9a4', '#fff0c8', '#d9b77a'], blades: { h: [0.22, 0.28], s: [0.35, 0.45], l: [0.45, 0.55], amount: 0.12, height: 1.6 },
-    lip: '#e0c08a', soil: ['#d9b77a', '#c69d5c', '#e6c995'], decor: 'shells', colors: ['#ffb6c9', '#fff3e0', '#ffcf9a', '#a8e6ff'],
+    // A golden sand with a turquoise sea rim, so the world reads against the pale counter.
+    ground: ['#e8bd76', '#f5d796', '#cc9a4f'], blades: { h: [0.2, 0.26], s: [0.4, 0.5], l: [0.4, 0.5], amount: 0.12, height: 1.6 },
+    lip: '#27aebf', soil: ['#c4924f', '#a1743a', '#d6a96b'], decor: 'shells', colors: ['#ffb6c9', '#fff3e0', '#ffcf9a', '#a8e6ff'],
   },
   autumn: {
     ground: ['#c9a04a', '#e8c46a', '#9a6a2a'], blades: { h: [0.06, 0.13], s: [0.6, 0.75], l: [0.42, 0.55], amount: 0.8, height: 0.9 },
@@ -51,8 +52,9 @@ export const THEMES: Record<Theme, ThemeLook> = {
     lip: '#1f4f1f', soil: ['#5e3a1c', '#4a2c14', '#6e4626'], decor: 'pinecones', colors: ['#8a5530', '#ff6f6f', '#ffd166'],
   },
   desert: {
-    ground: ['#f0c47a', '#ffe0a0', '#d49a4a'], blades: { h: [0.12, 0.16], s: [0.4, 0.5], l: [0.5, 0.6], amount: 0.1, height: 0.8 },
-    lip: '#c98a3a', soil: ['#c98a4a', '#a8682e', '#dca060'], decor: 'cactus', colors: ['#4fae4a', '#ff6fa8', '#ffd23f'],
+    // Deeper terracotta sand, so the world stands out from the pale wooden counter instead of blending into it.
+    ground: ['#dc9150', '#efb272', '#b9672f'], blades: { h: [0.1, 0.14], s: [0.45, 0.55], l: [0.42, 0.52], amount: 0.1, height: 0.8 },
+    lip: '#7c401c', soil: ['#a3562a', '#7c401c', '#c07038'], decor: 'cactus', colors: ['#4fae4a', '#ff6fa8', '#ffd23f'],
   },
   snow: {
     ground: ['#d6e4f2', '#eaf2fb', '#b4c8de'], blades: { h: [0.55, 0.6], s: [0.2, 0.35], l: [0.7, 0.82], amount: 0.25, height: 0.7 },
@@ -113,12 +115,13 @@ export function groundTexture(theme: Theme): THREE.CanvasTexture {
     const pattern = THEMES[theme].pattern;
     if (pattern === 'checks') {
       // A gingham picnic cloth.
-      g.fillStyle = '#ffffff';
+      // Cream, not pure white: white under the sun would flare in the glow pass and wash the cloth out.
+      g.fillStyle = '#f1e6d6';
       g.fillRect(0, 0, s, s);
       const n = 8;
       for (let y = 0; y < n; y++)
         for (let x = 0; x < n; x++) {
-          g.fillStyle = x % 2 && y % 2 ? '#e04848' : x % 2 || y % 2 ? 'rgba(224, 72, 72, 0.55)' : '#ffffff';
+          g.fillStyle = x % 2 && y % 2 ? '#d23c3c' : x % 2 || y % 2 ? 'rgba(210, 60, 60, 0.5)' : '#f1e6d6';
           g.fillRect((x * s) / n, (y * s) / n, s / n, s / n);
         }
       return;
