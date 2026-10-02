@@ -44,7 +44,7 @@ const tiltShift = (dir: [number, number]) => ({
 const grade = {
   uniforms: {
     tDiffuse: { value: null },
-    vignette: { value: 0.32 },
+    vignette: { value: 0.42 },
   },
   vertexShader: /* glsl */ `varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -53,7 +53,7 @@ const grade = {
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
       c.rgb = mix(vec3(l), c.rgb, 1.06);
-      c.rgb = (c.rgb - 0.45) * 1.1 + 0.45;
+      c.rgb = (c.rgb - 0.42) * 1.14 + 0.42;
       c.rgb *= vec3(1.03, 1.0, 0.96);
       vec2 d = vUv - 0.5;
       c.rgb *= 1.0 - vignette * smoothstep(0.35, 0.85, length(d * vec2(1.1, 1.0)));
