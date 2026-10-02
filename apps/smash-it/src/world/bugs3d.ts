@@ -33,8 +33,12 @@ export interface BugModel {
 
 type Detail = 'high' | 'low';
 
-/** Distance at which the light model takes over. */
-const LOD_DISTANCE = 9;
+/** Bugs are the stars: on good devices they keep their full detail (and outline) at the normal play distance; phones only see it up close. */
+let bugDetailHigh = true;
+export function setBugDetail(high: boolean) {
+  bugDetailHigh = high;
+}
+const lodDistance = () => (bugDetailHigh ? 40 : 9);
 
 const spheres = {
   high: new THREE.SphereGeometry(1, 40, 28),
@@ -424,9 +428,10 @@ export function bugModel(kind: BugKind, boss?: BossDef): BugModel {
     const p = build(kind, d, boss);
     const holder = new THREE.Group();
     holder.add(p.body);
-    if (d === 'high') outline(holder, 0.02);
+    if (d === 'high') outline(holder, 0.02, true);
     // Bigger bugs (kings) keep their detail from further away.
-    lod.addLevel(holder, d === 'high' ? 0 : LOD_DISTANCE * (boss ? 1.6 : 1));
+    lod.addLevel(holder, d === 'high' ? 0 : lodDistance());
+    if (d === 'low') Object.defineProperty(lod.levels[lod.levels.length - 1], 'distance', { get: () => lodDistance() * (boss ? 1.6 : 1) });
     parts.push(p);
   }
   const stars = dizzyStars(boss ? 1.9 : 1.5);

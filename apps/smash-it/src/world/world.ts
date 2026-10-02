@@ -14,7 +14,7 @@ import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath,
 import { Effects, SMEAR } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, LOW_GFX_KEY, mat, type Quality, setOutlines, setWindTime } from './look';
 import { Post } from './post';
-import { bugModel, type BugModel } from './bugs3d';
+import { bugModel, setBugDetail, type BugModel } from './bugs3d';
 import { disc, foodModel, kitchen, kitchenProps, mop, obstacleModel, slingshot, stretchBand } from './models';
 import { THEMES } from './themes';
 
@@ -275,6 +275,7 @@ export class World {
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
     setOutlines(high);
+    setBugDetail(high);
     this.scene.traverse((o) => {
       if (o.userData.rimShadow) o.castShadow = high;
     });
@@ -484,10 +485,10 @@ export class World {
     const k = this.scale;
     // Orbit the middle of the world a little towards the aim.
     const a = yaw * 0.3;
-    const back = (portrait ? 25 : 18.5) * k;
-    const height = (portrait ? 14 : 8.5) * k;
+    const back = (portrait ? 25 : 15.5) * k;
+    const height = (portrait ? 14 : 8) * k;
     const pos = this.aroundSling(new THREE.Vector3(Math.sin(a) * back, height, Math.cos(a) * back));
-    const look = this.aroundSling(new THREE.Vector3(Math.sin(a) * 1.5, (portrait ? -1 : -1.6) * k, (portrait ? -0.5 : 0.6) * k));
+    const look = this.aroundSling(new THREE.Vector3(Math.sin(a) * 1.5, (portrait ? -1 : -1.6) * k, (portrait ? -0.5 : 3.3) * k));
     if (follow) look.lerp(v3(follow), 0.15);
     this.cam.want(pos, look, rate, portrait ? 62 : 48);
     this.post.setFocus(0.8, [0.02, portrait ? 0.74 : 0.76]);
@@ -863,7 +864,7 @@ export class World {
           const spinner = new THREE.Group();
           spinner.add(foodModel(b.food.id, b.piece));
           root.add(spinner);
-          root.scale.setScalar(b.piece === 'whole' ? b.food.radius : b.radius);
+          root.scale.setScalar(this.bodyScale(b));
           const shadow = blob();
           this.foodLayer.add(root, shadow);
           v = { body: b, root, spinner, shadow, wobble: 0 };
@@ -878,6 +879,11 @@ export class World {
       }
   }
 
+  /** What a flying piece looks like: a slice is as big as the pizza it came from (its hit radius is smaller). */
+  private bodyScale(b: Body): number {
+    return b.piece === 'ring' ? b.radius : b.food.radius;
+  }
+
   private animateBody(v: BodyView, dt: number) {
     const b = v.body;
     const root = v.root;
@@ -886,7 +892,7 @@ export class World {
     const ground = groundAt(b.x, b.z);
     v.shadow.position.set(b.x, ground + 0.03, b.z);
     v.shadow.scale.setScalar(Math.max(0.3, b.radius * 2.4 * (1 - Math.min(0.7, (b.y - ground) * 0.08))));
-    const base = b.piece === 'whole' ? b.food.radius : b.radius;
+    const base = this.bodyScale(b);
     if (b.mode === 'roll') {
       // Roll along the ground.
       const dir = Math.atan2(b.vx, b.vz);

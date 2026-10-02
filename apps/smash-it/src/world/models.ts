@@ -99,7 +99,7 @@ function foodDetail(id: FoodId, piece: 'whole' | 'slice' | 'ring', d: Detail): T
   const sphere = new THREE.SphereGeometry(1, seg(d, 40, 14), seg(d, 28, 10));
   const ball2 = (m: THREE.Material, r: number, x = 0, y = 0, z = 0) => mesh(sphere, m, x, y, z, r);
   if (piece === 'slice') {
-    g.add(pizzaSlice(d));
+    g.add(pizzaPiece(d));
     return g;
   }
   if (piece === 'ring') {
@@ -193,9 +193,13 @@ function foodDetail(id: FoodId, piece: 'whole' | 'slice' | 'ring', d: Detail): T
     }
     case 'pizza':
       for (let i = 0; i < 4; i++) {
+        // The four wedges sit together as a whole pizza, with a hair of crack between them.
         const sl = pizzaSlice(d);
-        sl.rotation.y = (i * Math.PI) / 2;
-        g.add(sl);
+        sl.position.set(0.02, 0, 0.02);
+        const quarter = new THREE.Group();
+        quarter.add(sl);
+        quarter.rotation.y = (i * Math.PI) / 2;
+        g.add(quarter);
       }
       break;
   }
@@ -209,13 +213,13 @@ const KENNEY_FOOD: Partial<Record<FoodId, AssetId>> = {
   cheese: 'cheese',
   jelly: 'pudding',
   pie: 'pie',
-  pizza: 'pizza',
 };
 
 export function foodModel(id: FoodId, piece: 'whole' | 'slice' | 'ring' = 'whole'): THREE.Group {
   const g = new THREE.Group();
   // A ready-made model when there is a good one and it's loaded. The round foods (watermelon, donut,
-  // popcorn) and the pizza slices stay procedural: their low-poly versions look faceted.
+  // popcorn) stay procedural: their low-poly versions look faceted. So does the pizza, so that the
+  // four slices it splits into are exactly the four wedges it was made of.
   const ready = piece === 'whole' ? KENNEY_FOOD[id] : undefined;
   const model = ready ? asset(ready, 1.05) : null;
   if (model) {
@@ -259,11 +263,20 @@ function donut(scale: number, d: Detail): THREE.Group {
   return g;
 }
 
+/** One flying slice: the wedge centred on its own middle, so it spins in place instead of swinging round its tip. */
+function pizzaPiece(d: Detail): THREE.Group {
+  const g = new THREE.Group();
+  const slice = pizzaSlice(d);
+  slice.position.set(-0.424, 0, -0.424);
+  g.add(slice);
+  return g;
+}
+
 function pizzaSlice(d: Detail): THREE.Group {
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(1, 1, 0.16, seg(d, 16, 8), 1, false, 0, Math.PI / 2), mat('#f2c26b', { rough: 0.8, sheen: 0.4 })));
   const crust = new THREE.Mesh(new THREE.TorusGeometry(0.97, 0.09, seg(d, 8, 4), seg(d, 16, 6), Math.PI / 2), mat('#e3a35c', { rough: 0.8 }));
-  crust.rotation.x = Math.PI / 2;
+  crust.rotation.x = -Math.PI / 2;
   crust.rotation.z = -Math.PI / 2;
   g.add(crust);
   g.add(mesh(new THREE.CylinderGeometry(0.88, 0.88, 0.18, seg(d, 16, 8), 1, false, 0.04, Math.PI / 2 - 0.08), mat('#ffd84d', { rough: 0.35, clearcoat: 0.6 }), 0, 0.03, 0));
@@ -293,7 +306,7 @@ export interface SlingshotModel {
 
 /** Slingshot colours (frame, grip tape, band), unlocked with stars. */
 export const SKIN_COLORS: Record<SkinId, { frame: string; tape: string; band: string; metal?: number }> = {
-  classic: { frame: '#b5652b', tape: '#ff5b5b', band: '#ff9a3c' },
+  classic: { frame: '#e8434f', tape: '#ffe14d', band: '#2f7ee0' },
   mint: { frame: '#5fd3a8', tape: '#ffffff', band: '#2f9d77' },
   candy: { frame: '#ff8fc8', tape: '#ffffff', band: '#ff4d8d' },
   sunny: { frame: '#ffd23f', tape: '#ff9a1f', band: '#ff5b5b' },
@@ -307,16 +320,17 @@ export function slingshot(skin: SkinId = 'classic'): SlingshotModel {
   const root = new THREE.Group();
   const wood = mat(c.frame, { rough: 0.35, clearcoat: 0.7, metal: c.metal });
   const tape = mat(c.tape, { rough: 0.6, sheen: 1 });
-  root.add(rod(wood, new THREE.Vector3(0, -2.4, 0), new THREE.Vector3(0, -0.5, 0), 0.2));
-  root.add(mesh(geo.cyl, tape, 0, -1.3, 0, 0.23, 0.5, 0.23));
+  root.add(rod(wood, new THREE.Vector3(0, -2.4, 0), new THREE.Vector3(0, -0.5, 0), 0.28));
+  root.add(mesh(geo.cyl, tape, 0, -1.3, 0, 0.31, 0.5, 0.31));
   const prongs: THREE.Vector3[] = [];
   for (const s of [-1, 1]) {
     const top = new THREE.Vector3(s * 0.8, 0.35, 0);
-    root.add(rod(wood, new THREE.Vector3(0, -0.6, 0), top, 0.16));
-    root.add(ball(wood, 0.17, top.x, top.y, top.z));
+    root.add(rod(wood, new THREE.Vector3(0, -0.6, 0), top, 0.22));
+    root.add(ball(wood, 0.25, top.x, top.y, top.z));
     prongs.push(top);
   }
-  root.add(ball(wood, 0.22, 0, -0.55, 0));
+  root.add(ball(wood, 0.3, 0, -0.55, 0));
+  outline(root, 0.05, true);
   const pouch = ball(mat('#6b3b22', { rough: 0.7, sheen: 0.8 }), 0.3);
   pouch.scale.set(0.42, 0.22, 0.32);
   root.add(pouch);
@@ -647,7 +661,7 @@ export function obstacleModel(o: Obstacle): THREE.Group {
 export function kitchen(): THREE.Group {
   const g = new THREE.Group();
   // A varnished wooden counter that catches a little of the light.
-  const counter = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), mat('#ffffff', { map: woodTexture, rough: 0.45, rim: 0, clearcoat: 0.4 }));
+  const counter = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), mat('#ffffff', { map: woodTexture, rough: 0.6, rim: 0, clearcoat: 0.1 }));
   counter.rotation.x = -Math.PI / 2;
   counter.position.set(0, COUNTER_Y, -5);
   counter.receiveShadow = true;

@@ -1641,6 +1641,13 @@ body:has(#pause:not(.hidden)) .popups {
 
 /* Phones held sideways: the short screen gets two columns instead of a tall card. */
 @media (orientation: landscape) and (max-height: 520px) {
+  /* The field fills the screen here: keep the hint in the corner, off the lawn. */
+  .aim-hint {
+    left: max(12px, var(--safe-left, 0px));
+    bottom: max(12px, var(--safe-bottom));
+    transform: none;
+  }
+
   .update {
     top: max(12px, var(--safe-top));
     bottom: auto;
