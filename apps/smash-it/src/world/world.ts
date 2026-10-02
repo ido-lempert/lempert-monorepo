@@ -207,6 +207,8 @@ export class World {
     this.resize();
     this.homeCamera(0);
     addEventListener('resize', () => this.resize());
+    addEventListener('orientationchange', () => setTimeout(() => this.resize(), 300));
+    visualViewport?.addEventListener('resize', () => this.resize());
     this.homeCamera(0);
     this.cam.jump();
   }
@@ -223,6 +225,8 @@ export class World {
   resize() {
     const w = innerWidth;
     const h = innerHeight;
+    // Mobile browsers report 0x0 for a moment while rotating or moving toolbars: a NaN aspect blanks the whole view.
+    if (w < 1 || h < 1) return;
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
