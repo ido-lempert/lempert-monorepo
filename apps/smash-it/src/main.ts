@@ -675,6 +675,12 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) pause(true);
 });
 
+// Phones are for portrait: lock it where the browser allows (installed app, fullscreen), and pause while the "turn it back" screen covers the game.
+(screen.orientation as { lock?: (o: string) => Promise<void> } | undefined)?.lock?.('portrait').catch(() => {});
+matchMedia('(orientation: landscape) and (pointer: coarse) and (max-height: 520px)').addEventListener('change', (e) => {
+  if (e.matches) pause(true);
+});
+
 // --- Settings menu -------------------------------------------------------------------------------------
 
 function closeMenu() {
