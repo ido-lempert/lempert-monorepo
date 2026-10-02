@@ -2,13 +2,14 @@
 # Mancala: one web service for the static build + multiplayer WebSocket on the same port.
 # Sukkah World: a static site (a PWA with no server). Smash It: a web service for its leaderboards.
 # All deploy from the Blueprint's branch (main); each only rebuilds when its own files change.
+# Builds use `npm install`, not `npm ci`: Railway (which also reads this file) mounts a cache over node_modules/.vite and `npm ci` fails on it with EBUSY.
 services:
   - type: web
     name: mancala
     runtime: node
     plan: free
     # Build from the monorepo root so npm workspaces resolve.
-    buildCommand: npm ci --include=dev && npm run build -w mancala
+    buildCommand: npm install --include=dev --no-audit --no-fund && npm run build -w mancala
     startCommand: npm run start -w mancala
     healthCheckPath: /
     # Only redeploy when the game (or root dependency files) change.
@@ -32,7 +33,7 @@ services:
   - type: web
     name: sukkah-world
     runtime: static
-    buildCommand: npm ci --include=dev && npm run build -w sukkah-world
+    buildCommand: npm install --include=dev --no-audit --no-fund && npm run build -w sukkah-world
     staticPublishPath: apps/sukkah-world/dist
     headers:
       # The service worker and the page must never be cached, or installed apps get stuck on an old version.
@@ -58,7 +59,7 @@ services:
     runtime: node
     plan: free
     # Build from the monorepo root so npm workspaces resolve.
-    buildCommand: npm ci --include=dev && npm run build -w smash-it
+    buildCommand: npm install --include=dev --no-audit --no-fund && npm run build -w smash-it
     startCommand: npm run start -w smash-it
     healthCheckPath: /
     buildFilter:
