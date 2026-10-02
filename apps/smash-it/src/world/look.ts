@@ -14,6 +14,7 @@ export interface MatOptions {
   flat?: boolean;
   /** Strength of the soft light around the edges; 0 turns it off. */
   rim?: number;
+  /** Opacity (0..1). Glass and jelly use this, not real transmission, which re-renders the scene and is far too slow on phones. */
   transparent?: number;
   double?: boolean;
   map?: THREE.Texture;
@@ -21,11 +22,6 @@ export interface MatOptions {
   clearcoat?: number;
   /** Soft velvet sheen (fuzzy bodies, sponge, cake). */
   sheen?: number;
-  /** See-through like glass or jelly (0..1), with its thickness. */
-  transmission?: number;
-  thickness?: number;
-  /** Colour light takes on travelling through a see-through material. */
-  tint?: string;
   /** Soap-bubble colours (fly wings, bubbles). */
   iridescence?: number;
 }
@@ -54,7 +50,7 @@ export function mat(color: string, o: MatOptions = {}): THREE.MeshStandardMateri
   let m = mats.get(key);
   if (!m) {
     const c = new THREE.Color(color);
-    const physical = o.clearcoat || o.sheen || o.transmission || o.iridescence;
+    const physical = o.clearcoat || o.sheen || o.iridescence;
     const params: THREE.MeshPhysicalMaterialParameters = {
       color: c,
       map: o.map ?? null,
@@ -65,6 +61,7 @@ export function mat(color: string, o: MatOptions = {}): THREE.MeshStandardMateri
       emissiveIntensity: o.emissive ?? 0,
       transparent: o.transparent !== undefined,
       opacity: o.transparent ?? 1,
+      depthWrite: !(o.transparent !== undefined && o.transparent < 0.4),
       envMapIntensity: 0.6,
       side: o.double ? THREE.DoubleSide : THREE.FrontSide,
     };
@@ -76,18 +73,14 @@ export function mat(color: string, o: MatOptions = {}): THREE.MeshStandardMateri
         sheen: o.sheen ?? 0,
         sheenRoughness: 0.5,
         sheenColor: new THREE.Color('#ffffff'),
-        transmission: o.transmission ?? 0,
-        thickness: o.thickness ?? 0.5,
         ior: 1.35,
-        attenuationColor: new THREE.Color(o.tint ?? '#ffffff'),
-        attenuationDistance: o.tint ? 0.6 : Infinity,
         iridescence: o.iridescence ?? 0,
         iridescenceIOR: 1.3,
       });
       m = p;
     } else m = new THREE.MeshStandardMaterial(params);
     const rim = o.rim ?? 0.3;
-    if (rim > 0 && !o.flat && !o.transmission) withRim(m, rim);
+    if (rim > 0 && !o.flat) withRim(m, rim);
     mats.set(key, m);
   }
   return m;
@@ -108,10 +101,22 @@ function outlineMaterial(width: number) {
 }
 const outlineMats = new Map<number, THREE.MeshBasicMaterial>();
 
+let outlinesOn = true;
+
+/** The cartoon outlines are an extra draw for every mesh, so low quality turns them off. */
+export function setOutlines(on: boolean) {
+  outlinesOn = on;
+  for (const m of outlineMats.values()) m.visible = on;
+}
+
 /** Gives every mesh in a model a dark cartoon outline (the "inverted hull" trick: one extra draw each). */
 export function outline(root: THREE.Object3D, width = 0.022) {
   let m = outlineMats.get(width);
-  if (!m) outlineMats.set(width, (m = outlineMaterial(width)));
+  if (!m) {
+    m = outlineMaterial(width);
+    m.visible = outlinesOn;
+    outlineMats.set(width, m);
+  }
   const meshes: THREE.Mesh[] = [];
   root.traverse((o) => {
     if (o instanceof THREE.Mesh && !o.userData.noOutline && !(o.material as THREE.Material).transparent) meshes.push(o);
@@ -342,13 +347,13 @@ export function grassField(
   count: number,
   palette: { h: [number, number]; s: [number, number]; l: [number, number]; height: number },
   inside: (x: number, z: number) => boolean,
+  segs = 4,
 ): THREE.InstancedMesh {
   // A blade: long, thin and tapering, gently curved, in four segments.
   const geo = new THREE.BufferGeometry();
   const w = 0.022;
   const pos: number[] = [];
   const idx: number[] = [];
-  const segs = 4;
   for (let i = 0; i <= segs; i++) {
     const t = i / segs;
     const half = w * (1 - t * 0.85);
@@ -432,5 +437,8 @@ export function initialQuality(): Quality {
   }
   const cores = navigator.hardwareConcurrency ?? 4;
   const mem = (navigator as { deviceMemory?: number }).deviceMemory ?? 4;
+  // Phones start light: post-processing and soft shadows are too much for most of them.
+  const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700;
+  if (phone && (cores < 8 || mem < 8)) return 'low';
   return cores <= 4 || mem <= 2 ? 'low' : 'high';
 }
