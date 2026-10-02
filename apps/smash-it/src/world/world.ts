@@ -15,7 +15,7 @@ import { Effects, SMEAR } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setWindTime } from './look';
 import { Post } from './post';
 import { bugModel, type BugModel } from './bugs3d';
-import { disc, foodModel, kitchen, kitchenProps, mop, obstacleModel, slingshot, stretchBand } from './models';
+import { disc, foodModel, kitchen, mop, obstacleModel, slingshot, stretchBand } from './models';
 import { THEMES } from './themes';
 
 /** A soft round shadow right under something, so it's easy to see where it is above the ground. */
@@ -140,7 +140,7 @@ export class World {
     // Soft, blurred shadows.
     this.renderer.shadowMap.type = THREE.VSMShadowMap;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 0.66;
+    this.renderer.toneMappingExposure = 0.78;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     stage.appendChild(this.renderer.domElement);
     this.cam = new CameraRig(this.camera);
@@ -149,7 +149,7 @@ export class World {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.sky = backdrop();
     this.scene.add(this.sky);
-    this.hemi = new THREE.HemisphereLight('#fff3df', '#a8704a', 0.55);
+    this.hemi = new THREE.HemisphereLight('#fff3df', '#c98a5a', 0.7);
     this.scene.add(this.hemi);
     // A warm sun from the window side, a cool light from behind for bright edges, and a soft fill.
     this.sun = new THREE.DirectionalLight('#ffe9c9', 2.6);
@@ -272,12 +272,12 @@ export class World {
     const night = !!THEMES[theme].night;
     this.sun.color.set(night ? '#9fb8ff' : '#ffe9c9');
     this.sun.intensity = night ? 1.1 : 2.6;
-    this.hemi.intensity = night ? 0.3 : 0.55;
+    this.hemi.intensity = night ? 0.35 : 0.7;
     this.hemi.color.set(night ? '#8090ff' : '#fff3df');
     const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
-    u.top.value.set(night ? '#1a1f4a' : '#5fb0e6');
-    u.middle.value.set(night ? '#3a2f6a' : '#efcf9c');
-    u.bottom.value.set(night ? '#5a3f6a' : '#d99a64');
+    u.top.value.set(night ? '#1a1f4a' : '#7fd0ff');
+    u.middle.value.set(night ? '#3a2f6a' : '#ffe2b0');
+    u.bottom.value.set(night ? '#5a3f6a' : '#ffc58a');
   }
 
   /** Repaints the slingshot (colours unlocked with stars). */
@@ -289,19 +289,6 @@ export class World {
     if (this.pouchFood) this.sling.root.add(this.pouchFood);
     this.scene.remove(old.root);
     this.scene.add(this.sling.root);
-  }
-
-  /** Once the ready-made models have loaded: the kitchen things, and a fresh world with them on its rim. */
-  assetsLoaded() {
-    this.scene.add(kitchenProps());
-    if (this.ground) this.scene.remove(this.ground);
-    this.ground = null;
-    this.setLevel(this.level);
-    if (this.pouchFoodId) {
-      const id = this.pouchFoodId;
-      this.pouchFoodId = null;
-      this.loadPouch(id);
-    }
   }
 
   /** Clears every last crumb, splat and dizzy bug (after the mop). */

@@ -133,9 +133,9 @@ export function backdrop(): THREE.Mesh {
     depthWrite: false,
     fog: false,
     uniforms: {
-      top: { value: new THREE.Color('#5fb0e6') },
-      middle: { value: new THREE.Color('#efcf9c') },
-      bottom: { value: new THREE.Color('#d99a64') },
+      top: { value: new THREE.Color('#7fd0ff') },
+      middle: { value: new THREE.Color('#ffe2b0') },
+      bottom: { value: new THREE.Color('#ffc58a') },
     },
     vertexShader: `varying vec3 vPos;
       void main() {
@@ -206,7 +206,7 @@ export const woodTexture = (() => {
   const tex = canvasTexture(256, (g, s) => {
     const planks = 4;
     for (let p = 0; p < planks; p++) {
-      g.fillStyle = `hsl(${24 + p * 3}, 46%, ${47 + (p % 2) * 5}%)`;
+      g.fillStyle = `hsl(${26 + p * 3}, 44%, ${56 + (p % 2) * 5}%)`;
       g.fillRect(0, (p * s) / planks, s, s / planks);
       g.strokeStyle = 'rgba(120, 70, 30, 0.18)';
       g.lineWidth = 2;
@@ -232,7 +232,7 @@ export const tileTexture = (() => {
     const n = 4;
     for (let y = 0; y < n; y++)
       for (let x = 0; x < n; x++) {
-        g.fillStyle = (x + y) % 2 ? '#f2e6cc' : '#7fc8c0';
+        g.fillStyle = (x + y) % 2 ? '#fff4dc' : '#9fe0d8';
         g.fillRect((x * s) / n, (y * s) / n, s / n, s / n);
       }
     g.strokeStyle = 'rgba(255,255,255,0.7)';

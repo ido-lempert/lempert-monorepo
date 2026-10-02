@@ -10,7 +10,6 @@ import { COUNTER_Y, edgeFactor, type WorldShape } from '../game/physics';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { Theme } from '../game/levels';
 import type { SkinId } from '../game/progress';
-import { asset, type AssetId } from './assets';
 import { groundTexture, THEMES, type ThemeLook } from './themes';
 import { mat, melonTexture, outline, tileTexture, windowTexture, woodTexture } from './look';
 
@@ -199,25 +198,8 @@ function foodDetail(id: FoodId, piece: 'whole' | 'slice' | 'ring', d: Detail): T
 }
 
 /** A food with two levels of detail: rich for close-ups, light in the normal view. */
-/** Kenney's food models (CC0) for each food, where there is one. */
-const KENNEY_FOOD: Partial<Record<FoodId, AssetId>> = {
-  cookie: 'cookie-chocolate',
-  cheese: 'cheese',
-  jelly: 'pudding',
-  pie: 'pie',
-  pizza: 'pizza',
-};
-
 export function foodModel(id: FoodId, piece: 'whole' | 'slice' | 'ring' = 'whole'): THREE.Group {
   const g = new THREE.Group();
-  // A ready-made model when there is a good one and it's loaded. The round foods (watermelon, donut,
-  // popcorn) and the pizza slices stay procedural: their low-poly versions look faceted.
-  const ready = piece === 'whole' ? KENNEY_FOOD[id] : undefined;
-  const model = ready ? asset(ready, 1.05) : null;
-  if (model) {
-    g.add(model);
-    return g;
-  }
   const lod = new THREE.LOD();
   const high = foodDetail(id, piece, 'high');
   outline(high, 0.03);
@@ -443,11 +425,6 @@ function rimDecor(look: ThemeLook, i: number, sp: THREE.SphereGeometry): THREE.G
       break;
     }
     case 'candy': {
-      const sweet = asset(i % 2 ? 'lollypop' : 'cupcake', i % 2 ? 0.55 : 0.32, 'height');
-      if (sweet) {
-        f.add(sweet);
-        break;
-      }
       if (i % 2) {
         f.add(rod(mat('#ffffff', { rough: 0.3 }), new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0.45, 0), 0.025));
         const lolly = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.06, 24), mat(c, { rough: 0.1, clearcoat: 1 }));
@@ -490,11 +467,6 @@ function rimDecor(look: ThemeLook, i: number, sp: THREE.SphereGeometry): THREE.G
       break;
     }
     case 'cherries': {
-      const fruit = asset(i % 2 ? 'cherries' : 'strawberry', 0.32, 'height');
-      if (fruit) {
-        f.add(fruit);
-        break;
-      }
       const red = mat(c, { rough: 0.1, clearcoat: 1 });
       at(red, 0, 0.14, 0, 0.14);
       if (i % 2) at(mat('#ffffff', { rough: 0.7, sheen: 1 }), 0.25, 0.08, 0.05, 0.13, 0.1, 0.13);
@@ -502,11 +474,6 @@ function rimDecor(look: ThemeLook, i: number, sp: THREE.SphereGeometry): THREE.G
       break;
     }
     case 'veggies': {
-      const veg = asset((['tomato', 'carrot', 'radish'] as const)[i % 3], 0.3, 'width');
-      if (veg) {
-        f.add(veg);
-        break;
-      }
       if (i % 3 === 0) at(mat('#ff4d4d', { rough: 0.15, clearcoat: 1 }), 0, 0.13, 0, 0.14, 0.12, 0.14);
       else if (i % 3 === 1) {
         const slice = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.05, 20), mat('#b8e88a', { rough: 0.4, clearcoat: 0.6 }));
@@ -660,7 +627,7 @@ export function kitchen(): THREE.Group {
   }
   g.add(win);
 
-  // A giant glass jar of sweets in the back (the other kitchen things come from `kitchenProps`).
+  // Giant kitchen things in the back, so the bugs feel tiny: a glass jar of sweets, a teapot, a fruit bowl.
   const jar = new THREE.Group();
   jar.position.set(-13, COUNTER_Y, -16);
   const candy = ['#ff5b85', '#ffd23f', '#4dd0ff', '#7ed957', '#b98cff', '#ff9a3c'];
@@ -673,51 +640,39 @@ export function kitchen(): THREE.Group {
   jar.add(lathe([[0, 0], [2.8, 0], [3, 0.25], [3, 8], [2.82, 8], [2.82, 1.1], [2.6, 0.95], [0, 0.95]], mat('#eaf8ff', { rough: 0.05, transmission: 1, thickness: 0.6, rim: 0 })));
   jar.add(mesh(geo.cyl, mat('#ff6f6f', { rough: 0.3, clearcoat: 1 }), 0, 8.4, 0, 3.2, 0.9, 3.2));
   g.add(jar);
-  jar.traverse((c) => (c.castShadow = true));
-  return g;
-}
-
-/**
- * Giant kitchen things around the world, so the bugs feel tiny: a fruit bowl, mugs, a plate, a bread
- * loaf, bottles and shakers (Kenney's Food Kit). Empty until the models have loaded.
- */
-export function kitchenProps(): THREE.Group {
-  const g = new THREE.Group();
-  const put = (id: AssetId, size: number, fit: 'height' | 'width', x: number, z: number, turn = 0) => {
-    const o = asset(id, size, fit);
-    if (!o) return null;
-    o.position.set(x, COUNTER_Y, z);
-    o.rotation.y = turn;
-    g.add(o);
-    return o;
-  };
-  const bowl = put('bowl', 11, 'width', 2, -20);
-  if (bowl) {
-    // Fruit heaped in the bowl.
-    const fruits: [AssetId, number, number, number, number][] = [
-      ['apple', -2.4, 2.4, -0.6, 3.2], ['orange', 0.2, 2.6, 0.4, 3.2], ['pear', 2.6, 2.3, -0.2, 3.8],
-      ['banana', 0, 4.2, -1.2, 6], ['lemon', -1, 4, 1.2, 2.6], ['apple', 1.6, 4.3, 1.4, 3],
-    ];
-    for (const [id, x, y, z, size] of fruits) {
-      const f = asset(id, size, 'width');
-      if (!f) continue;
-      f.position.set(2 + x, COUNTER_Y + y, -20 + z);
-      f.rotation.y = x * 2;
-      g.add(f);
-    }
+  const teapot = new THREE.Group();
+  teapot.position.set(12, COUNTER_Y, -19);
+  teapot.scale.setScalar(0.65);
+  const ceramic = mat('#ffd166', { rough: 0.15, clearcoat: 1 });
+  const pot = ball(ceramic, 4, 0, 3.4, 0);
+  pot.scale.y = 3.4;
+  teapot.add(pot);
+  teapot.add(ball(mat('#ff8fab', { rough: 0.15, clearcoat: 1 }), 1, 0, 7, 0));
+  teapot.add(rod(ceramic, new THREE.Vector3(3, 3, 0), new THREE.Vector3(6, 6, 0), 0.6));
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(1.8, 0.45, 12, 24), ceramic);
+  handle.position.set(-4, 3.8, 0);
+  teapot.add(handle);
+  g.add(teapot);
+  const fruitBowl = new THREE.Group();
+  fruitBowl.position.set(1, COUNTER_Y, -19);
+  // A thick bowl on a foot.
+  const bowlPts: [number, number][] = [[0, 0], [1.9, 0], [2, 0.4]];
+  for (let k = 0; k <= 10; k++) {
+    const a = 0.45 + (k / 10) * (Math.PI / 2 - 0.45);
+    bowlPts.push([4.5 * Math.sin(a), 0.4 + 3.2 * (1 - Math.cos(a)) * 0.9]);
   }
-  put('mug', 6.5, 'height', 14, -16, -0.6);
-  put('cup-tea', 4.5, 'height', -21, -12, 0.8);
-  put('plate', 11, 'width', 21, -4, 0);
-  put('cake-birthday', 4, 'height', 21, -4, 0.3)?.position.setY(COUNTER_Y + 0.5);
-  put('loaf-round', 6, 'width', -22, 2, 0.4);
-  put('bottle-ketchup', 9, 'height', -18, -21, 0.3);
-  put('shaker-salt', 4, 'height', 18, -22, 0);
-  put('shaker-pepper', 4, 'height', 21, -20, 0);
-  put('pepper-mill', 7, 'height', 25, -14, 0);
-  put('knife-block', 8, 'height', -27, -16, 0.5);
-  put('honey', 5, 'height', 26, 6, -0.4);
-  put('pumpkin', 6, 'width', -26, 10, 0.7);
+  const rimY = bowlPts[bowlPts.length - 1][1];
+  bowlPts.push([4.15, rimY]);
+  for (let k = 10; k >= 0; k--) {
+    const a = 0.3 + (k / 10) * (Math.PI / 2 - 0.3);
+    bowlPts.push([4.1 * Math.sin(a), 1.05 + (rimY - 1.05) * (1 - Math.cos(a)) / (1 - Math.cos(Math.PI / 2))]);
+  }
+  bowlPts.push([0, 1.05]);
+  fruitBowl.add(lathe(bowlPts, mat('#9b7bff', { rough: 0.15, clearcoat: 1 })));
+  const fruit = ['#ff4d4d', '#ffcf3f', '#7ed957', '#ff9a3c', '#ff4d4d'];
+  fruit.forEach((c, i) => fruitBowl.add(ball(mat(c, { rough: 0.3, clearcoat: 0.8 }), 1.5, (i - 2) * 1.5, 2.5 + (i % 2) * 1.1, (i % 3) - 1)));
+  g.add(fruitBowl);
+  for (const o of [jar, teapot, fruitBowl]) o.traverse((c) => (c.castShadow = true));
   return g;
 }
 
