@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import type { BossDef, BugKind } from '../game/bugs';
 import { canvasTexture, mat, outline } from './look';
+import { share } from './optimize';
 
 export interface BugParts {
   body: THREE.Group;
@@ -41,10 +42,10 @@ export function setBugDetail(high: boolean) {
 const lodDistance = () => (bugDetailHigh ? 40 : 9);
 
 const spheres = {
-  high: new THREE.SphereGeometry(1, 40, 28),
-  low: new THREE.SphereGeometry(1, 14, 10),
+  high: share(new THREE.SphereGeometry(1, 40, 28)),
+  low: share(new THREE.SphereGeometry(1, 14, 10)),
 };
-const capsule = new THREE.CapsuleGeometry(0.5, 1, 6, 12);
+const capsule = share(new THREE.CapsuleGeometry(0.5, 1, 6, 12));
 
 function ball(detail: Detail, m: THREE.Material, r: number, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1): THREE.Mesh {
   const o = new THREE.Mesh(spheres[detail], m);
@@ -444,8 +445,9 @@ export function bugModel(kind: BugKind, boss?: BossDef): BugModel {
     bubble.visible = false;
     root.add(bubble);
   }
+  // On the low tier the soft blob under the bug is its shadow: casting too would double its draw calls.
   root.traverse((o) => {
-    if (o instanceof THREE.Mesh && !o.userData.noOutline) o.castShadow = true;
+    if (o instanceof THREE.Mesh && !o.userData.noOutline) o.castShadow = bugDetailHigh;
   });
   return { root, parts, stars, bubble };
 }

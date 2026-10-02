@@ -29,7 +29,8 @@ export interface MatOptions {
 const mats = new Map<string, THREE.MeshStandardMaterial>();
 
 /** Adds a view-dependent rim light, which gives the soft "toy" edge glow of modern mobile games. */
-function withRim(m: THREE.MeshStandardMaterial, strength: number) {
+export function withRim(m: THREE.MeshStandardMaterial, strength: number) {
+  m.userData.rim = strength;
   m.onBeforeCompile = (shader) => {
     shader.uniforms.rimStrength = { value: strength };
     shader.fragmentShader = shader.fragmentShader

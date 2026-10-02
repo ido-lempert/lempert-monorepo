@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { share } from './optimize';
 import { roundOff } from './smooth';
 
 const BASE = 'models/kenney-food/';
@@ -53,6 +54,7 @@ function polish(o: THREE.Object3D, budget: number, glossy: boolean) {
     const cuts = Math.min(5, Math.floor(Math.sqrt(budget / Math.max(1, tris))));
     c.geometry = cuts > 1 ? roundOff(geo, cuts) : geo;
     if (c.geometry !== geo) geo.dispose();
+    share(c.geometry);
     c.castShadow = true;
     c.receiveShadow = true;
   });
