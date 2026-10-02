@@ -156,11 +156,14 @@ function foodDetail(id: FoodId, piece: 'whole' | 'slice' | 'ring', d: Detail): T
       break;
     }
     case 'watermelon': {
+      // A melon is longer than it is wide and its stripes run from end to end: lay it on its side (the long axis
+      // along x, the sphere's poles at the ends) with a stub of stem at one end, and the face on the side.
       const w = ball2(mat('#ffffff', { map: melonTexture, rough: 0.3, clearcoat: 0.9 }), 1);
-      w.scale.set(1, 0.88, 1.12);
+      w.scale.set(0.92, 1.18, 0.92);
+      w.rotation.z = Math.PI / 2;
       g.add(w);
-      if (d === 'high') g.add(rod(mat('#7a5a2a'), new THREE.Vector3(0, 0.85, 0), new THREE.Vector3(0.05, 1.05, 0.05), 0.05));
-      foodFace(g, d, 1.0, 1.4);
+      if (d === 'high') g.add(rod(mat('#7a5a2a'), new THREE.Vector3(1.12, 0.02, 0), new THREE.Vector3(1.32, 0.16, 0), 0.05));
+      foodFace(g, d, 0.9, 1.4);
       break;
     }
     case 'donut':

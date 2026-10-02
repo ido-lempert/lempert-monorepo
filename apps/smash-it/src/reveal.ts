@@ -47,16 +47,14 @@ export class RevealStage {
     const size = this.canvas.clientWidth || 260;
     r.setSize(size, size, false);
     if (this.item) this.scene.remove(this.item);
-    if (prize.kind === 'food') {
-      const g = foodModel(prize.id);
-      g.scale.setScalar(1.7);
-      this.item = g;
-    } else {
-      const s = slingshot(prize.id).root;
-      s.scale.setScalar(0.62);
-      s.position.y = 0.55;
-      this.item = s;
-    }
+    const thing = prize.kind === 'food' ? foodModel(prize.id) : slingshot(prize.id).root;
+    // Whatever it is, scale it to fit the little stage (with room for the pop and the turn) and centre it on its middle.
+    const sphere = new THREE.Box3().setFromObject(thing).getBoundingSphere(new THREE.Sphere());
+    thing.position.sub(sphere.center);
+    const pivot = new THREE.Group();
+    pivot.add(thing);
+    pivot.scale.setScalar(1.12 / Math.max(0.01, sphere.radius));
+    this.item = pivot;
     this.scene.add(this.item);
     this.t = 0;
     if (!this.running) {
