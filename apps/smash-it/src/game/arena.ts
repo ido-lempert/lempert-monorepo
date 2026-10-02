@@ -309,7 +309,10 @@ export class Arena {
         const s = Math.sin(spread);
         const k = 0.92 + (i % 2) * 0.12;
         const v = { x: (b.vx * c - b.vz * s) * k, y: b.vy + 1.2, z: (b.vx * s + b.vz * c) * k };
-        pieces.push(this.body(shot, 'slice', b, v, 0.32, food.area));
+        // They start side by side where the pizza was, then fan out.
+        const run = Math.hypot(b.vx, b.vz) || 1;
+        const side = (i / (n - 1) - 0.5) * 0.9;
+        pieces.push(this.body(shot, 'slice', { x: b.x - (b.vz / run) * side, y: b.y, z: b.z + (b.vx / run) * side }, v, 0.32, food.area));
       }
       shot.bodies.push(...pieces);
       events.push({ type: 'pieces', shot, from: b, pieces });
@@ -318,7 +321,7 @@ export class Arena {
 
     // Straight into a bug?
     const target = this.bugs.find(
-      (bug) => hittable(bug) && Math.hypot(bug.x - b.x, bug.y + bug.def.radius * 0.6 - b.y, bug.z - b.z) < b.radius + bug.def.radius * 1.1,
+      (bug) => hittable(bug) && Math.hypot(bug.x - b.x, bug.y + bug.def.radius * 0.6 - b.y, bug.z - b.z) < hitReach(b.radius, bug.def.radius),
     );
     if (target) return this.impact(shot, b, { x: b.x, y: b.y, z: b.z }, events, true);
 
@@ -412,7 +415,7 @@ export class Arena {
       return;
     }
     const over = this.bugs.filter(
-      (bug) => hittable(bug) && !bug.def.hover && !b.rolledOver.has(bug.id) && Math.hypot(bug.x - b.x, bug.z - b.z) < b.radius + bug.def.radius + 0.15,
+      (bug) => hittable(bug) && !bug.def.hover && !b.rolledOver.has(bug.id) && Math.hypot(bug.x - b.x, bug.z - b.z) < b.radius * 0.8 + bug.def.radius * 0.9,
     );
     if (over.length) {
       const hits: BugHit[] = [];
@@ -435,7 +438,7 @@ export class Arena {
       if (!hittable(bug)) continue;
       const flat = Math.hypot(bug.x - point.x, bug.z - point.z);
       const high = Math.abs(bug.y - point.y);
-      if (flat < area + bug.def.radius && high < area + 0.8) out.push(this.hitBug(shot, b, bug, point));
+      if (flat < splashReach(area, bug.def.radius) && high < area * 0.6 + 0.7) out.push(this.hitBug(shot, b, bug, point));
     }
     return out;
   }
@@ -507,8 +510,8 @@ export class Arena {
             if (!hittable(bug)) continue;
             const bx = bug.x + Math.sin(bug.heading) * bug.speed * t;
             const bz = bug.z + Math.cos(bug.heading) * bug.speed * t;
-            const near = Math.hypot(bx - x, bug.y - y, bz - z) < b.radius + bug.def.radius * 1.1;
-            const landed = y - b.radius * 0.5 <= ground && Math.hypot(bx - x, bz - z) < b.area + bug.def.radius;
+            const near = Math.hypot(bx - x, bug.y - y, bz - z) < hitReach(b.radius, bug.def.radius);
+            const landed = y - b.radius * 0.5 <= ground && Math.hypot(bx - x, bz - z) < splashReach(b.area, bug.def.radius);
             if (near || landed) return { body: b, bug, in: t };
           }
           if (y - b.radius * 0.5 <= ground) break;
@@ -517,6 +520,11 @@ export class Arena {
     return null;
   }
 }
+
+/** How close a flying food must pass to a bug's middle to hit it (about the bug's own size, not a generous halo). */
+const hitReach = (foodRadius: number, bugRadius: number) => foodRadius * 0.8 + bugRadius * 0.9;
+/** How close to a bug's middle a landing must be to splash it. */
+const splashReach = (area: number, bugRadius: number) => area * 0.6 + bugRadius * 0.8;
 
 /** The bug kinds of a level (for the intro card and the replay). */
 export function levelBugs(level: Level): BugKind[] {

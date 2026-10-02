@@ -99,23 +99,24 @@ function outlineMaterial(width: number) {
   m.customProgramCacheKey = () => `outline${width}`;
   return m;
 }
-const outlineMats = new Map<number, THREE.MeshBasicMaterial>();
+const outlineMats = new Map<string, THREE.MeshBasicMaterial>();
 
 let outlinesOn = true;
 
 /** The cartoon outlines are an extra draw for every mesh, so low quality turns them off. */
 export function setOutlines(on: boolean) {
   outlinesOn = on;
-  for (const m of outlineMats.values()) m.visible = on;
+  for (const [key, m] of outlineMats) if (!key.endsWith('|always')) m.visible = on;
 }
 
 /** Gives every mesh in a model a dark cartoon outline (the "inverted hull" trick: one extra draw each). */
-export function outline(root: THREE.Object3D, width = 0.022) {
-  let m = outlineMats.get(width);
+export function outline(root: THREE.Object3D, width = 0.022, always = false) {
+  const key = `${width}${always ? '|always' : ''}`;
+  let m = outlineMats.get(key);
   if (!m) {
     m = outlineMaterial(width);
-    m.visible = outlinesOn;
-    outlineMats.set(width, m);
+    m.visible = always || outlinesOn;
+    outlineMats.set(key, m);
   }
   const meshes: THREE.Mesh[] = [];
   root.traverse((o) => {
@@ -206,28 +207,39 @@ export const windowTexture = canvasTexture(256, (g, s) => {
   }
 });
 
-/** Warm wooden planks for the kitchen counter. */
+/** Light oak boards for the kitchen table: wide planks with soft grain and staggered joints (low contrast, so it never shimmers). */
 export const woodTexture = (() => {
-  const tex = canvasTexture(256, (g, s) => {
-    const planks = 4;
-    for (let p = 0; p < planks; p++) {
-      g.fillStyle = `hsl(${24 + p * 3}, 46%, ${47 + (p % 2) * 5}%)`;
-      g.fillRect(0, (p * s) / planks, s, s / planks);
-      g.strokeStyle = 'rgba(120, 70, 30, 0.18)';
-      g.lineWidth = 2;
-      for (let l = 0; l < 6; l++) {
-        g.beginPath();
-        const y = (p * s) / planks + 6 + l * 10;
-        g.moveTo(0, y);
-        g.bezierCurveTo(s * 0.3, y + 5, s * 0.6, y - 5, s, y + 2);
-        g.stroke();
+  const tex = canvasTexture(512, (g, s) => {
+    const rows = 4;
+    const h = s / rows;
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let r = 0; r < rows; r++) {
+      const cut = (0.25 + rnd() * 0.5) * s;
+      for (const [x0, x1] of [[0, cut], [cut, s]]) {
+        const light = 66 + rnd() * 6;
+        g.fillStyle = `hsl(${31 + rnd() * 5}, ${42 + rnd() * 6}%, ${light}%)`;
+        g.fillRect(x0, r * h, x1 - x0, h);
+        // Long soft grain.
+        for (let l = 0; l < 7; l++) {
+          const y = r * h + 6 + rnd() * (h - 12);
+          g.strokeStyle = `rgba(150, 95, 50, ${0.05 + rnd() * 0.07})`;
+          g.lineWidth = 1 + rnd() * 2;
+          g.beginPath();
+          g.moveTo(x0, y);
+          g.bezierCurveTo(x0 + (x1 - x0) * 0.3, y + rnd() * 8 - 4, x0 + (x1 - x0) * 0.7, y + rnd() * 8 - 4, x1, y + rnd() * 4 - 2);
+          g.stroke();
+        }
+        g.fillStyle = 'rgba(120, 75, 40, 0.22)';
+        g.fillRect(x0, r * h, 2, h);
       }
-      g.fillStyle = 'rgba(90, 50, 20, 0.35)';
-      g.fillRect(0, ((p + 1) * s) / planks - 2, s, 2);
+      g.fillStyle = 'rgba(120, 75, 40, 0.22)';
+      g.fillRect(0, r * h, s, 3);
     }
   });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(6, 6);
+  tex.anisotropy = 8;
+  tex.repeat.set(5, 5);
   return tex;
 })();
 
@@ -388,7 +400,7 @@ export function grassField(
     shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);');
     shader.fragmentShader = shader.fragmentShader
       .replace('void main() {', 'varying float vH;\nvoid main() {')
-      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.55, 1.15, vH);');
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.85, 1.12, vH);');
   };
   m.customProgramCacheKey = () => 'grassBlade';
   const mesh = new THREE.InstancedMesh(geo, m, count);
