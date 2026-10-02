@@ -82,45 +82,43 @@ function skipSeeThrough(ao: GTAOPass) {
 }
 
 export class Post {
-  private composer: EffectComposer;
+  private composer: EffectComposer | null;
   private ao: GTAOPass | null = null;
   private bloom: UnrealBloomPass | null = null;
   private blurs: ShaderPass[] = [];
-  private high = true;
 
   constructor(
     private readonly renderer: THREE.WebGLRenderer,
     private readonly scene: THREE.Scene,
     private readonly camera: THREE.PerspectiveCamera,
+    high: boolean,
   ) {
-    this.composer = this.build(true);
+    // Low quality draws straight to the screen: no extra buffers at all.
+    this.composer = high ? this.build() : null;
   }
 
-  private build(high: boolean): EffectComposer {
-    this.high = high;
+  private build(): EffectComposer {
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     // Multisampled, so edges stay smooth after leaving the default framebuffer.
-    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: high ? 4 : 0 });
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
     const c = new EffectComposer(this.renderer, target);
     c.addPass(new RenderPass(this.scene, this.camera));
     this.ao = null;
     this.bloom = null;
     this.blurs = [];
-    if (high) {
-      this.ao = new GTAOPass(this.scene, this.camera, size.x, size.y);
-      this.ao.output = GTAOPass.OUTPUT.Default;
-      this.ao.blendIntensity = 0.85;
-      this.ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1, scale: 1.2 });
-      skipSeeThrough(this.ao);
-      c.addPass(this.ao);
-      for (const dir of [[1, 0], [0, 1]] as [number, number][]) {
-        const p = new ShaderPass(tiltShift(dir));
-        this.blurs.push(p);
-        c.addPass(p);
-      }
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.4, 2.2);
-      c.addPass(this.bloom);
+    this.ao = new GTAOPass(this.scene, this.camera, size.x, size.y);
+    this.ao.output = GTAOPass.OUTPUT.Default;
+    this.ao.blendIntensity = 0.85;
+    this.ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1, scale: 1.2 });
+    skipSeeThrough(this.ao);
+    c.addPass(this.ao);
+    for (const dir of [[1, 0], [0, 1]] as [number, number][]) {
+      const p = new ShaderPass(tiltShift(dir));
+      this.blurs.push(p);
+      c.addPass(p);
     }
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.4, 2.2);
+    c.addPass(this.bloom);
     // Tone mapping and sRGB first, so the grade works on the colours as they will be seen.
     c.addPass(new OutputPass());
     c.addPass(new ShaderPass(grade));
@@ -131,9 +129,9 @@ export class Post {
   }
 
   setQuality(high: boolean) {
-    if (high === this.high) return;
-    this.composer.dispose();
-    this.composer = this.build(high);
+    if (high === (this.composer !== null)) return;
+    this.composer?.dispose();
+    this.composer = high ? this.build() : null;
   }
 
   /** How strongly the edges of the screen blur (0 off): stronger for close-ups, none for overviews. */
@@ -145,6 +143,7 @@ export class Post {
   }
 
   resize() {
+    if (!this.composer) return;
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     this.composer.setPixelRatio(1);
     this.composer.setSize(size.x, size.y);
@@ -152,6 +151,6 @@ export class Post {
   }
 
   render() {
-    this.composer.render();
+    this.composer?.render();
   }
 }

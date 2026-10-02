@@ -154,11 +154,26 @@ a:focus-visible {
 }
 
 .overlay {
-  display: grid;
-  place-items: center;
+  display: flex;
   padding: max(16px, var(--safe-top)) 16px max(16px, var(--safe-bottom));
   background: rgba(42, 29, 61, 0.35);
   overflow-y: auto;
+}
+
+/* Auto margins centre the card, but let a card taller than the screen scroll from its top (grid centring cuts it off). */
+.overlay > * {
+  margin: auto;
+}
+
+/* Whatever sits under an open overlay does not take taps or focus, and the cards under it step out of sight. */
+[inert] {
+  pointer-events: none;
+}
+
+.home[inert] > *,
+#intro[inert] > *,
+#result[inert] > * {
+  visibility: hidden;
 }
 
 .card {
@@ -328,17 +343,19 @@ a:focus-visible {
 
 .chapter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .chapter-grid button {
-  min-height: 96px;
-  border-radius: 20px;
+  min-height: 68px;
+  min-width: 0;
+  padding-inline: 2px;
+  border-radius: 16px;
   background: var(--paper-2);
   box-shadow: 0 4px 0 var(--line);
   font-weight: 900;
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -347,8 +364,9 @@ a:focus-visible {
 }
 
 .chapter-grid button small {
-  font-size: 0.95rem;
-  letter-spacing: 2px;
+  font-size: 0.8rem;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .chapter-grid button:disabled {
@@ -393,7 +411,7 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 14px;
+  padding: 12px 14px;
   border-radius: 20px;
   background: var(--paper-2);
   text-align: start;
@@ -570,7 +588,7 @@ a:focus-visible {
 
 .combo {
   position: fixed;
-  top: calc(max(10px, var(--safe-top)) + 60px);
+  bottom: calc(max(10px, var(--safe-bottom)) + 84px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
@@ -578,7 +596,7 @@ a:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 6px 18px 8px;
+  padding: 4px 16px 6px;
   border-radius: 18px;
   background: var(--pink);
   color: #fff;
@@ -650,6 +668,10 @@ a:focus-visible {
   z-index: 9;
   pointer-events: none;
   overflow: hidden;
+}
+
+body:has(#pause:not(.hidden)) .popups {
+  visibility: hidden;
 }
 
 .popup {
@@ -875,8 +897,10 @@ a:focus-visible {
 
 .stats {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px 16px;
+  grid-template-columns: max-content max-content;
+  justify-content: center;
+  align-items: baseline;
+  gap: 6px 28px;
   margin: 8px 0;
   padding: 12px 16px;
   border-radius: 18px;
@@ -932,58 +956,61 @@ a:focus-visible {
 
 /* --- Menu, toast, update ---------------------------------------------------------------------------- */
 
-.menu {
-  position: fixed;
-  top: calc(max(14px, var(--safe-top)) + 56px);
-  inset-inline-end: 14px;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: min(320px, calc(100% - 28px));
-  max-height: calc(100dvh - 100px);
-  overflow-y: auto;
-  padding: 10px;
-  border-radius: 22px;
-  background: var(--paper);
-  box-shadow: var(--lift);
+.menu-card {
+  width: min(520px, 100%);
 }
 
-.menu button {
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.menu-grid button,
+.menu-links button {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: var(--target);
-  padding: 8px 12px;
-  border-radius: 14px;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: var(--paper-2);
   text-align: start;
   font-weight: 700;
 }
 
-.menu button:hover {
-  background: var(--paper-2);
+.menu-grid button:hover,
+.menu-links button:hover {
+  background: var(--line);
 }
 
-.menu button[aria-pressed='false'] {
+.menu-grid button[aria-pressed='false'] {
   color: var(--ink-soft);
 }
 
-.menu button[aria-pressed='false'] > span:first-child {
+.menu-grid button[aria-pressed='false'] > span:first-child {
   filter: grayscale(1);
   opacity: 0.6;
 }
 
-.menu hr {
-  width: 100%;
-  border: none;
-  border-top: 2px solid var(--line);
+.menu-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.menu-links button {
+  flex: 1 1 auto;
+  justify-content: center;
 }
 
 .menu-note,
 .version {
-  margin: 4px 12px;
+  margin: 10px 4px 0;
   font-size: 0.9rem;
   color: var(--ink-soft);
+  text-align: start;
 }
 
 .page-body {
@@ -1026,7 +1053,7 @@ a:focus-visible {
 
 .update {
   position: fixed;
-  top: max(12px, var(--safe-top));
+  bottom: max(12px, var(--safe-bottom));
   left: 50%;
   translate: -50% 0;
   z-index: 40;
@@ -1049,13 +1076,26 @@ a:focus-visible {
     flex-basis: 100%;
   }
   .hud-time,
-  .hud-score,
-  .hud-goals > div {
+  .hud-score {
     font-size: 1rem;
     padding: 4px 12px;
   }
-  .combo {
-    top: calc(max(10px, var(--safe-top)) + 112px);
+  /* The goals are read-only, so they can be slimmer than a tap target. */
+  .hud-goals > div {
+    min-height: 34px;
+    font-size: 0.95rem;
+    padding: 2px 12px;
+  }
+  /* "Time" and "score" are obvious from the clock and the stars: the words stay for screen readers only. */
+  .hud-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .meter {
+    width: 56px;
   }
   .tray button {
     width: 52px;
@@ -1129,12 +1169,6 @@ a:focus-visible {
   animation: pulse 0.6s ease-in-out infinite alternate;
 }
 
-@media (max-width: 560px) {
-  .coach {
-    top: calc(max(10px, var(--safe-top)) + 160px);
-  }
-}
-
 /* --- Walking around the world, chapters by world, kings ------------------------------------------- */
 
 .rotate {
@@ -1206,21 +1240,6 @@ a:focus-visible {
 
 .top-stack > * {
   pointer-events: auto;
-}
-
-.top-stack .combo {
-  position: static;
-  transform: none;
-}
-
-.top-stack .combo.bump {
-  animation: bump-in-place 0.25s ease;
-}
-
-@keyframes bump-in-place {
-  50% {
-    transform: scale(1.2);
-  }
 }
 
 .top-stack .coach,
@@ -1589,4 +1608,165 @@ a:focus-visible {
 
 .card-art {
   font-size: 3rem;
+}
+
+/* --- Layout robustness: cards that fit, whatever the screen ------------------------------------------ */
+
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.item-actions > * {
+  flex: 1 1 130px;
+  white-space: nowrap;
+  margin-top: 0;
+  padding-inline: 12px;
+}
+
+.result-card .actions {
+  gap: 8px 12px;
+}
+
+.result-card .actions > .primary,
+.result-card .actions > .link-btn {
+  flex: 1 1 100%;
+}
+
+.result-card .actions > .secondary {
+  flex: 1 1 140px;
+}
+
+/* Phones held sideways: the short screen gets two columns instead of a tall card. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .update {
+    top: max(12px, var(--safe-top));
+    bottom: auto;
+  }
+  .overlay {
+    padding-block: max(8px, var(--safe-top)) max(8px, var(--safe-bottom));
+  }
+  .card {
+    padding: 14px 18px 12px;
+  }
+  .card h2 {
+    margin-bottom: 6px;
+    font-size: 1.4rem;
+  }
+
+  .home-center {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 28px;
+    row-gap: 10px;
+    width: min(780px, 100%);
+    max-width: none;
+    padding: 16px 24px;
+  }
+  .home-center .logo {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .home-center .tagline {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .home-center #home-play {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .home-center .row {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .home-center .daily-btn {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .result-card {
+    width: min(800px, 100%);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 22px;
+    align-items: start;
+  }
+  .result-card > .result-title,
+  .result-card > .stars {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+  .result-card > .result-title {
+    font-size: 2rem !important;
+  }
+  .result-card .stars {
+    font-size: 1.8rem;
+  }
+  .result-card .stats {
+    padding: 8px 14px;
+    font-size: 1rem;
+    gap: 3px 24px;
+  }
+  .result-card .result-goals li {
+    padding: 5px 12px;
+  }
+  .result-card .lead {
+    margin: 4px 0;
+    font-size: 1rem;
+  }
+  .result-card .actions {
+    margin-top: 8px;
+  }
+  .result-card .actions > .primary {
+    min-height: 52px;
+    font-size: 1.2rem;
+  }
+
+  .reveal {
+    overflow-y: auto;
+    place-items: stretch;
+    display: flex;
+    padding: 8px 16px;
+  }
+  .reveal-card {
+    margin: auto;
+    width: min(760px, 100%);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      'art kicker'
+      'art title'
+      'art text'
+      'art bars'
+      'art actions';
+    column-gap: 24px;
+    align-content: center;
+    justify-items: center;
+  }
+  .reveal-card > .reveal-kicker {
+    grid-area: kicker;
+  }
+  .reveal-card > #reveal-canvas {
+    grid-area: art;
+    width: min(240px, 70vh);
+    height: min(240px, 70vh);
+  }
+  .reveal-card > h2 {
+    grid-area: title;
+    margin: 0;
+  }
+  .reveal-card > #reveal-text {
+    grid-area: text;
+    margin: 0;
+  }
+  .reveal-card > #reveal-bars {
+    grid-area: bars;
+  }
+  .reveal-card > .actions {
+    grid-area: actions;
+    margin-top: 8px;
+  }
 }

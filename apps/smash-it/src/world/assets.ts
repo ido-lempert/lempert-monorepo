@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { roundOff } from './smooth';
 
 const BASE = 'models/kenney-food/';
 
@@ -18,6 +19,14 @@ export const ASSETS = [
 ] as const;
 export type AssetId = (typeof ASSETS)[number];
 
+/** Triangles each mesh may have after smoothing: big props are seen up close; small things and flying food are many, on phones. */
+const BIG = new Set<AssetId>(['plate', 'mug', 'cup-tea', 'bowl', 'bottle-ketchup', 'shaker-salt', 'shaker-pepper', 'pepper-mill', 'knife-block', 'loaf-round', 'cake-birthday', 'honey', 'pumpkin', 'apple', 'orange', 'banana', 'pear', 'lemon']);
+const FOODS = new Set<AssetId>(['cookie-chocolate', 'cheese', 'pudding', 'pie', 'pizza']);
+const budgetOf = (id: AssetId) => (BIG.has(id) ? 1000 : FOODS.has(id) ? 500 : 0);
+
+/** One material per colour/texture (shared by every mesh and model, so the scene merges into few draw calls). */
+const finishes = new Map<string, THREE.Material>();
+
 interface Template {
   scene: THREE.Object3D;
   /** Size of its bounding box. */
@@ -26,21 +35,24 @@ interface Template {
 
 const templates = new Map<AssetId, Template>();
 
-/** Toy-like finish: a little gloss and the environment's reflections on the flat colours. */
-function polish(o: THREE.Object3D) {
+/** Toy-like finish: the environment's reflections on the flat colours; `glossy` adds a clearcoat (only worth its per-pixel cost on small things you look at closely). */
+function polish(o: THREE.Object3D, budget: number, glossy: boolean) {
   o.traverse((c) => {
     if (!(c instanceof THREE.Mesh)) return;
     const old = c.material as THREE.MeshStandardMaterial;
-    const m = new THREE.MeshPhysicalMaterial({
-      map: old.map,
-      color: old.color,
-      roughness: 0.55,
-      metalness: 0,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.35,
-      envMapIntensity: 0.7,
-    });
+    const key = `${old.map?.uuid ?? ''}|${old.color.getHex()}|${glossy}`;
+    let m = finishes.get(key);
+    if (!m) {
+      const base = { map: old.map, color: old.color, roughness: 0.55, metalness: 0, envMapIntensity: 0.7 };
+      m = glossy ? new THREE.MeshPhysicalMaterial({ ...base, clearcoat: 0.35, clearcoatRoughness: 0.35 }) : new THREE.MeshStandardMaterial(base);
+      finishes.set(key, m);
+    }
     c.material = m;
+    const geo = c.geometry;
+    const tris = (geo.index ? geo.index.count : geo.getAttribute('position').count) / 3;
+    const cuts = Math.min(5, Math.floor(Math.sqrt(budget / Math.max(1, tris))));
+    c.geometry = cuts > 1 ? roundOff(geo, cuts) : geo;
+    if (c.geometry !== geo) geo.dispose();
     c.castShadow = true;
     c.receiveShadow = true;
   });
@@ -54,7 +66,7 @@ export async function loadAssets(): Promise<void> {
       try {
         const gltf = await loader.loadAsync(`${BASE}${id}.glb`);
         const scene = gltf.scene;
-        polish(scene);
+        polish(scene, budgetOf(id), !BIG.has(id));
         const box = new THREE.Box3().setFromObject(scene);
         templates.set(id, { scene, size: box.getSize(new THREE.Vector3()) });
       } catch (err) {

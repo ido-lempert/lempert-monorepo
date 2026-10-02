@@ -12,12 +12,13 @@ import type { Theme } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { asset, type AssetId } from './assets';
 import { groundTexture, THEMES, type ThemeLook } from './themes';
+import { mergeStatic } from './optimize';
 import { mat, melonTexture, outline, tileTexture, windowTexture, woodTexture } from './look';
 
 // --- Helpers ----------------------------------------------------------------------------------------
 
 const geo = {
-  sphere: new THREE.SphereGeometry(1, 32, 24),
+  sphere: new THREE.SphereGeometry(1, 20, 14),
   lowSphere: new THREE.SphereGeometry(1, 10, 8),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 24),
   box: new THREE.BoxGeometry(1, 1, 1),
@@ -142,7 +143,7 @@ function foodDetail(id: FoodId, piece: 'whole' | 'slice' | 'ring', d: Detail): T
       break;
     }
     case 'jelly': {
-      const jelly = mat('#ff5a7e', { rough: 0.06, transmission: 0.85, thickness: 1.4, tint: '#ff1f4f', clearcoat: 1 });
+      const jelly = mat('#ff5a7e', { rough: 0.06, transparent: 0.75, clearcoat: 1 });
       const body = new THREE.LatheGeometry(
         [new THREE.Vector2(0, -0.55), new THREE.Vector2(0.95, -0.55), new THREE.Vector2(0.98, -0.45), new THREE.Vector2(0.85, 0.1), new THREE.Vector2(0.9, 0.25), new THREE.Vector2(0.72, 0.5), new THREE.Vector2(0.4, 0.62), new THREE.Vector2(0, 0.64)],
         seg(d, 40, 14),
@@ -374,7 +375,7 @@ export function disc(theme: Theme, radius: number, shape: WorldShape): THREE.Gro
   g.add(slab(radius, shape, 0, 0, 0.3, ground, mat(look.lip, { rough: 0.85, rim: 0 })));
   // A soft rounded rim along the edge.
   const rimPts = outlinePoints(radius, shape, 0.05, 200).map((p) => new THREE.Vector3(p.x, -0.06, p.y));
-  const lip = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rimPts, true), 400, 0.13, 10, true), mat(look.lip, { rough: look.gloss ? 0.3 : 0.9, rim: 0, clearcoat: look.gloss ? 0.8 : undefined }));
+  const lip = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rimPts, true), 220, 0.13, 8, true), mat(look.lip, { rough: look.gloss ? 0.3 : 0.9, rim: 0, clearcoat: look.gloss ? 0.8 : undefined }));
   lip.receiveShadow = true;
   g.add(lip);
   // Layers underneath, like a slice of the ground (or of a cake).
@@ -384,19 +385,24 @@ export function disc(theme: Theme, radius: number, shape: WorldShape): THREE.Gro
     g.add(slab(radius, shape, l.r, y, l.h, m, m));
     y -= l.h;
   }
+  g.traverse((c) => {
+    if (c instanceof THREE.Mesh) c.castShadow = true;
+  });
+  // What grows around the edge never moves: weld it into a few meshes (it only casts shadows on high quality).
+  const rim = new THREE.Group();
   const outline = outlinePoints(radius, shape, 0, Math.round(radius * 5.5));
-  const sp = new THREE.SphereGeometry(1, 14, 10);
+  const sp = new THREE.SphereGeometry(1, 10, 7);
   outline.forEach((p, i) => {
     const r = Math.hypot(p.x, p.y);
     const k = (r - 0.45 - (i % 2) * 0.25) / r;
     const item = rimDecor(look, i, sp);
     item.position.set(p.x * k, 0, p.y * k);
     item.rotation.y = i * 1.7;
-    g.add(item);
+    rim.add(item);
   });
-  g.traverse((c) => {
-    if (c instanceof THREE.Mesh) c.castShadow = true;
-  });
+  mergeStatic(rim, { cast: true, receive: false });
+  rim.traverse((c) => (c.userData.rimShadow = true));
+  g.add(rim);
   return g;
 }
 
@@ -454,7 +460,7 @@ function rimDecor(look: ThemeLook, i: number, sp: THREE.SphereGeometry): THREE.G
         lolly.rotation.x = Math.PI / 2;
         lolly.position.y = 0.55;
         f.add(lolly);
-      } else at(mat(c, { rough: 0.15, clearcoat: 1, transmission: 0.4, thickness: 0.3 }), 0, 0.1, 0, 0.14, 0.12, 0.14);
+      } else at(mat(c, { rough: 0.15, clearcoat: 1 }), 0, 0.1, 0, 0.14, 0.12, 0.14);
       break;
     }
     case 'pinecones': {
@@ -670,10 +676,11 @@ export function kitchen(): THREE.Group {
     jar.add(ball(mat(candy[i % candy.length], { rough: 0.2, clearcoat: 1 }), 0.75, Math.cos(a) * r, 1.75 + Math.floor(i / 5) * 1.05, Math.sin(a) * r));
   }
   // Glass with a thick base, so it reads as a solid jar.
-  jar.add(lathe([[0, 0], [2.8, 0], [3, 0.25], [3, 8], [2.82, 8], [2.82, 1.1], [2.6, 0.95], [0, 0.95]], mat('#eaf8ff', { rough: 0.05, transmission: 1, thickness: 0.6, rim: 0 })));
+  jar.add(lathe([[0, 0], [2.8, 0], [3, 0.25], [3, 8], [2.82, 8], [2.82, 1.1], [2.6, 0.95], [0, 0.95]], mat('#eaf8ff', { rough: 0.05, transparent: 0.3, rim: 0 })));
   jar.add(mesh(geo.cyl, mat('#ff6f6f', { rough: 0.3, clearcoat: 1 }), 0, 8.4, 0, 3.2, 0.9, 3.2));
   g.add(jar);
-  jar.traverse((c) => (c.castShadow = true));
+  // Far from the play field: nothing here needs to cast a shadow, and it never moves.
+  mergeStatic(g, { cast: false });
   return g;
 }
 
@@ -718,6 +725,7 @@ export function kitchenProps(): THREE.Group {
   put('knife-block', 8, 'height', -27, -16, 0.5);
   put('honey', 5, 'height', 26, 6, -0.4);
   put('pumpkin', 6, 'width', -26, 10, 0.7);
+  mergeStatic(g, { cast: false });
   return g;
 }
 

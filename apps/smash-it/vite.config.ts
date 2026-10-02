@@ -19,8 +19,8 @@ const scoresServer = (): Plugin => {
 
 /** Short commit id shown in the menu, so it's easy to tell which version is running. */
 function appVersion(): string {
-  const fromRender = process.env.RENDER_GIT_COMMIT?.slice(0, 7);
-  if (fromRender) return fromRender;
+  const fromHost = (process.env.RENDER_GIT_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA)?.slice(0, 7);
+  if (fromHost) return fromHost;
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
@@ -29,10 +29,11 @@ function appVersion(): string {
 }
 
 /**
- * The public address, for link previews (Open Graph needs absolute URLs). Render provides it while
- * building; SITE_URL can override it. Without either, the tags fall back to relative paths.
+ * The public address, for link previews (Open Graph needs absolute URLs). Render and Railway provide it
+ * while building; SITE_URL can override it. Without either, the tags fall back to relative paths.
  */
-const siteUrl = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '';
+const siteUrl = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || railwayUrl).replace(/\/$/, '');
 const siteUrlInHtml = (): Plugin => ({
   name: 'site-url',
   transformIndexHtml: (html) => html.replaceAll('%SITE_URL%', siteUrl),

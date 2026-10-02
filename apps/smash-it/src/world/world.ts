@@ -12,7 +12,7 @@ import { type Level, LEVELS } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
 import { Effects, SMEAR } from './effects';
-import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setWindTime } from './look';
+import { backdrop, blobTexture, dotTexture, grassField, initialQuality, LOW_GFX_KEY, mat, type Quality, setOutlines, setWindTime } from './look';
 import { Post } from './post';
 import { bugModel, type BugModel } from './bugs3d';
 import { disc, foodModel, kitchen, kitchenProps, mop, obstacleModel, slingshot, stretchBand } from './models';
@@ -130,19 +130,28 @@ export class World {
   private level: Level = LEVELS[0];
   private quality: Quality = initialQuality();
   private time = 0;
-  private slowFrames = 0;
+  private battery = false;
+  /** Resolution multiplier the world lowers when frames are slow and raises again when there is room. */
+  private resScale = 1;
+  private scaleCeiling = 1;
+  private frameAvg = 1 / 60;
+  private lastFrameAt = 0;
+  private holdUntil = 0;
+  private fastFor = 0;
+  private lastRaise = -Infinity;
   private readonly post: Post;
   private grass: THREE.InstancedMesh | null = null;
 
   constructor(stage: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // Edge smoothing costs memory and fill on phones, which start in low quality (they still get a sharp picture from the pixel ratio).
+    this.renderer = new THREE.WebGLRenderer({ antialias: this.quality === 'high', powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
-    // Soft, blurred shadows.
-    this.renderer.shadowMap.type = THREE.VSMShadowMap;
+    this.renderer.shadowMap.type = this.quality === 'high' ? THREE.VSMShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 0.66;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     stage.appendChild(this.renderer.domElement);
+    this.watchContext(this.renderer.domElement);
     this.cam = new CameraRig(this.camera);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -171,7 +180,7 @@ export class World {
     const fill = new THREE.DirectionalLight('#ffe6f0', 0.6);
     fill.position.set(10, 6, 16);
     this.scene.add(back, fill);
-    this.post = new Post(this.renderer, this.scene, this.camera);
+    this.post = new Post(this.renderer, this.scene, this.camera, this.quality === 'high');
 
     this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group);
     this.scene.add(this.sling.root);
@@ -219,20 +228,65 @@ export class World {
     this.post?.resize();
   }
 
+  /** A phone can drop the 3D view when it is overloaded: wait for it to come back, else restart in low quality. */
+  private watchContext(canvas: HTMLCanvasElement) {
+    let lost: number | undefined;
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      lost = window.setTimeout(() => {
+        try {
+          localStorage.setItem(LOW_GFX_KEY, '1');
+        } catch {
+          // storage blocked: reload anyway
+        }
+        location.reload();
+      }, 2500);
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      clearTimeout(lost);
+      this.quality = 'low';
+      this.applyQuality();
+    });
+  }
+
   setBatterySaver(on: boolean) {
+    this.battery = on;
     this.quality = on ? 'low' : initialQuality();
+    this.resScale = this.scaleCeiling = 1;
     this.applyQuality();
   }
 
   private applyQuality() {
     const high = this.quality === 'high';
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, high ? 1.5 : 1));
-    this.sun.shadow.mapSize.set(high ? 2048 : 1024, high ? 2048 : 1024);
+    // Soft blurred shadows (VSM, several passes) only on high; low uses the cheap filter and a smaller map.
+    const type = high ? THREE.VSMShadowMap : THREE.PCFShadowMap;
+    if (this.renderer.shadowMap.type !== type) {
+      this.renderer.shadowMap.type = type;
+      this.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        for (const x of Array.isArray(m) ? m : m ? [m] : []) x.needsUpdate = true;
+      });
+    }
+    this.sun.shadow.radius = high ? 8 : 2;
+    this.sun.shadow.blurSamples = 16;
+    this.applyResolution();
+    const size = high ? 1024 : 512;
+    this.sun.shadow.mapSize.set(size, size);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
+    setOutlines(high);
+    this.scene.traverse((o) => {
+      if (o.userData.rimShadow) o.castShadow = high;
+    });
     this.post.setQuality(high);
     this.post.resize();
     this.plantGrass();
+  }
+
+  /** The canvas resolution: capped by tier, then scaled down while the device cannot keep up. */
+  private applyResolution() {
+    const cap = this.quality === 'high' ? 1.5 : 1.25;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, cap) * this.resScale);
   }
 
   /** Grass blades for the world's size and theme (fewer on slower devices). */
@@ -243,8 +297,9 @@ export class World {
     }
     const look = THEMES[this.level.theme].blades;
     const area = (this.level.radius / 7.5) ** 2;
-    const count = Math.round((this.quality === 'high' ? 14000 : 5000) * area * look.amount);
-    this.grass = count > 0 ? grassField(this.level.radius, count, look, (x, z) => onDisc(x, z, 0.3)) : null;
+    const high = this.quality === 'high';
+    const count = Math.round((high ? 10000 : 3000) * area * look.amount);
+    this.grass = count > 0 ? grassField(this.level.radius, count, look, (x, z) => onDisc(x, z, 0.3), high ? 3 : 2) : null;
     if (this.grass) this.scene.add(this.grass);
   }
 
@@ -320,9 +375,9 @@ export class World {
   /** Draws `arena` from now on, with its own `effects` (the replay passes a fresh one). */
   bind(arena: Arena | null, effects: Effects = this.mess) {
     this.arena = arena;
-    for (const v of this.bugViews.values()) this.bugLayer.remove(v.model.root);
+    for (const v of this.bugViews.values()) this.bugLayer.remove(v.model.root, v.shadow);
     this.bugViews.clear();
-    for (const v of this.bodyViews.values()) this.foodLayer.remove(v.root);
+    for (const v of this.bodyViews.values()) this.foodLayer.remove(v.root, v.shadow);
     this.bodyViews.clear();
     if (effects !== this.effects) {
       this.scene.remove(this.effects.group);
@@ -628,17 +683,45 @@ export class World {
     setWindTime(this.time);
     if (this.quality === 'high') this.post.render();
     else this.renderer.render(this.scene, this.camera);
-    this.watchSpeed(dt);
+    this.watchSpeed();
   }
 
-  /** Drops to low quality when frames are consistently slow. */
-  private watchSpeed(dt: number) {
-    if (this.quality === 'low') return;
-    this.slowFrames = dt > 1 / 40 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 1);
-    if (this.slowFrames > 90) {
-      this.quality = 'low';
-      this.applyQuality();
-    }
+  /**
+   * Keeps the frame rate up on weak devices: when frames are consistently slow it first drops to low quality, then
+   * lowers the resolution step by step; it raises the resolution again slowly when there is room (never past the
+   * level that was too slow last time).
+   */
+  private watchSpeed() {
+    const now = performance.now();
+    const real = (now - this.lastFrameAt) / 1000;
+    this.lastFrameAt = now;
+    if (real > 0.4 || real <= 0) return; // a hitch (tab in the background, a menu) says nothing about speed
+    this.frameAvg += (real - this.frameAvg) * 0.08;
+    if (now < this.holdUntil) return;
+    const expected = this.battery ? 1 / 30 : 1 / 60;
+    if (this.frameAvg > expected * 1.5) {
+      this.fastFor = 0;
+      this.holdUntil = now + 2500;
+      if (this.quality === 'high') {
+        this.quality = 'low';
+        this.applyQuality();
+      } else if (this.resScale > 0.55) {
+        if (now - this.lastRaise < 12000) this.scaleCeiling = Math.max(0.55, this.resScale - 0.15);
+        this.resScale = Math.max(0.55, this.resScale - 0.15);
+        this.applyResolution();
+        this.post.resize();
+      }
+      this.frameAvg = expected;
+    } else if (this.resScale < this.scaleCeiling && this.frameAvg < expected * 1.1) {
+      this.fastFor += real;
+      if (this.fastFor > 6) {
+        this.fastFor = 0;
+        this.resScale = Math.min(this.scaleCeiling, this.resScale + 0.1);
+        this.lastRaise = now;
+        this.applyResolution();
+        this.post.resize();
+      }
+    } else this.fastFor = 0;
   }
 
   private syncBugs(dt: number) {
