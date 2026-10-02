@@ -449,6 +449,8 @@ export class World {
 
   private updateSling(dt: number) {
     const s = this.sling;
+    // Wide screens show the world from further off, so the slingshot is drawn bigger to stay easy to see.
+    s.root.scale.setScalar(this.portrait ? 1 : 1.25);
     if (this.recoil > 0) {
       this.recoil = Math.max(0, this.recoil - dt * 4);
       const w = Math.sin(this.recoil * 18) * this.recoil * 0.5;
@@ -488,10 +490,16 @@ export class World {
     const back = (portrait ? 25 : 15.5) * k;
     const height = (portrait ? 14 : 8) * k;
     const pos = this.aroundSling(new THREE.Vector3(Math.sin(a) * back, height, Math.cos(a) * back));
-    const look = this.aroundSling(new THREE.Vector3(Math.sin(a) * 1.5, (portrait ? -1 : -1.6) * k, (portrait ? -0.5 : 3.3) * k));
+    const look = this.aroundSling(new THREE.Vector3(Math.sin(a) * 1.5, (portrait ? -1 : -1.6) * k, (portrait ? -0.5 * k : this.landscapeLookZ(k))));
     if (follow) look.lerp(v3(follow), 0.15);
-    this.cam.want(pos, look, rate, portrait ? 62 : 48);
+    this.cam.want(pos, look, rate, portrait ? 62 : 53);
     this.post.setFocus(0.8, [0.02, portrait ? 0.74 : 0.76]);
+  }
+
+  /** Where a wide screen looks along the aim: a fixed (scaled) distance short of the slingshot, so it stays in view whatever the world's size and shape. */
+  private landscapeLookZ(k: number): number {
+    const s = slingAt();
+    return Math.hypot(s.x, s.z) - 6.9 * k;
   }
 
   /** A close-up of a spot, from the side of the flight. */
