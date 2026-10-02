@@ -60,7 +60,7 @@ export default defineConfig({
         start_url: './',
         scope: './',
         display: 'standalone',
-        orientation: 'any',
+        orientation: 'portrait',
         background_color: '#ffb84d',
         theme_color: '#ffb84d',
         categories: ['games', 'kids'],

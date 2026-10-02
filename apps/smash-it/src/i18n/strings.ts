@@ -181,6 +181,8 @@ export const he = {
   score: 'נקודות',
   pause: 'הפסקה',
   paused: 'הפסקה!',
+  turnBackTitle: 'אופס, הטלפון נשכב!',
+  turnBackText: 'מחזירים אותו לעמידה, ככה המשחק הכי כיף.',
   resume: 'להמשיך לשחק',
   restart: 'להתחיל את השלב מחדש',
   quit: 'לצאת לתפריט',

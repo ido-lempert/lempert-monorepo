@@ -275,6 +275,13 @@
       </div>
     </section>
 
+    <!-- Phones held sideways: the game is made for portrait, so it asks to be turned back (shown by CSS only) -->
+    <section class="turn-back" id="turn-back" role="alert" aria-labelledby="turn-title">
+      <div class="turn-phone" aria-hidden="true">📱</div>
+      <h2 id="turn-title" data-i18n="turnBackTitle"></h2>
+      <p data-i18n="turnBackText"></p>
+    </section>
+
     <!-- Pause -->
     <section class="screen overlay hidden" id="pause" aria-labelledby="pause-title">
       <div class="card">
