@@ -13,13 +13,14 @@ import type { SkinId } from '../game/progress';
 import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
 import { Effects, SMEAR } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, LOW_GFX_KEY, mat, type Quality, setOutlines, setWindTime } from './look';
+import { free, share } from './optimize';
 import { Post } from './post';
 import { bugModel, setBugDetail, type BugModel } from './bugs3d';
 import { disc, foodModel, kitchen, kitchenProps, mop, obstacleModel, slingshot, stretchBand } from './models';
 import { THEMES } from './themes';
 
 /** A soft round shadow right under something, so it's easy to see where it is above the ground. */
-const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const blobGeo = share(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2));
 const blobMat = new THREE.MeshBasicMaterial({ map: blobTexture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
 function blob(): THREE.Mesh {
   const m = new THREE.Mesh(blobGeo, blobMat);
@@ -51,7 +52,7 @@ interface BodyView {
 }
 
 const v3 = (p: Vec3) => new THREE.Vector3(p.x, p.y, p.z);
-const gooGeo = new THREE.SphereGeometry(1, 16, 12);
+const gooGeo = share(new THREE.SphereGeometry(1, 16, 12));
 
 /** Camera rig: eases towards where it is asked to be, plus a gentle shake. */
 export class CameraRig {
@@ -206,6 +207,8 @@ export class World {
     this.resize();
     this.homeCamera(0);
     addEventListener('resize', () => this.resize());
+    addEventListener('orientationchange', () => setTimeout(() => this.resize(), 300));
+    visualViewport?.addEventListener('resize', () => this.resize());
     this.homeCamera(0);
     this.cam.jump();
   }
@@ -222,6 +225,8 @@ export class World {
   resize() {
     const w = innerWidth;
     const h = innerHeight;
+    // Mobile browsers report 0x0 for a moment while rotating or moving toolbars: a NaN aspect blanks the whole view.
+    if (w < 1 || h < 1) return;
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -279,6 +284,7 @@ export class World {
     this.scene.traverse((o) => {
       if (o.userData.rimShadow) o.castShadow = high;
     });
+    if (!high) this.bugLayer.traverse((o) => (o.castShadow = false));
     this.post.setQuality(high);
     this.post.resize();
     this.plantGrass();
@@ -313,15 +319,17 @@ export class World {
     this.level = level;
     field.radius = level.radius;
     field.shape = level.shape;
+    for (const o of this.obstacleLayer.children) free(o);
     this.obstacleLayer.clear();
     for (const o of level.obstacles) this.obstacleLayer.add(obstacleModel(o));
     this.setSlingAngle(field.angle);
     if (!changed) return;
-    if (this.ground) this.scene.remove(this.ground);
+    this.dropGround();
     this.ground = disc(theme, level.radius, level.shape);
     this.scene.add(this.ground);
     this.plantGrass();
     this.scene.remove(this.mopModel);
+    free(this.mopModel);
     this.mopModel = mop(level.radius);
     this.mopModel.visible = false;
     this.scene.add(this.mopModel);
@@ -344,14 +352,14 @@ export class World {
     this.sling.root.rotation.copy(old.root.rotation);
     if (this.pouchFood) this.sling.root.add(this.pouchFood);
     this.scene.remove(old.root);
+    free(old.root);
     this.scene.add(this.sling.root);
   }
 
   /** Once the ready-made models have loaded: the kitchen things, and a fresh world with them on its rim. */
   assetsLoaded() {
     this.scene.add(kitchenProps());
-    if (this.ground) this.scene.remove(this.ground);
-    this.ground = null;
+    this.dropGround();
     this.setLevel(this.level);
     if (this.pouchFoodId) {
       const id = this.pouchFoodId;
@@ -373,12 +381,29 @@ export class World {
     this.sling.root.rotation.y = angle;
   }
 
+  private dropGround() {
+    if (!this.ground) return;
+    this.scene.remove(this.ground);
+    free(this.ground);
+    this.ground = null;
+  }
+
+  private dropBug(v: BugView) {
+    this.bugLayer.remove(v.model.root, v.shadow);
+    free(v.model.root);
+  }
+
+  private dropBody(v: BodyView) {
+    this.foodLayer.remove(v.root, v.shadow);
+    free(v.root);
+  }
+
   /** Draws `arena` from now on, with its own `effects` (the replay passes a fresh one). */
   bind(arena: Arena | null, effects: Effects = this.mess) {
     this.arena = arena;
-    for (const v of this.bugViews.values()) this.bugLayer.remove(v.model.root, v.shadow);
+    for (const v of this.bugViews.values()) this.dropBug(v);
     this.bugViews.clear();
-    for (const v of this.bodyViews.values()) this.foodLayer.remove(v.root, v.shadow);
+    for (const v of this.bodyViews.values()) this.dropBody(v);
     this.bodyViews.clear();
     if (effects !== this.effects) {
       this.scene.remove(this.effects.group);
@@ -392,7 +417,10 @@ export class World {
   /** Puts a food in the pouch (null: empty, while reloading). */
   loadPouch(food: FoodId | null) {
     if (food === this.pouchFoodId) return;
-    if (this.pouchFood) this.sling.root.remove(this.pouchFood);
+    if (this.pouchFood) {
+      this.sling.root.remove(this.pouchFood);
+      free(this.pouchFood);
+    }
     this.pouchFood = null;
     this.pouchFoodId = food;
     if (!food) return;
@@ -755,7 +783,7 @@ export class World {
         v.model.root.scale.setScalar(s);
         v.shadow.visible = false;
         if (s < 0.02 || !seen.has(id)) {
-          this.bugLayer.remove(v.model.root, v.shadow);
+          this.dropBug(v);
           this.bugViews.delete(id);
         }
       }
@@ -882,7 +910,7 @@ export class World {
       }
     for (const [id, v] of this.bodyViews)
       if (!live.has(id)) {
-        this.foodLayer.remove(v.root, v.shadow);
+        this.dropBody(v);
         this.bodyViews.delete(id);
       }
   }

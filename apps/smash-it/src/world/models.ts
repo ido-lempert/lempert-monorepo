@@ -12,16 +12,16 @@ import type { Theme } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { asset, type AssetId } from './assets';
 import { groundTexture, THEMES, type ThemeLook } from './themes';
-import { mergeStatic } from './optimize';
+import { mergeStatic, share } from './optimize';
 import { mat, melonTexture, outline, tileTexture, windowTexture, woodTexture } from './look';
 
 // --- Helpers ----------------------------------------------------------------------------------------
 
 const geo = {
-  sphere: new THREE.SphereGeometry(1, 20, 14),
-  lowSphere: new THREE.SphereGeometry(1, 10, 8),
-  cyl: new THREE.CylinderGeometry(1, 1, 1, 24),
-  box: new THREE.BoxGeometry(1, 1, 1),
+  sphere: share(new THREE.SphereGeometry(1, 20, 14)),
+  lowSphere: share(new THREE.SphereGeometry(1, 10, 8)),
+  cyl: share(new THREE.CylinderGeometry(1, 1, 1, 24)),
+  box: share(new THREE.BoxGeometry(1, 1, 1)),
 };
 
 function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0, sx = 1, sy = sx, sz = sx): THREE.Mesh {
@@ -378,15 +378,26 @@ function slab(radius: number, shape: WorldShape, inset: number, top: number, dep
   return m;
 }
 
+const worldGrounds = new Map<Theme, THREE.Texture>();
+
+/** The ground texture as the extruded caps need it (mapped in world units); one per theme, so going from chapter to chapter does not pile up textures. */
+function worldGround(theme: Theme): THREE.Texture {
+  let t = worldGrounds.get(theme);
+  if (!t) {
+    t = groundTexture(theme).clone();
+    t.needsUpdate = true;
+    t.repeat.set(1 / 5, 1 / 5);
+    worldGrounds.set(theme, t);
+  }
+  return t;
+}
+
 /** The world for a chapter: its ground (lawn, sand, a picnic cloth, icing…), a rounded rim, layers underneath, and what grows around the edge. */
 export function disc(theme: Theme, radius: number, shape: WorldShape): THREE.Group {
   const look = THEMES[theme];
   const g = new THREE.Group();
   const depth = -COUNTER_Y;
-  const groundTex = groundTexture(theme).clone();
-  groundTex.needsUpdate = true;
-  // Extruded caps are mapped in world units.
-  groundTex.repeat.set(1 / 5, 1 / 5);
+  const groundTex = worldGround(theme);
   const ground = mat('#ffffff', { map: groundTex, rough: look.gloss ? 0.35 : theme === 'snow' ? 0.5 : 0.95, rim: 0, clearcoat: look.gloss ? 0.8 : undefined, sheen: theme === 'snow' ? 0.7 : undefined });
   const [s1, s2, s3] = look.soil;
   g.add(slab(radius, shape, 0, 0, 0.3, ground, mat(look.lip, { rough: 0.85, rim: 0 })));
@@ -655,6 +666,8 @@ export function obstacleModel(o: Obstacle): THREE.Group {
     g.add(fence);
   }
   g.traverse((c) => (c.castShadow = true));
+  // Obstacles never move: one draw per material, not per plank and spot.
+  mergeStatic(g);
   return g;
 }
 
@@ -717,6 +730,11 @@ export function kitchenProps(): THREE.Group {
   };
   const bowl = put('bowl', 11, 'width', 2, -20);
   if (bowl) {
+    // A glazed blue bowl: the plain white one melted into a blur behind the fruit.
+    const glaze = mat('#58b2f0', { rough: 0.2, clearcoat: 1 });
+    bowl.traverse((c) => {
+      if (c instanceof THREE.Mesh) c.material = glaze;
+    });
     // Fruit heaped in the bowl.
     const fruits: [AssetId, number, number, number, number][] = [
       ['apple', -2.4, 2.4, -0.6, 3.2], ['orange', 0.2, 2.6, 0.4, 3.2], ['pear', 2.6, 2.3, -0.2, 3.8],
@@ -742,6 +760,10 @@ export function kitchenProps(): THREE.Group {
   put('knife-block', 8, 'height', -27, -16, 0.5);
   put('honey', 5, 'height', 26, 6, -0.4);
   put('pumpkin', 6, 'width', -26, 10, 0.7);
+  // Sweets near the front corners, so the bottom of a tall phone screen (just below the slingshot, above the hint bar) is not empty.
+  put('cupcake', 3.2, 'height', -3.2, 13.3, 0.4);
+  put('strawberry', 1.8, 'height', 3.3, 13.9, 2.4);
+  put('cherries', 1.8, 'height', 3.5, 12.4, 0.8);
   mergeStatic(g, { cast: false });
   return g;
 }

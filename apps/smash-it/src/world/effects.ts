@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import type { Effect } from '../game/foods';
 import { COUNTER_Y, groundAt, type Vec3 } from '../game/physics';
 import { mat, sparkleTexture, splatTexture } from './look';
+import { share } from './optimize';
 
 interface Piece {
   mesh: THREE.Mesh;
@@ -48,12 +49,12 @@ const GRAVITY = 18;
 const MAX_PIECES = 260;
 
 const G = {
-  crumb: new THREE.IcosahedronGeometry(1, 1),
-  blob: new THREE.SphereGeometry(1, 14, 10),
-  sprinkle: new THREE.CapsuleGeometry(0.35, 0.7, 3, 6),
-  tin: new THREE.CylinderGeometry(1, 0.85, 0.3, 24, 1, true),
-  splat: new THREE.PlaneGeometry(1, 1),
-  mound: new THREE.SphereGeometry(1, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2),
+  crumb: share(new THREE.IcosahedronGeometry(1, 1)),
+  blob: share(new THREE.SphereGeometry(1, 14, 10)),
+  sprinkle: share(new THREE.CapsuleGeometry(0.35, 0.7, 3, 6)),
+  tin: share(new THREE.CylinderGeometry(1, 0.85, 0.3, 24, 1, true)),
+  splat: share(new THREE.PlaneGeometry(1, 1)),
+  mound: share(new THREE.SphereGeometry(1, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2)),
 };
 
 /** The colour each food smears in (on the ground, and on the bugs it hits). */
