@@ -12,7 +12,7 @@ import { type Level, LEVELS } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
 import { Effects, SMEAR } from './effects';
-import { backdrop, blobTexture, dotTexture, grassField, initialQuality, LOW_GFX_KEY, mat, type Quality, setOutlines, setWindTime } from './look';
+import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setOutlines, setWindTime } from './look';
 import { free, share } from './optimize';
 import { Post } from './post';
 import { bugModel, setBugDetail, type BugModel } from './bugs3d';
@@ -155,8 +155,7 @@ export class World {
     this.watchContext(this.renderer.domElement);
     this.cam = new CameraRig(this.camera);
 
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.makeEnvironment();
     this.sky = backdrop();
     this.scene.add(this.sky);
     this.hemi = new THREE.HemisphereLight('#fff3df', '#a8704a', 0.55);
@@ -233,25 +232,34 @@ export class World {
     this.post?.resize();
   }
 
-  /** A phone can drop the 3D view when it is overloaded: wait for it to come back, else restart in low quality. */
+  /** Called when the 3D view stayed lost for a few seconds (the game decides how to come back). */
+  onLost: () => void = () => location.reload();
+
+  /** The reflections live only on the graphics chip, so a lost view needs them made again. */
+  private makeEnvironment() {
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment?.dispose();
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+  }
+
+  /**
+   * A phone can drop the 3D view when it is overloaded. Polled, not only on events: a browser that has given up on
+   * the page hands it a view that is lost from the start, and no event ever comes.
+   */
   private watchContext(canvas: HTMLCanvasElement) {
-    let lost: number | undefined;
-    canvas.addEventListener('webglcontextlost', (e) => {
-      e.preventDefault();
-      lost = window.setTimeout(() => {
-        try {
-          localStorage.setItem(LOW_GFX_KEY, '1');
-        } catch {
-          // storage blocked: reload anyway
-        }
-        location.reload();
-      }, 2500);
-    });
+    canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
     canvas.addEventListener('webglcontextrestored', () => {
-      clearTimeout(lost);
       this.quality = 'low';
+      this.makeEnvironment();
       this.applyQuality();
     });
+    const gl = this.renderer.getContext();
+    let lostFor = 0;
+    setInterval(() => {
+      lostFor = gl.isContextLost() ? lostFor + 1 : 0;
+      if (lostFor === 3) this.onLost();
+    }, 1000);
   }
 
   setBatterySaver(on: boolean) {
