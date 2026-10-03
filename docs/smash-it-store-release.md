@@ -4,7 +4,7 @@ The store apps are a Capacitor shell (`apps/smash-it/ios`, `apps/smash-it/androi
 
 ## Decide before the first upload
 
-- **App id** `com.lempert.smashit` (`capacitor.config.ts`, plus `android/app/build.gradle` and the Xcode project). It cannot change after the first upload. To change it: edit the config, then `npx cap sync`, and fix the same id in `android/app/build.gradle` (`namespace`, `applicationId`, and the folder `android/app/src/main/java/...`) and in Xcode (Signing and Capabilities, Bundle Identifier).
+- **App id** `site.lempert.smash` (the lempert.site domain, reversed; set in `capacitor.config.ts`, `android/app/build.gradle` and the Xcode project). It cannot change after the first upload. To change it anyway (before uploading): edit the config, then `npx cap sync`, and fix the same id in `android/app/build.gradle` (`namespace`, `applicationId`, and the folder `android/app/src/main/java/...`) and in Xcode (Signing and Capabilities, Bundle Identifier).
 - **Server address.** The app runs from the device, so it needs the full public address of the deployed game for the leaderboards: `VITE_API_BASE=https://<your-render-host>/` (https, trailing slash). Without it the leaderboards do not work in the app (the game itself works offline).
 - **Contact e-mail** for the privacy policy (both stores require one): build with `PRIVACY_CONTACT=you@example.com`. The privacy page is `https://<your-render-host>/privacy.html`.
 
