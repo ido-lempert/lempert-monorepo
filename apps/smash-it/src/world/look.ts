@@ -450,8 +450,8 @@ export function initialQuality(): Quality {
   }
   const cores = navigator.hardwareConcurrency ?? 4;
   const mem = (navigator as { deviceMemory?: number }).deviceMemory ?? 4;
-  // Phones start light: post-processing and soft shadows are too much for most of them.
+  // Phones always start light, even strong ones: a debug report from an 8-core phone showed 1.7M triangles per frame on high, and phones are the ones that lose the 3D view.
   const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700;
-  if (phone && (cores < 8 || mem < 8)) return 'low';
+  if (phone) return 'low';
   return cores <= 4 || mem <= 2 ? 'low' : 'high';
 }
