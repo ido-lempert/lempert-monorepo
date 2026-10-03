@@ -11,6 +11,8 @@ export const MEGA = 5;
 export const BASE_COMBO_WINDOW = 3;
 /** Extra combo time from hitting a rare bug. */
 export const RARE_COMBO_BONUS = 3;
+/** Shots given back for hitting a rare bug. */
+export const RARE_AMMO_BONUS = 3;
 
 export interface HitResult {
   points: number;
@@ -34,6 +36,10 @@ export class Session {
   /** Most bugs hit with one shot. */
   maxMulti = 0;
   shots = 0;
+  /** Shots won back from rare bugs. */
+  bonusShots = 0;
+  /** Foods still in the air (the chapter waits for them once the shots run out). */
+  inFlight = 0;
   readonly byKind: Partial<Record<BugKind, number>> = {};
   small = 0;
   /** The king's hits taken and whether it is down. */
@@ -44,6 +50,8 @@ export class Session {
   constructor(
     readonly level: Level,
     readonly comboWindow = BASE_COMBO_WINDOW,
+    /** How many shots the chapter gives (no limit by default). */
+    readonly ammo = Infinity,
   ) {
     this.timeLeft = level.time;
   }
@@ -67,6 +75,10 @@ export class Session {
     this.shots++;
   }
 
+  get shotsLeft(): number {
+    return Math.max(0, this.ammo + this.bonusShots - this.shots);
+  }
+
   hit(kind: BugKind, shotId: number): HitResult {
     const def = BUGS[kind];
     this.chain = this.clock <= this.comboUntil ? this.chain + 1 : 1;
@@ -76,6 +88,7 @@ export class Session {
     const points = def.value * multiplier;
     this.score += points;
     this.hits++;
+    if (def.rare && Number.isFinite(this.ammo)) this.bonusShots += RARE_AMMO_BONUS;
     this.byKind[kind] = (this.byKind[kind] ?? 0) + 1;
     if (isSmall(kind)) this.small++;
     const s = this.shotPoints.get(shotId) ?? { points: 0, bugs: 0 };
@@ -139,9 +152,14 @@ export class Session {
     return this.level.goals.every((g) => this.goalMet(g));
   }
 
-  /** The chapter ends when every goal is met (no waiting around) or the clock runs out. */
+  /** Out of shots, with nothing left in the air. */
+  get outOfAmmo(): boolean {
+    return this.shotsLeft <= 0 && this.inFlight === 0;
+  }
+
+  /** The chapter ends when every goal is met (no waiting around), the clock runs out or the shots do. */
   get over(): boolean {
-    return this.success || this.timeLeft <= 0;
+    return this.success || this.timeLeft <= 0 || this.outOfAmmo;
   }
 
   stars(): number {

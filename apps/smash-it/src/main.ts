@@ -244,6 +244,7 @@ function startLevel(withMission = false, assist = false) {
   };
   play = new Play(world, sound, progress, level, { popup, banner, toast: (text) => say(text), shot, tip, buzz }, () => prefs.calm, assist);
   starsReached = 1;
+  $('ammo-text').textContent = '';
   show('hud', 'tray', 'top-stack', 'rotate', ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
   renderTray(progress, play.food, pickFood);
   banner(daily ? t('daily') : t('chapter', { n: level.id }), '', 1100);
@@ -254,6 +255,7 @@ function startLevel(withMission = false, assist = false) {
   if (level.boss) coach.say('👑', t('coachKing', { name: kingName(level), n: level.boss.hp }));
   sound.setTheme(level.boss ? 'boss' : 'play');
   $('rotate').classList.toggle('hidden', !level.rotate);
+  tip('ammo', '🧺', t('coachAmmo'));
   if (level.rotate) tip('rotate', '🔄', t('coachRotate'));
   if (level.obstacles.some((o) => o.kind === 'fence')) tip('fence', '🚧', t('coachFence'));
   if (progress.owned.length > 1 && tip('tray', '👇', t('coachTray'))) {
@@ -826,6 +828,19 @@ function updateHud() {
   if (!play) return;
   const s = play.arena.session;
   $('time-text').textContent = clock(s.timeLeft);
+  const ammo = $('ammo-text');
+  const left = String(s.shotsLeft);
+  if (ammo.textContent !== left) {
+    const more = Number(ammo.textContent) < s.shotsLeft && ammo.textContent !== '';
+    ammo.textContent = left;
+    $('hud-ammo').classList.toggle('low', s.shotsLeft <= 5);
+    if (more) {
+      $('hud-ammo').classList.remove('pop');
+      void $('hud-ammo').offsetWidth;
+      $('hud-ammo').classList.add('pop');
+      sound.play('coin');
+    }
+  }
   const sec = Math.ceil(s.timeLeft);
   const hurry = sec <= 10 && !play.over;
   $('hud-time').classList.toggle('hurry', hurry);

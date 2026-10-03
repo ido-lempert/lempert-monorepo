@@ -101,6 +101,8 @@ export interface Level {
   shape: WorldShape;
   /** Seconds on the clock. */
   time: number;
+  /** Shots the chapter gives (the ammo upgrade adds more). */
+  ammo: number;
   goals: Goal[];
   /** How often each kind of bug turns up. */
   mix: Partial<Record<BugKind, number>>;
@@ -271,9 +273,12 @@ function makeLevel(w: number, i: number, seed?: number): Level {
         armor: big && w >= 7 ? 1.1 : undefined,
       }
     : undefined;
+  // Enough shots to win with a bit more than every other shot missing; a good player has some to spare.
+  const need = boss ? bossDef!.hp * 1.6 + 8 : Math.max(hits * 1.15, ...goals.map((g) => (g.kind === 'bug' || g.kind === 'multi' ? g.n * 2 : 0)));
+  const ammo = Math.round(need * 1.8 + 6);
   const expected = boss ? (bossDef!.hp * 150 * 2 + 1000) : avg * hits * 2.2;
   return {
-    id: n, world: w + 1, index: i + 1, radius: R, theme: stage.theme, shape: stage.shape, time, goals,
+    id: n, world: w + 1, index: i + 1, radius: R, theme: stage.theme, shape: stage.shape, time, ammo, goals,
     mix, max: Math.max(2, max), groups: groups.length ? groups : undefined, rareEvery,
     guide, pace, obstacles, rotate, boss: bossDef, tip,
     stars: [round(expected * 0.9, 100), round(expected * 1.4, 100)],

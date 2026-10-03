@@ -1855,3 +1855,42 @@ body:has(#pause:not(.hidden)) .popups {
     margin-top: 8px;
   }
 }
+
+/* --- Ammo ------------------------------------------------------------------------------------------- */
+
+.hud-ammo {
+  min-height: var(--target);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: var(--lift);
+  font-size: 1.15rem;
+  white-space: nowrap;
+}
+
+.hud-ammo b {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.3rem;
+}
+
+.hud-ammo.low {
+  background: #ffe0e8;
+}
+
+.hud-ammo.pop {
+  animation: pulse 0.35s ease-in-out 2 alternate;
+}
+
+.lock-note {
+  margin: 4px 0;
+}
+
+@media (max-width: 560px) {
+  .hud-ammo {
+    font-size: 1rem;
+    padding: 4px 12px;
+  }
+}

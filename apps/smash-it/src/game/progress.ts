@@ -12,7 +12,7 @@ import { FOOD_ORDER, type FoodId, isFoodId, MAX_TIER } from './foods';
 import { LEVELS } from './levels';
 import { BASE_COMBO_WINDOW } from './session';
 
-export type UpgradeId = 'guide' | 'combo';
+export type UpgradeId = 'ammo' | 'guide' | 'combo';
 
 export interface Upgrade {
   id: UpgradeId;
@@ -22,12 +22,16 @@ export interface Upgrade {
 }
 
 export const UPGRADES: Record<UpgradeId, Upgrade> = {
+  /** More shots in every chapter. */
+  ammo: { id: 'ammo', emoji: '🧺', prices: [250, 600, 1200, 2200, 3600] },
   /** A longer aiming guide than the chapter gives. */
-  guide: { id: 'guide', emoji: '🎯', prices: [150, 350, 700] },
+  guide: { id: 'guide', emoji: '🎯', prices: [300, 700, 1400] },
   /** More time to keep a combo going. */
-  combo: { id: 'combo', emoji: '⏱️', prices: [200, 450, 900] },
+  combo: { id: 'combo', emoji: '⏱️', prices: [400, 900, 1800] },
 };
-export const UPGRADE_ORDER: UpgradeId[] = ['guide', 'combo'];
+export const UPGRADE_ORDER: UpgradeId[] = ['ammo', 'guide', 'combo'];
+/** Extra shots for each ammo tier. */
+export const AMMO_PER_TIER = 4;
 /** The old "fast reload" upgrade, refunded now that the slingshot reloads at once. */
 const OLD_RELOAD_PRICES = [180, 400, 800];
 
@@ -74,7 +78,7 @@ export const KEY = 'smashIt.progress';
 
 export function newProgress(): Progress {
   return {
-    v: 1, coins: 0, owned: ['cookie'], upgrades: { guide: 0, combo: 0 }, tiers: {}, unlocked: 1, stars: {}, best: {},
+    v: 1, coins: 0, owned: ['cookie'], upgrades: { ammo: 0, guide: 0, combo: 0 }, tiers: {}, unlocked: 1, stars: {}, best: {},
     food: 'cookie', skin: 'classic', album: {}, daily: { date: '', best: 0 }, fails: { level: 0, n: 0 }, seen: [],
   };
 }
@@ -163,7 +167,7 @@ export function shopOpen(p: Progress): boolean {
 
 /** Something the coins can buy right now (to offer the shop at the end of a chapter). */
 export function canAffordUpgrade(p: Progress): boolean {
-  return p.owned.some((f) => (tierPrice(p, f) ?? Infinity) <= p.coins) || UPGRADE_ORDER.some((u) => (upgradePrice(p, u) ?? Infinity) <= p.coins);
+  return p.owned.some((f) => !tierBlocker(p, f) && (tierPrice(p, f) ?? Infinity) <= p.coins) || UPGRADE_ORDER.some((u) => (upgradePrice(p, u) ?? Infinity) <= p.coins);
 }
 
 /** The chapter list is only worth showing once there is more than one chapter. */
@@ -188,17 +192,26 @@ export function totalStars(p: Progress): number {
 
 // --- Shop -------------------------------------------------------------------------------------------
 
+/** Each tier costs more than the one before (times the food's base price, which grows with the food). */
+const TIER_STEPS = [1, 2, 3.5, 5.5, 8];
+
 /** Price of a food's next upgrade tier, or null when maxed out (or not won yet). */
 export function tierPrice(p: Progress, id: FoodId): number | null {
   const tier = p.tiers[id] ?? 0;
   if (tier >= MAX_TIER || !p.owned.includes(id)) return null;
   const order = FOOD_ORDER.indexOf(id);
-  return tier === 0 ? 150 + order * 60 : 400 + order * 120;
+  return Math.round(((150 + order * 70) * TIER_STEPS[tier]) / 10) * 10;
+}
+
+/** A food can only be upgraded once the food before it is fully upgraded: the one still in the way, if any. */
+export function tierBlocker(p: Progress, id: FoodId): FoodId | null {
+  const prev = p.owned[p.owned.indexOf(id) - 1];
+  return prev && (p.tiers[prev] ?? 0) < MAX_TIER ? prev : null;
 }
 
 export function buyTier(p: Progress, id: FoodId): boolean {
   const price = tierPrice(p, id);
-  if (price === null || p.coins < price) return false;
+  if (price === null || p.coins < price || tierBlocker(p, id)) return false;
   p.coins -= price;
   p.tiers[id] = (p.tiers[id] ?? 0) + 1;
   return true;
@@ -229,6 +242,11 @@ export function chooseSkin(p: Progress, id: SkinId): boolean {
 /** How much of the aiming guide shows: the chapter's own, or more with the guide upgrade. */
 export function guideLength(p: Progress, levelGuide: number): number {
   return Math.max(levelGuide, [0, 0.3, 0.55, 0.8][p.upgrades.guide] ?? 0);
+}
+
+/** How many shots a chapter gives: its own, plus the ammo upgrade. */
+export function ammoFor(p: Progress, levelAmmo: number): number {
+  return levelAmmo + p.upgrades.ammo * AMMO_PER_TIER;
 }
 
 export function comboWindow(p: Progress): number {

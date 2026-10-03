@@ -9,7 +9,7 @@ import { makeRng } from './rng';
 import { MEGA, Session } from './session';
 
 const quiet: Level = {
-  id: 99, world: 1, index: 1, radius: 7.5, theme: 'garden', shape: 'circle', rotate: false, time: 60, goals: [{ kind: 'hits', n: 3 }], mix: { ladybug: 1 }, max: 0,
+  id: 99, world: 1, index: 1, radius: 7.5, theme: 'garden', shape: 'circle', rotate: false, time: 60, ammo: 20, goals: [{ kind: 'hits', n: 3 }], mix: { ladybug: 1 }, max: 0,
   guide: 1, pace: 1, obstacles: [], tip: 'cookie', stars: [100, 200],
 };
 
@@ -125,6 +125,33 @@ describe('session', () => {
     expect(s.bestShot).toBe(50 + 200);
     expect(s.success).toBe(true);
     expect(s.over).toBe(true);
+  });
+
+  it('ends when the shots run out and the last one has landed; a rare bug gives shots back', () => {
+    const s = new Session({ ...quiet, goals: [{ kind: 'hits', n: 99 }] }, 3, 2);
+    expect(s.shotsLeft).toBe(2);
+    s.shot();
+    s.inFlight = 1;
+    s.shot();
+    s.inFlight = 2;
+    expect(s.shotsLeft).toBe(0);
+    expect(s.over).toBe(false);
+    s.hit('golden', 1);
+    expect(s.shotsLeft).toBe(3);
+    s.inFlight = 0;
+    s.shot();
+    s.shot();
+    s.shot();
+    s.inFlight = 1;
+    expect(s.shotsLeft).toBe(0);
+    expect(s.over).toBe(false);
+    s.inFlight = 0;
+    expect(s.over).toBe(true);
+    expect(s.outOfAmmo).toBe(true);
+    // No limit unless a chapter asks for one.
+    const free = new Session(quiet, 3);
+    for (let i = 0; i < 99; i++) free.shot();
+    expect(free.over).toBe(false);
   });
 
   it('pays more coins for winning than for trying', () => {
@@ -265,6 +292,14 @@ describe('levels', () => {
       for (const o of l.obstacles) expect(onDisc(o.x, o.z, o.radius + (o.length ?? 0) / 2)).toBe(true);
       for (const g of l.groups ?? []) if (g.at) expect(onDisc(g.at.x, g.at.z, 1.5)).toBe(true);
     });
+  });
+
+  it('give enough shots to win with a few misses, and more later on', () => {
+    for (const l of LEVELS) {
+      const hits = l.goals.reduce((m, g) => Math.max(m, g.kind === 'hits' ? g.n : 0), 0);
+      expect(l.ammo).toBeGreaterThanOrEqual(Math.ceil((l.boss ? l.boss.hp : hits) * 1.5));
+    }
+    expect(LEVELS.at(-2)!.ammo).toBeGreaterThan(LEVELS[0].ammo);
   });
 
   it('have a king every 5 chapters, and rotation and fences from world 3', () => {

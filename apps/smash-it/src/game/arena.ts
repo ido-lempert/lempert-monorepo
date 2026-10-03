@@ -89,6 +89,8 @@ export interface ArenaOptions {
   scripted?: boolean;
   /** Upgrade tier of each food. */
   tiers?: Partial<Record<FoodId, number>>;
+  /** How many shots the chapter gives (default: no limit). */
+  ammo?: number;
 }
 
 const STEP = 1 / 120;
@@ -115,7 +117,7 @@ export class Arena {
     o: ArenaOptions = {},
   ) {
     this.rng = makeRng(o.seed ?? (Math.random() * 2 ** 32) >>> 0);
-    this.session = new Session(level, o.comboWindow);
+    this.session = new Session(level, o.comboWindow, o.ammo);
     this.obstacles = level.obstacles;
     this.scripted = !!o.scripted;
     this.tiers = o.tiers ?? {};
@@ -166,6 +168,7 @@ export class Arena {
     for (const shot of this.shots) for (const body of [...shot.bodies]) this.moveBody(shot, body, dt, events);
     // Forget what's finished.
     for (let i = this.shots.length - 1; i >= 0; i--) if (this.shots[i].bodies.every((b) => b.mode === 'done')) this.shots.splice(i, 1);
+    this.session.inFlight = this.shots.length;
     for (let i = this.bugs.length - 1; i >= 0; i--) if (this.bugs[i].state === 'gone') this.bugs.splice(i, 1);
   }
 
@@ -274,6 +277,7 @@ export class Arena {
     shot.bodies.push(this.body(shot, 'whole', origin, velocity, food.radius, food.area));
     this.shots.push(shot);
     this.session.shot();
+    this.session.inFlight = this.shots.length;
     this.records.set(shot.id, { shotId: shot.id, food: food.id, tier: this.tiers[food.id] ?? 0, origin: { ...origin }, velocity: { ...velocity }, hits: [] });
     return shot;
   }

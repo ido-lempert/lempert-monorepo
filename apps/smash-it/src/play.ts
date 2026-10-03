@@ -10,7 +10,7 @@ import type { Level } from './game/levels';
 import { type Aim, aimFromPull, dist2D, field, MAX_YAW, slingAt, type Vec3 } from './game/physics';
 import { type Bug, BUGS, hittable } from './game/bugs';
 import type { Voice } from './audio';
-import { comboWindow, guideLength, type Progress } from './game/progress';
+import { ammoFor, comboWindow, guideLength, type Progress } from './game/progress';
 import { type StringKey, t } from './i18n';
 import type { World } from './world/world';
 
@@ -85,7 +85,7 @@ export class Play {
     /** A longer aiming guide, offered after failing a chapter twice. */
     private readonly assist = false,
   ) {
-    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers });
+    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers, ammo: ammoFor(progress, level.ammo) });
     this.food = progress.owned.includes(progress.food) ? progress.food : 'cookie';
     this.goalsMet = level.goals.map(() => false);
     world.setLevel(level);
@@ -204,13 +204,15 @@ export class Play {
   }
 
   private fire(aim: Aim) {
-    if (this.reloadLeft > 0 || this.ending !== null) return;
+    if (this.reloadLeft > 0 || this.ending !== null || this.arena.session.shotsLeft <= 0) return;
     this.arena.fire(this.food, aim.yaw, aim.power);
     this.world.fired();
     this.sound.play('launch');
     this.reloadFor = FOODS[this.food].reload;
     this.reloadLeft = 1;
     this.ui.shot();
+    const left = this.arena.session.shotsLeft;
+    if (left <= 5 && left > 0) this.ui.tip('ammoLow', '🧺', t('coachAmmoLow'));
     const f = FOODS[this.food];
     if (f.id !== 'cookie') this.ui.tip(`food:${f.id}`, f.emoji, t(`foodInfo_${f.id}` as StringKey));
   }
@@ -254,7 +256,7 @@ export class Play {
       this.ui.banner(t('allDone'), 'mint', 2000);
       this.sound.play('win');
     } else {
-      this.ui.banner(t('timeUp'), 'pink', 2000);
+      this.ui.banner(t(s.outOfAmmo && s.timeLeft > 0 ? 'noAmmo' : 'timeUp'), 'pink', 2000);
       this.sound.play('buzzer');
     }
   }

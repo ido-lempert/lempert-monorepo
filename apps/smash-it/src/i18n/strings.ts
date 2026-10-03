@@ -200,6 +200,10 @@ export const he = {
   goldenEscaped: 'באסה, היא ברחה!',
   goalDone: 'יש! עוד משימה בכיס!',
   timeUp: 'נגמר הזמן!',
+  noAmmo: 'נגמרו היריות!',
+  ammoLeft: 'יריות שנשארו',
+  coachAmmo: 'יש מספר מוגבל של יריות! הסל למעלה סופר כמה נשארו, וחיפושית זהב מחזירה שלוש.',
+  coachAmmoLow: 'נשארו מעט יריות, כל אחת חייבת לפגוע!',
   allDone: 'סגרתם את זה!',
 
   // Replay and results
@@ -231,6 +235,7 @@ export const he = {
   chosen: 'נבחר',
   choose: 'לבחור',
   maxed: 'מקס',
+  tierLocked: 'קודם משדרגים את {food} עד הסוף',
   tier: 'רמה {n} מתוך {max}',
   missing: 'חסרים {n}',
   speed: 'מהירות',
@@ -255,6 +260,8 @@ export const he = {
   foodInfo_pizza: 'מתפצלת באוויר לארבעה משולשים. ארבע פגיעות בזריקה אחת!',
 
   // Upgrades
+  up_ammo: 'סל גדול יותר',
+  upInfo_ammo: 'עוד ארבע יריות בכל שלב, בכל שדרוג.',
   up_guide: 'קו כיוון ארוך',
   up_combo: 'קומבו ארוך',
   upInfo_guide: 'רואים יותר מהמסלול, גם בשלבים הכי קשים.',
