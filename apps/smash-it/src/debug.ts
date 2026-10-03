@@ -313,42 +313,32 @@ export async function share(): Promise<boolean> {
 // --- Overlay -------------------------------------------------------------------------------------------
 
 let box: HTMLElement | null = null;
-let readout: HTMLElement | null = null;
 let timer = 0;
-let compact = true;
 
-function draw() {
-  if (!readout) return;
-  const body = summary();
-  readout.textContent = compact ? body.split('\n').slice(0, 2).join('\n') : body;
+/** One short line: it must never get in the way of the slingshot (the full numbers are in the report). */
+function oneLine(): string {
+  const f = fps();
+  const g = hooks?.stats();
+  const m = memory();
+  const parts = [`${f.fps.toFixed(0)}fps`];
+  if (g) parts.push(`${g.calls}c`, `${(g.triangles / 1000).toFixed(0)}k△`, `g${g.geometries}`, `t${g.textures}`, `~${(g.geometryMB + g.textureMB + g.canvasMB + g.shadowMB).toFixed(0)}MB`, g.quality, g.resScale.toFixed(2), g.lost ? 'LOST' : '');
+  if (m) parts.push(`js${(m.usedJSHeapSize / 1048576).toFixed(0)}`);
+  return parts.filter(Boolean).join(' ');
 }
 
-export function setOverlay(on: boolean, onCopied?: (ok: boolean) => void) {
+export function setOverlay(on: boolean) {
   if (!on) {
     clearInterval(timer);
     box?.remove();
-    box = readout = null;
+    box = null;
     return;
   }
   if (box) return;
-  box = document.createElement('div');
-  box.className = 'debug-hud';
-  box.setAttribute('dir', 'ltr');
-  readout = document.createElement('pre');
-  const buttons = document.createElement('div');
-  const copyBtn = document.createElement('button');
-  copyBtn.textContent = 'copy';
-  copyBtn.addEventListener('click', () => void copy().then((ok) => onCopied?.(ok)));
-  const sizeBtn = document.createElement('button');
-  sizeBtn.textContent = 'more';
-  sizeBtn.addEventListener('click', () => {
-    compact = !compact;
-    sizeBtn.textContent = compact ? 'more' : 'less';
-    draw();
-  });
-  buttons.append(copyBtn, sizeBtn);
-  box.append(readout, buttons);
-  document.body.appendChild(box);
+  const el = (box = document.createElement('div'));
+  el.className = 'debug-hud';
+  el.setAttribute('dir', 'ltr');
+  document.body.appendChild(el);
+  const draw = () => (el.textContent = oneLine());
   draw();
   timer = window.setInterval(draw, 500);
 }

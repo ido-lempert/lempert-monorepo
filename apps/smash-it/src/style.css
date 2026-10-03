@@ -1134,38 +1134,16 @@ body:has(#pause:not(.hidden)) .popups {
 .debug-hud {
   position: fixed;
   z-index: 90;
-  inset-inline-start: 4px;
-  bottom: 4px;
-  max-width: calc(100vw - 8px);
-  padding: 4px 6px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.78);
+  top: 0;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border-radius: 0 0 6px 6px;
+  background: rgba(0, 0, 0, 0.6);
   color: #d9ffd9;
-  font: 10px/1.25 ui-monospace, Menlo, monospace;
+  font: 9px/12px ui-monospace, Menlo, monospace;
+  white-space: nowrap;
   pointer-events: none;
-}
-
-.debug-hud pre {
-  margin: 0;
-  white-space: pre-wrap;
-}
-
-.debug-hud div {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.debug-hud button {
-  pointer-events: auto;
-  min-height: var(--target);
-  min-width: var(--target);
-  padding: 0 10px;
-  font: 12px ui-monospace, Menlo, monospace;
-  color: #fff;
-  background: #2d5a2d;
-  border: 1px solid #9f9;
-  border-radius: 8px;
 }
 
 .page-body {

@@ -792,7 +792,7 @@ $('version-tap').addEventListener('click', () => {
 });
 
 function applyDebug() {
-  debug.setOverlay(prefs.debug, (ok) => say(ok ? t('devCopied', { n: debug.lineCount() }) : t('devCopyFail'), ok ? '📋' : '⚠️'));
+  debug.setOverlay(prefs.debug);
 }
 applyDebug();
 
