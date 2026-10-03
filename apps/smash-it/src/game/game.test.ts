@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Arena, levelBugs } from './arena';
+import { Arena, type GameEvent, levelBugs } from './arena';
 import { BUGS, type BugKind, isSmall, makeBug, moveBug } from './bugs';
 import { FOOD_ORDER, FOODS } from './foods';
 import { LEVELS, type Level, ROTATE_FROM } from './levels';
@@ -415,5 +415,76 @@ describe('kings and fences', () => {
     const guards = arena.spawnGroup('ant', 4, 'guard', { x: 2, z: -2 });
     for (let i = 0; i < 1200; i++) arena.update(1 / 60);
     for (const g of guards) expect(Math.hypot(g.x - 2, g.z + 2)).toBeLessThan(2.6);
+  });
+});
+
+describe('acid', () => {
+  const spitty: Level = { ...quiet, rotate: true, spit: { every: 9 }, max: 0 };
+
+  /** Runs until `type` shows up (or 40 seconds pass). */
+  function until(arena: Arena, type: GameEvent['type'], then?: (e: GameEvent) => void) {
+    const seen: GameEvent[] = [];
+    for (let i = 0; i < 40 * 60 && !seen.some((e) => e.type === type); i++) {
+      const events = arena.update(1 / 60);
+      for (const e of events) if (e.type === type) then?.(e);
+      seen.push(...events);
+    }
+    return seen;
+  }
+
+  function setup(seed = 3) {
+    setField(7.5);
+    field.angle = 0;
+    const arena = new Arena(spitty, { seed, umbrella: { open: 3, cooldown: 7 } });
+    const b = arena.addBug('ant', 0, -12, 0);
+    b.state = 'walk';
+    return arena;
+  }
+
+  it('starts in the chapters where the slingshot can walk around, and never before', () => {
+    for (const l of LEVELS) expect(!!l.spit).toBe(l.id >= ROTATE_FROM);
+  });
+
+  it('winds up first, then splats the player if they stand still, stunning them and covering the view', () => {
+    const arena = setup();
+    const seen = until(arena, 'splat');
+    const order = seen.map((e) => e.type).filter((t) => ['wind', 'spit', 'splat'].includes(t));
+    expect(order).toEqual(['wind', 'spit', 'splat']);
+    expect(arena.player.stun).toBeGreaterThan(0.9);
+    expect(arena.player.goo).toBeGreaterThan(3);
+    for (let i = 0; i < 5 * 60; i++) arena.update(1 / 60);
+    expect(arena.player.stun).toBe(0);
+    expect(arena.player.goo).toBe(0);
+  });
+
+  it('is dodged by walking the slingshot away', () => {
+    const arena = setup();
+    until(arena, 'spit');
+    field.angle = 1.5;
+    const seen = until(arena, 'dodged');
+    expect(seen.some((e) => e.type === 'splat')).toBe(false);
+    expect(arena.player.stun).toBe(0);
+    field.angle = 0;
+  });
+
+  it('is blocked by the umbrella, which then needs a rest before it opens again', () => {
+    const arena = setup();
+    until(arena, 'spit');
+    expect(arena.openUmbrella()).toBe(true);
+    expect(arena.openUmbrella()).toBe(false);
+    const seen = until(arena, 'blocked');
+    expect(seen.some((e) => e.type === 'splat')).toBe(false);
+    expect(arena.player.stun).toBe(0);
+    for (let i = 0; i < 11 * 60; i++) arena.update(1 / 60);
+    expect(arena.player.umbrella).toBe(0);
+    expect(arena.openUmbrella()).toBe(true);
+  });
+
+  it('does not spit again while the player is still covered in goo', () => {
+    const arena = setup();
+    until(arena, 'splat');
+    let winds = 0;
+    for (let i = 0; i < Math.floor(arena.player.goo * 60); i++) for (const e of arena.update(1 / 60)) if (e.type === 'wind') winds++;
+    expect(winds).toBe(0);
   });
 });

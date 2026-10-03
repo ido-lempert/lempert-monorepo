@@ -6,9 +6,40 @@
 import { active, type BossDef, type Bug, BUGS, type BugKind, footprint, hittable, knock, makeBug, moveBug, type Obstacle } from './bugs';
 import { type Food, FOODS, type FoodId, withTier } from './foods';
 import type { Level } from './levels';
-import { COUNTER_Y, edgeAt, field, groundAt, innerRadius, launchVelocity, onDisc, rangeFor, setField, slingAt, SURFACE_Y, type Vec3 } from './physics';
+import { COUNTER_Y, dist2D, edgeAt, field, groundAt, innerRadius, launchVelocity, onDisc, rangeFor, setField, slingAt, SURFACE_Y, type Vec3 } from './physics';
 import { makeRng, type Rng, weighted } from './rng';
 import { type HitResult, Session } from './session';
+
+/** A blob of acid in the air: where it was spat from, where it will come down, and how far along it is. */
+export interface Acid {
+  id: number;
+  from: Vec3;
+  to: { x: number; z: number };
+  t: number;
+  dur: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** What acid does to the player, and the umbrella that stops it. */
+export interface PlayerState {
+  /** Seconds left of not being able to shoot. */
+  stun: number;
+  /** Seconds left of goo on the screen (the view is limited). */
+  goo: number;
+  /** Seconds of being safe after a hit, so one spit never becomes two. */
+  safe: number;
+  /** Seconds of umbrella left, and seconds until it can open again. */
+  umbrella: number;
+  cooldown: number;
+}
+
+/** How close acid must come to the slingshot to hit it. */
+export const ACID_REACH = 1.8;
+export const WIND_UP = 0.9;
+export const STUN = 1;
+export const GOO = 3.5;
 
 export interface Body {
   id: number;
@@ -80,7 +111,17 @@ export type GameEvent =
   | { type: 'escape'; bug: Bug }
   | { type: 'hide'; bug: Bug }
   /** A thrown bug came down, dizzy. */
-  | { type: 'land'; bug: Bug };
+  | { type: 'land'; bug: Bug }
+  /** A bug rears back to spit. */
+  | { type: 'wind'; bug: Bug }
+  | { type: 'spit'; acid: Acid }
+  /** Acid hit the player. */
+  | { type: 'splat'; acid: Acid }
+  /** The umbrella caught it. */
+  | { type: 'blocked'; acid: Acid }
+  /** It came down where the player wasn't. */
+  | { type: 'dodged'; acid: Acid }
+  | { type: 'umbrella'; open: boolean };
 
 export interface ArenaOptions {
   seed?: number;
@@ -91,6 +132,8 @@ export interface ArenaOptions {
   tiers?: Partial<Record<FoodId, number>>;
   /** How many shots the chapter gives (default: no limit). */
   ammo?: number;
+  /** The umbrella: seconds open, and seconds before it can open again. */
+  umbrella?: { open: number; cooldown: number };
 }
 
 const STEP = 1 / 120;
@@ -111,6 +154,11 @@ export class Arena {
   private rareIn: number;
   private carry = 0;
   private readonly scripted: boolean;
+  readonly acids: Acid[] = [];
+  readonly player: PlayerState = { stun: 0, goo: 0, safe: 0, umbrella: 0, cooldown: 0 };
+  readonly umbrellaOptions: { open: number; cooldown: number };
+  private spitIn: number;
+  private pending: GameEvent[] = [];
 
   constructor(
     readonly level: Level,
@@ -121,6 +169,8 @@ export class Arena {
     this.obstacles = level.obstacles;
     this.scripted = !!o.scripted;
     this.tiers = o.tiers ?? {};
+    this.umbrellaOptions = o.umbrella ?? { open: 3, cooldown: 7 };
+    this.spitIn = level.spit ? 8 : Infinity;
     this.groupIn = (level.groups ?? []).map((g) => Math.min(6, g.every * 0.4));
     this.rareIn = level.rareEvery ?? Infinity;
     setField(level.radius, 0, level.shape);
@@ -152,6 +202,7 @@ export class Arena {
     if (!this.scripted) {
       this.session.tick(dt);
       this.spawning(dt, events);
+      this.spitting(dt, events);
     }
     for (const b of this.bugs) {
       const was = b.state;
@@ -170,6 +221,79 @@ export class Arena {
     for (let i = this.shots.length - 1; i >= 0; i--) if (this.shots[i].bodies.every((b) => b.mode === 'done')) this.shots.splice(i, 1);
     this.session.inFlight = this.shots.length;
     for (let i = this.bugs.length - 1; i >= 0; i--) if (this.bugs[i].state === 'gone') this.bugs.splice(i, 1);
+  }
+
+  // --- Acid and the umbrella --------------------------------------------------------------------------
+
+  /** Opens the umbrella (when it is ready). */
+  openUmbrella(): boolean {
+    const p = this.player;
+    if (p.umbrella > 0 || p.cooldown > 0 || this.scripted) return false;
+    p.umbrella = this.umbrellaOptions.open;
+    p.cooldown = this.umbrellaOptions.open + this.umbrellaOptions.cooldown;
+    this.pending.push({ type: 'umbrella', open: true });
+    return true;
+  }
+
+  private spitting(dt: number, events: GameEvent[]) {
+    const p = this.player;
+    events.push(...this.pending.splice(0));
+    p.stun = Math.max(0, p.stun - dt);
+    p.goo = Math.max(0, p.goo - dt);
+    p.safe = Math.max(0, p.safe - dt);
+    p.cooldown = Math.max(0, p.cooldown - dt);
+    if (p.umbrella > 0) {
+      p.umbrella = Math.max(0, p.umbrella - dt);
+      if (p.umbrella === 0) events.push({ type: 'umbrella', open: false });
+    }
+    // Acid in the air.
+    for (let i = this.acids.length - 1; i >= 0; i--) {
+      const a = this.acids[i];
+      a.t += dt;
+      const k = Math.min(1, a.t / a.dur);
+      a.x = a.from.x + (a.to.x - a.from.x) * k;
+      a.z = a.from.z + (a.to.z - a.from.z) * k;
+      a.y = a.from.y + (groundAt(a.to.x, a.to.z) + 0.2 - a.from.y) * k + Math.sin(Math.PI * k) * 3.2;
+      if (k < 1) continue;
+      this.acids.splice(i, 1);
+      const near = dist2D(a.to, slingAt()) < ACID_REACH;
+      if (near && p.umbrella > 0) events.push({ type: 'blocked', acid: a });
+      else if (near && p.safe <= 0) {
+        p.stun = STUN;
+        p.goo = GOO;
+        p.safe = GOO + 1.5;
+        events.push({ type: 'splat', acid: a });
+      } else events.push({ type: 'dodged', acid: a });
+    }
+    const spit = this.level.spit;
+    if (!spit) return;
+    // Wind-ups that finished throw their acid.
+    for (const b of this.bugs) {
+      if (b.spitT <= 0) continue;
+      if (!hittable(b)) b.spitT = 0;
+      else if ((b.spitT -= dt) <= 0) {
+        b.spitT = 0;
+        const to = slingAt();
+        const d = dist2D(b, to);
+        const acid: Acid = { id: this.nextId++, from: { x: b.x, y: b.y + b.def.radius, z: b.z }, to: { x: to.x, z: to.z }, t: 0, dur: 1.2 + d * 0.07, x: b.x, y: b.y, z: b.z };
+        this.acids.push(acid);
+        events.push({ type: 'spit', acid });
+      }
+    }
+    // Now and then a bug that is far enough away starts winding up (kings more often). Never while the player is still covered in goo.
+    this.spitIn -= dt;
+    if (this.spitIn > 0) return;
+    const busy = this.acids.length + this.bugs.filter((b) => b.spitT > 0).length;
+    const far = this.bugs.filter((b) => hittable(b) && b.state === 'walk' && !b.script && b.spitT === 0 && dist2D(b, slingAt()) > 5);
+    if (p.goo > 0 || busy >= (this.king ? 2 : 1) || !far.length) {
+      this.spitIn = 1.5;
+      return;
+    }
+    const king = far.find((b) => b.boss);
+    const bug = king && this.rng() < 0.6 ? king : far[Math.floor(this.rng() * far.length)];
+    bug.spitT = WIND_UP;
+    events.push({ type: 'wind', bug });
+    this.spitIn = spit.every * (0.8 + this.rng() * 0.4);
   }
 
   // --- Bugs -----------------------------------------------------------------------------------------

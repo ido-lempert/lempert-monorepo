@@ -3,7 +3,7 @@ import { FOODS, MAX_TIER, withTier } from './foods';
 import { dailyLevel, DAILY_ID, LEVELS } from './levels';
 import {
   ammoFor, buyTier, buyUpgrade, canAffordUpgrade, chooseSkin, finishDaily, finishLevel, firstTime, FOOD_PRIZES, guideLength,
-  newProgress, nextPrize, parseProgress, shopOpen, tierBlocker, tierPrice, totalStars, upgradePrice,
+  newProgress, nextPrize, parseProgress, shopOpen, tierBlocker, tierPrice, totalStars, umbrellaFor, upgradePrice, upgradeVisible,
 } from './progress';
 
 describe('progress', () => {
@@ -19,7 +19,7 @@ describe('progress', () => {
       unlocked: 999, stars: { 1: 7, 777: 3 }, best: { 2: 1234.6 }, food: 'pizza', skin: 'galaxy',
     });
     expect(p.coins).toBe(0);
-    expect(p.upgrades).toEqual({ ammo: 0, guide: 3, combo: 0 });
+    expect(p.upgrades).toEqual({ ammo: 0, guide: 3, combo: 0, umbrella: 0 });
     expect(p.unlocked).toBe(LEVELS.length);
     expect(p.stars).toEqual({ 1: 3 });
     expect(p.best).toEqual({ 2: 1234 });
@@ -162,5 +162,31 @@ describe('progress', () => {
     expect(p.daily).toEqual({ date: '2026-10-02', best: 500 });
     expect(finishDaily(p, '2026-10-03', 100, 10)).toBe(true);
     expect(p.coins).toBe(90);
+  });
+});
+
+describe('umbrella', () => {
+  it('shows up in the shop only once acid does, and gets longer and quicker with each tier', () => {
+    const p = newProgress();
+    expect(upgradeVisible(p, 'umbrella')).toBe(false);
+    expect(upgradeVisible(p, 'ammo')).toBe(true);
+    p.unlocked = 21;
+    expect(upgradeVisible(p, 'umbrella')).toBe(true);
+    const base = umbrellaFor(p);
+    p.coins = 99999;
+    expect(buyUpgrade(p, 'umbrella')).toBe(true);
+    const better = umbrellaFor(p);
+    expect(better.open).toBeGreaterThan(base.open);
+    expect(better.cooldown).toBeLessThan(base.cooldown);
+  });
+
+  it('is not offered to a player who cannot use it yet', () => {
+    const p = newProgress();
+    p.coins = 300;
+    p.tiers = { cookie: MAX_TIER };
+    p.upgrades = { ammo: 5, guide: 3, combo: 3, umbrella: 0 };
+    expect(canAffordUpgrade(p)).toBe(false);
+    p.unlocked = 21;
+    expect(canAffordUpgrade(p)).toBe(true);
   });
 });

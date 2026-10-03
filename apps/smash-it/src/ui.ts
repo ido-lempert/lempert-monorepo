@@ -5,7 +5,7 @@
 import { BUGS, type BugKind } from './game/bugs';
 import { areaRank, BOOST, FOOD_ORDER, FOODS, type FoodId, MAX_TIER } from './game/foods';
 import { type Goal, type Level, levelById, LEVELS, WORLDS } from './game/levels';
-import { FOOD_PRIZES, nextPrize, type Progress, shopOpen, SKINS, type SkinId, tierBlocker, tierPrice, totalStars, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice } from './game/progress';
+import { FOOD_PRIZES, nextPrize, type Progress, shopOpen, SKINS, type SkinId, tierBlocker, tierPrice, totalStars, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice, upgradeVisible } from './game/progress';
 import type { Session } from './game/session';
 import { type StringKey, t } from './i18n';
 
@@ -187,7 +187,7 @@ export function renderShop(p: Progress, tab: ShopTab, a: ShopActions) {
     );
   } else if (tab === 'upgrades') {
     list.replaceChildren(
-      ...UPGRADE_ORDER.map((id) => {
+      ...UPGRADE_ORDER.filter((id) => upgradeVisible(p, id)).map((id) => {
         const u = UPGRADES[id];
         return el(
           'div',

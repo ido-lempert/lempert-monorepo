@@ -10,7 +10,7 @@ import type { Level } from './game/levels';
 import { type Aim, aimFromPull, dist2D, field, MAX_YAW, slingAt, type Vec3 } from './game/physics';
 import { type Bug, BUGS, hittable } from './game/bugs';
 import type { Voice } from './audio';
-import { ammoFor, comboWindow, guideLength, type Progress } from './game/progress';
+import { ammoFor, comboWindow, guideLength, type Progress, umbrellaFor } from './game/progress';
 import { type StringKey, t } from './i18n';
 import type { World } from './world/world';
 
@@ -26,6 +26,8 @@ export interface PlayUi {
   tip(id: string, icon: string, text: string): boolean;
   /** A short vibration (phones that support it). */
   buzz(ms: number): void;
+  /** Goo on the screen for this many seconds (0 clears it). */
+  goo(seconds: number): void;
 }
 
 const EFFECT_SOUND: Record<Effect, Sfx> = {
@@ -85,7 +87,7 @@ export class Play {
     /** A longer aiming guide, offered after failing a chapter twice. */
     private readonly assist = false,
   ) {
-    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers, ammo: ammoFor(progress, level.ammo) });
+    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers, ammo: ammoFor(progress, level.ammo), umbrella: umbrellaFor(progress) });
     this.food = progress.owned.includes(progress.food) ? progress.food : 'cookie';
     this.goalsMet = level.goals.map(() => false);
     world.setLevel(level);
@@ -146,6 +148,12 @@ export class Play {
     this.world.setSlingAngle(field.angle);
   }
 
+  /** Opens the umbrella against acid. */
+  openUmbrella(): boolean {
+    if (!this.level.spit || this.paused || this.ending !== null) return false;
+    return this.arena.openUmbrella();
+  }
+
   /** Arrows aim, Q and E walk around the world, space or Enter throws, 1–8 picks a food. */
   key(e: KeyboardEvent): boolean {
     if (!this.canAim()) return false;
@@ -171,6 +179,9 @@ export class Play {
         if (!this.level.rotate) return false;
         this.turn(e.key.toLowerCase() === 'q' ? -0.12 : 0.12);
         return true;
+      case 'u':
+      case 'U':
+        return this.openUmbrella();
       case ' ':
       case 'Enter':
         if (k.on) this.fire({ yaw: k.yaw, power: k.power });
@@ -204,7 +215,7 @@ export class Play {
   }
 
   private fire(aim: Aim) {
-    if (this.reloadLeft > 0 || this.ending !== null || this.arena.session.shotsLeft <= 0) return;
+    if (this.reloadLeft > 0 || this.ending !== null || this.arena.session.shotsLeft <= 0 || this.arena.player.stun > 0) return;
     this.arena.fire(this.food, aim.yaw, aim.power);
     this.world.fired();
     this.sound.play('launch');
@@ -404,6 +415,31 @@ export class Play {
           break;
         case 'land':
           this.sound.voice(voiceOf(e.bug), 'dizzy');
+          break;
+        case 'wind':
+          this.ui.tip('wind', '🌂', t('coachSpit'));
+          this.sound.play('wind');
+          break;
+        case 'spit':
+          this.sound.play('spit');
+          break;
+        case 'splat':
+          this.ui.goo(this.arena.player.goo);
+          this.ui.buzz(80);
+          this.world.cam.shake(0.35);
+          this.sound.play('splat');
+          this.ui.tip('goo', '🟢', t('coachGoo'));
+          break;
+        case 'blocked':
+          this.sound.play('boing');
+          this.world.cam.shake(0.1);
+          this.ui.popup(t('blocked'), { x: e.acid.to.x, y: e.acid.y + 1, z: e.acid.to.z }, 'cheer');
+          break;
+        case 'dodged':
+          this.sound.play('splat');
+          break;
+        case 'umbrella':
+          if (e.open) this.sound.play('umbrella');
           break;
       }
     }

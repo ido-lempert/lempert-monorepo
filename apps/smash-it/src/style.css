@@ -834,6 +834,53 @@ body:has(#pause:not(.hidden)) .popups {
   background: rgba(26, 16, 48, 0.35);
 }
 
+.goo {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 38% 30% at 12% 18%, rgba(110, 200, 40, 0.92) 0 55%, transparent 100%),
+    radial-gradient(ellipse 34% 28% at 88% 24%, rgba(120, 210, 50, 0.9) 0 55%, transparent 100%),
+    radial-gradient(ellipse 40% 26% at 30% 86%, rgba(100, 190, 40, 0.92) 0 55%, transparent 100%),
+    radial-gradient(ellipse 36% 30% at 82% 82%, rgba(125, 215, 55, 0.9) 0 55%, transparent 100%),
+    radial-gradient(ellipse at center, transparent 40%, rgba(120, 205, 50, 0.5) 100%);
+}
+
+.umbrella {
+  position: fixed;
+  z-index: 10;
+  inset-inline-end: 16px;
+  bottom: calc(max(12px, var(--safe-bottom)) + 150px);
+  width: 64px;
+  height: 64px;
+  font-size: 2rem;
+  touch-action: manipulation;
+}
+
+.umbrella.open {
+  background: var(--sun);
+}
+
+.umbrella:disabled {
+  opacity: 0.75;
+}
+
+.umbrella i {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ink) calc(var(--k, 1) * 360deg), transparent 0);
+  -webkit-mask: radial-gradient(circle, transparent 29px, #000 30px);
+  mask: radial-gradient(circle, transparent 29px, #000 30px);
+  pointer-events: none;
+}
+
+.umbrella.ready i {
+  display: none;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

@@ -145,6 +145,8 @@ export interface Bug {
   shellIn: number;
   /** Seconds left inside the shell (no damage). */
   shelled: number;
+  /** Seconds left of winding up to spit acid (stands still, glowing green); 0 when not spitting. */
+  spitT: number;
   // Being thrown
   vx: number;
   vy: number;
@@ -159,7 +161,7 @@ export function makeBug(id: number, kind: BugKind, x: number, z: number, heading
     boss, hp: boss?.hp ?? 1, hurt: 0,
     summonIn: boss?.summon?.every ?? Infinity,
     shellIn: boss?.shell?.every ?? Infinity,
-    shelled: 0,
+    shelled: 0, spitT: 0,
     id, kind, def, x, z, heading,
     y: def.hover ? def.hover + 2 : groundAt(x, z),
     speed: def.speed, state: 'enter', t: 0, age: rng() * 10,
@@ -218,6 +220,13 @@ export function moveBug(b: Bug, dt: number, rng: Rng, ctx: MoveContext) {
         b.nextHide = 4 + rng() * 3;
       }
       return;
+  }
+
+  // Winding up to spit: it stops and rears back.
+  if (b.spitT > 0) {
+    b.speed = 0;
+    hover(b);
+    return;
   }
 
   const def = b.def;

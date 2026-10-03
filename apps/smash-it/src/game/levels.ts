@@ -119,6 +119,8 @@ export interface Level {
   /** The slingshot can walk around the world. */
   rotate: boolean;
   boss?: BossDef;
+  /** Bugs spit acid at the player every so many seconds (from the chapter where the slingshot can walk away from it). */
+  spit?: { every: number };
   /** The food that suits this chapter best (a tip suggests it). */
   tip: FoodId;
   /** Points for the 2nd and 3rd star. */
@@ -280,7 +282,7 @@ function makeLevel(w: number, i: number, seed?: number): Level {
   return {
     id: n, world: w + 1, index: i + 1, radius: R, theme: stage.theme, shape: stage.shape, time, ammo, goals,
     mix, max: Math.max(2, max), groups: groups.length ? groups : undefined, rareEvery,
-    guide, pace, obstacles, rotate, boss: bossDef, tip,
+    guide, pace, obstacles, rotate, boss: bossDef, tip, spit: rotate ? { every: Math.max(9, Math.round(19 - w * 1.1 - (boss ? 4 : 0))) } : undefined,
     stars: [round(expected * 0.9, 100), round(expected * 1.4, 100)],
   };
 }

@@ -25,6 +25,9 @@ export type Sfx =
   | 'win'
   | 'lose'
   | 'swish'
+  | 'wind'
+  | 'spit'
+  | 'umbrella'
   | 'buy'
   | 'whoosh'
   | 'tink'
@@ -533,6 +536,19 @@ export class Sound {
         break;
       case 'swish':
         this.hiss(bus, t, 0.35, 500, 0.4, 0.6, 'bandpass', 2500);
+        break;
+      case 'wind':
+        // A bubbling gurgle that rises: something is about to be spat.
+        this.tone(bus, 'sine', 140, 420, t, 0.85, 0.12, 0.05);
+        this.hiss(bus, t, 0.8, 900, 0.18, 3, 'bandpass', 1800);
+        break;
+      case 'spit':
+        this.hiss(bus, t, 0.18, 1800, 0.4, 1.2, 'bandpass', 600);
+        this.tone(bus, 'sine', 600, 220, t, 0.2, 0.14);
+        break;
+      case 'umbrella':
+        this.hiss(bus, t, 0.14, 1400, 0.3, 0.8, 'bandpass', 3200);
+        this.pluck(bus, midi(79), t + 0.06, 0.3, 0.25, 2, 2);
         break;
       case 'buy':
         this.pluck(bus, midi(88), t, 0.3, 0.3, 1.4, 3);

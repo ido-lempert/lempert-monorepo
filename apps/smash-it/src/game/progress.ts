@@ -9,10 +9,10 @@
  */
 import type { BugKind } from './bugs';
 import { FOOD_ORDER, type FoodId, isFoodId, MAX_TIER } from './foods';
-import { LEVELS } from './levels';
+import { LEVELS, ROTATE_FROM } from './levels';
 import { BASE_COMBO_WINDOW } from './session';
 
-export type UpgradeId = 'ammo' | 'guide' | 'combo';
+export type UpgradeId = 'ammo' | 'guide' | 'combo' | 'umbrella';
 
 export interface Upgrade {
   id: UpgradeId;
@@ -28,8 +28,14 @@ export const UPGRADES: Record<UpgradeId, Upgrade> = {
   guide: { id: 'guide', emoji: '🎯', prices: [300, 700, 1400] },
   /** More time to keep a combo going. */
   combo: { id: 'combo', emoji: '⏱️', prices: [400, 900, 1800] },
+  /** A longer-lasting umbrella that comes back sooner (acid only starts in the chapters that rotate). */
+  umbrella: { id: 'umbrella', emoji: '🌂', prices: [300, 700, 1400, 2400] },
 };
-export const UPGRADE_ORDER: UpgradeId[] = ['ammo', 'guide', 'combo'];
+export const UPGRADE_ORDER: UpgradeId[] = ['ammo', 'guide', 'combo', 'umbrella'];
+/** The umbrella shows up in the shop once acid is a thing. */
+export function upgradeVisible(p: Progress, id: UpgradeId): boolean {
+  return id !== 'umbrella' || p.unlocked >= ROTATE_FROM;
+}
 /** Extra shots for each ammo tier. */
 export const AMMO_PER_TIER = 4;
 /** The old "fast reload" upgrade, refunded now that the slingshot reloads at once. */
@@ -78,7 +84,7 @@ export const KEY = 'smashIt.progress';
 
 export function newProgress(): Progress {
   return {
-    v: 1, coins: 0, owned: ['cookie'], upgrades: { ammo: 0, guide: 0, combo: 0 }, tiers: {}, unlocked: 1, stars: {}, best: {},
+    v: 1, coins: 0, owned: ['cookie'], upgrades: { ammo: 0, guide: 0, combo: 0, umbrella: 0 }, tiers: {}, unlocked: 1, stars: {}, best: {},
     food: 'cookie', skin: 'classic', album: {}, daily: { date: '', best: 0 }, fails: { level: 0, n: 0 }, seen: [],
   };
 }
@@ -167,7 +173,7 @@ export function shopOpen(p: Progress): boolean {
 
 /** Something the coins can buy right now (to offer the shop at the end of a chapter). */
 export function canAffordUpgrade(p: Progress): boolean {
-  return p.owned.some((f) => !tierBlocker(p, f) && (tierPrice(p, f) ?? Infinity) <= p.coins) || UPGRADE_ORDER.some((u) => (upgradePrice(p, u) ?? Infinity) <= p.coins);
+  return p.owned.some((f) => !tierBlocker(p, f) && (tierPrice(p, f) ?? Infinity) <= p.coins) || UPGRADE_ORDER.some((u) => upgradeVisible(p, u) && (upgradePrice(p, u) ?? Infinity) <= p.coins);
 }
 
 /** The chapter list is only worth showing once there is more than one chapter. */
@@ -247,6 +253,11 @@ export function guideLength(p: Progress, levelGuide: number): number {
 /** How many shots a chapter gives: its own, plus the ammo upgrade. */
 export function ammoFor(p: Progress, levelAmmo: number): number {
   return levelAmmo + p.upgrades.ammo * AMMO_PER_TIER;
+}
+
+/** How long the umbrella stays open, and how long before it can open again. */
+export function umbrellaFor(p: Progress): { open: number; cooldown: number } {
+  return { open: 3 + p.upgrades.umbrella * 0.75, cooldown: 7 - p.upgrades.umbrella * 0.5 };
 }
 
 export function comboWindow(p: Progress): number {

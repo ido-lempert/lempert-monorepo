@@ -11,6 +11,7 @@ import { FOODS, type FoodId } from '../game/foods';
 import { type Level, LEVELS } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
+import { AcidView } from './acid';
 import { Effects, SMEAR } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setOutlines, setWindTime } from './look';
 import { free, share } from './optimize';
@@ -117,6 +118,7 @@ export class World {
   private readonly bugLayer = new THREE.Group();
   private readonly foodLayer = new THREE.Group();
   private readonly obstacleLayer = new THREE.Group();
+  private readonly acid = new AcidView();
   private sling = slingshot();
   private pouchFood: THREE.Group | null = null;
   private pouchFoodId: FoodId | null = null;
@@ -182,7 +184,7 @@ export class World {
     this.scene.add(back, fill);
     this.post = new Post(this.renderer, this.scene, this.camera, this.quality === 'high');
 
-    this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group);
+    this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group, this.acid.group);
     this.scene.add(this.sling.root);
     this.mopModel.visible = false;
     this.scene.add(this.mopModel);
@@ -409,6 +411,7 @@ export class World {
   /** Draws `arena` from now on, with its own `effects` (the replay passes a fresh one). */
   bind(arena: Arena | null, effects: Effects = this.mess) {
     this.arena = arena;
+    this.acid.clear();
     for (const v of this.bugViews.values()) this.dropBug(v);
     this.bugViews.clear();
     for (const v of this.bodyViews.values()) this.dropBody(v);
@@ -621,6 +624,15 @@ export class World {
   show(events: GameEvent[]) {
     for (const e of events) {
       switch (e.type) {
+        case 'splat':
+        case 'dodged':
+        case 'blocked': {
+          // A puddle where it came down (the umbrella only gets a few drops).
+          const at = { x: e.acid.to.x, y: groundAt(e.acid.to.x, e.acid.to.z), z: e.acid.to.z };
+          if (e.type !== 'blocked') this.effects.splat(at, e.type === 'splat' ? 2.6 : 2, '#7bd62a', { x: 0, z: 1 });
+          this.effects.dust(at, '#9be83a', e.type === 'blocked' ? 0.5 : 1, e.type === 'blocked' ? 6 : 12);
+          break;
+        }
         case 'impact': {
           const n = Math.hypot(e.body.vx, e.body.vz) || 1;
           const effect = e.body.piece === 'slice' ? 'slices' : e.body.food.effect;
@@ -722,6 +734,7 @@ export class World {
     this.time += dt;
     this.syncBugs(gameDt);
     this.syncBodies(gameDt);
+    this.acid.update(this.arena, gameDt, this.time, this.effects);
     this.effects.update(gameDt);
     this.updateSling(dt);
     this.cam.update(dt);
