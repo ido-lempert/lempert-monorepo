@@ -1,4 +1,4 @@
-package com.lempert.smashit;
+package site.lempert.smash;
 
 import com.getcapacitor.BridgeActivity;
 
