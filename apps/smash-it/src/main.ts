@@ -29,6 +29,7 @@ import {
 } from './ui';
 import { loadAssets } from './world/assets';
 import { World } from './world/world';
+import { LOW_GFX_KEY } from './world/look';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -904,6 +905,39 @@ function tick(now: number) {
   }
 }
 
+// --- A lost 3D view ------------------------------------------------------------------------------------
+
+/** Set before reloading for a lost view: the time, and the chapter to go straight back into. */
+const RECOVER_KEY = 'smashIt.recover';
+type Recover = { at: number; level?: number; daily?: boolean };
+
+function readRecover(): Recover | null {
+  try {
+    return JSON.parse(sessionStorage.getItem(RECOVER_KEY) ?? 'null') as Recover | null;
+  } catch {
+    return null;
+  }
+}
+
+// Reload into low quality and pick up the same chapter; lost again within a minute means reloading will not help.
+world.onLost = () => {
+  if (Date.now() - (readRecover()?.at ?? 0) < 60_000) {
+    if (play && mode === 'play' && !play.over) play.paused = true;
+    $('gfx-lost').classList.remove('hidden');
+    $('gfx-retry').focus();
+    return;
+  }
+  try {
+    localStorage.setItem(LOW_GFX_KEY, '1');
+    const playing = mode === 'play';
+    sessionStorage.setItem(RECOVER_KEY, JSON.stringify({ at: Date.now(), level: playing && !daily ? level.id : undefined, daily: playing && !!daily }));
+  } catch {
+    // storage blocked: reload anyway
+  }
+  location.reload();
+};
+$('gfx-retry').addEventListener('click', () => location.reload());
+
 // --- PWA -----------------------------------------------------------------------------------------------
 
 const updateNotice = new Notice($('update'));
@@ -928,6 +962,12 @@ $('update-now').addEventListener('click', () => void updateSW(true));
 await Promise.race([loadAssets(), new Promise((r) => setTimeout(r, 6000))]);
 world.assetsLoaded();
 toMenu();
+const recover = readRecover();
+if (recover?.daily) startDaily();
+else if (recover?.level) {
+  openIntro(recover.level);
+  startLevel();
+}
 world.cam.jump();
 requestAnimationFrame((now) => {
   last = now;

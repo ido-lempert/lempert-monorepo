@@ -282,6 +282,17 @@
       <p data-i18n="turnBackText"></p>
     </section>
 
+    <!-- The phone could not draw the world twice in a row -->
+    <section class="screen overlay hidden" id="gfx-lost" role="alert" aria-labelledby="gfx-lost-title">
+      <div class="card">
+        <h2 id="gfx-lost-title" data-i18n="gfxLostTitle"></h2>
+        <p data-i18n="gfxLostText"></p>
+        <div class="actions column">
+          <button class="primary big" id="gfx-retry" data-i18n="gfxRetry"></button>
+        </div>
+      </div>
+    </section>
+
     <!-- Pause -->
     <section class="screen overlay hidden" id="pause" aria-labelledby="pause-title">
       <div class="card">
