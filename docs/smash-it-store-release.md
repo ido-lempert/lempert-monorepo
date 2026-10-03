@@ -16,7 +16,7 @@ App id: `site.lempert.smash`. Texts for every language: `apps/smash-it/store/lis
 3. Build > Generate Signed App Bundle > Android App Bundle > Next.
 4. Create new keystore, save the `.jks` and both passwords in a safe place. Next > release > Create.
 5. Play Console > Create app > name `Smash It!`, game, free.
-6. Policy: Privacy policy = `/privacy.html`; Ads = no; Target audience = children; Data safety = nickname and random id (optional, deletable), no ads, no analytics; Content rating questionnaire.
+6. Policy: Privacy policy = `/privacy.html`; Ads = no; Target audience = children; Data safety = nickname and random id (optional, deletable), no ads, no analytics in the app (Umami counts visits in the web build only, `index.html` skips it when `Capacitor.isNativePlatform()`); Content rating questionnaire.
 7. Store listing: per language paste `short` and `full` from `listing.json`; icon `apps/smash-it/public/icon-512.png`; feature graphic 1024x500; 2 or more phone screenshots.
 8. Testing > Internal testing > Create release > upload the `.aab` > Save > Roll out.
 9. Personal accounts: closed test with 12 testers for 14 days, then Production > Apply.
