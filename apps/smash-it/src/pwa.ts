@@ -45,9 +45,18 @@ export async function install() {
   notify();
 }
 
-/** Full screen is offered when running in a browser tab (an installed app already has the whole window). */
+/** True inside an iframe on another site (itch.io, CrazyGames), which provides its own full-screen button. */
+export function isEmbedded(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+/** Full screen is offered when running in a browser tab (an installed app already has the whole window; a host page has its own button). */
 export function canFullscreen(): boolean {
-  return document.fullscreenEnabled && !isStandalone();
+  return document.fullscreenEnabled && !isStandalone() && !isEmbedded();
 }
 
 export function isFullscreen(): boolean {
