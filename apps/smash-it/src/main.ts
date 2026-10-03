@@ -7,16 +7,17 @@ import './style.css';
 import { registerSW } from 'virtual:pwa-register';
 import { Sound } from './audio';
 import { Coach } from './coach';
+import * as debug from './debug';
 import { MopScene, Replay } from './finale';
 import { Arena } from './game/arena';
-import { FOODS, type FoodId } from './game/foods';
+import { FOOD_ORDER, FOODS, type FoodId } from './game/foods';
 import { dailyLevel, type Level, levelById, LEVELS } from './game/levels';
 import { aimAt, type Vec3 } from './game/physics';
 import {
   buyTier, buyUpgrade, canAffordUpgrade, chaptersOpen, chooseSkin, dailyOpen, finishDaily, finishLevel, firstTime, KEY, loadProgress,
   newProgress, saveProgress, shopOpen, SKINS, totalStars, type UpgradeId,
 } from './game/progress';
-import { type Boards, fetchBoards, leave, loadPlayer, randomNick, report, savePlayer } from './leaderboard';
+import { type Boards, fetchBoards, leave, loadPlayer, randomNick, report as sendReport, savePlayer } from './leaderboard';
 import { bestShots } from './game/replay';
 import { applyDocument, type StringKey, t } from './i18n';
 import { Notice } from './notice';
@@ -44,7 +45,7 @@ const save = () => saveProgress(progress);
 // --- Settings ------------------------------------------------------------------------------------------
 
 const PREFS_KEY = 'smashIt.prefs';
-const prefs = { calm: matchMedia('(prefers-reduced-motion: reduce)').matches, battery: false, haptics: true };
+const prefs = { calm: matchMedia('(prefers-reduced-motion: reduce)').matches, battery: false, haptics: true, devMenu: false, debug: false, cheat: false };
 try {
   Object.assign(prefs, JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}'));
 } catch {
@@ -58,7 +59,26 @@ const savePrefs = () => {
   }
 };
 
+/** Results from a save that was opened with the developer unlock never go to the boards. */
+const report: typeof sendReport = (...args) => (prefs.cheat ? Promise.resolve() : sendReport(...args));
+
 const world = new World($('stage'));
+debug.attach({
+  stats: () => world.debugStats(),
+  context: () => ({
+    mode,
+    chapter: daily ? `daily ${daily}` : level.id,
+    theme: level.theme,
+    effects: level.effects?.join(',') ?? '',
+    arena: world.debugArena(),
+    unlocked: progress.unlocked,
+    coins: progress.coins,
+    prefs: { ...prefs },
+    gpu: world.gpuName,
+    standalone: matchMedia('(display-mode: standalone)').matches,
+    recovered: readRecover(),
+  }),
+});
 world.cam.calm = prefs.calm;
 world.setBatterySaver(prefs.battery);
 world.setSkin(progress.skin);
@@ -243,6 +263,7 @@ function openIntro(id: number) {
 
 function startLevel(withMission = false, assist = false) {
   mode = 'play';
+  debug.log('info', `start ${daily ? `daily ${daily}` : `chapter ${level.id}`} (${level.theme}, ${level.effects?.join('+') ?? 'no weather'}${assist ? ', assist' : ''})`);
   const shot = () => {
     $('aim-hint').classList.add('hidden');
     if (firstTime(progress, 'aim')) save();
@@ -714,6 +735,9 @@ function refreshMenu() {
   $('m-fullscreen').classList.toggle('hidden', !canFullscreen());
   $('m-fullscreen-label').textContent = isFullscreen() ? t('exitFullscreen') : t('fullscreen');
   $('m-install').classList.toggle('hidden', !installable());
+  $('dev').classList.toggle('hidden', !prefs.devMenu);
+  $('dev-toggle').setAttribute('aria-pressed', String(prefs.debug));
+  $('dev-tools').classList.toggle('hidden', !prefs.debug);
 }
 onPwaChange(refreshMenu);
 $('m-music').addEventListener('click', () => {
@@ -743,6 +767,73 @@ $('m-battery').addEventListener('click', () => {
   refreshMenu();
 });
 $('m-fullscreen').addEventListener('click', () => void toggleFullscreen());
+
+// --- Developer tools -----------------------------------------------------------------------------------
+
+/** Seven quick taps on the version number open the developer section (seven more close it). */
+let versionTaps = 0;
+let versionTimer = 0;
+$('version-tap').addEventListener('click', () => {
+  clearTimeout(versionTimer);
+  versionTimer = window.setTimeout(() => (versionTaps = 0), 2000);
+  versionTaps++;
+  if (versionTaps < 7) {
+    if (versionTaps >= 4) say(t('devTaps', { n: 7 - versionTaps }));
+    return;
+  }
+  versionTaps = 0;
+  prefs.devMenu = !prefs.devMenu;
+  if (!prefs.devMenu) prefs.debug = false;
+  savePrefs();
+  debug.log('ui', `developer section ${prefs.devMenu ? 'opened' : 'closed'}`);
+  say(t(prefs.devMenu ? 'devOpened' : 'devClosed'), '🛠');
+  applyDebug();
+  refreshMenu();
+});
+
+function applyDebug() {
+  debug.setOverlay(prefs.debug);
+}
+applyDebug();
+
+const chapterPick = $('dev-chapter') as HTMLSelectElement;
+for (const l of LEVELS) chapterPick.add(new Option(`${l.id}${l.boss ? ' 👑' : ''}`, String(l.id)));
+$('dev-share').classList.toggle('hidden', !debug.canShare());
+$('dev-toggle').addEventListener('click', () => {
+  prefs.debug = !prefs.debug;
+  savePrefs();
+  debug.log('ui', `debug mode ${prefs.debug ? 'on' : 'off'}`);
+  applyDebug();
+  refreshMenu();
+});
+$('dev-copy').addEventListener('click', () => void debug.copy().then((ok) => say(ok ? t('devCopied', { n: debug.lineCount() }) : t('devCopyFail'), ok ? '📋' : '⚠️')));
+$('dev-download').addEventListener('click', () => debug.download());
+$('dev-share').addEventListener('click', () => void debug.share());
+$('dev-clear').addEventListener('click', () => debug.clearLog());
+$('dev-lose').addEventListener('click', () => {
+  closeMenu();
+  say(t('devLoseDone'), '💥');
+  world.loseContext();
+});
+$('dev-unlock').addEventListener('click', () => {
+  prefs.cheat = true;
+  savePrefs();
+  progress.unlocked = LEVELS.length;
+  progress.owned = [...FOOD_ORDER];
+  progress.coins = Math.max(progress.coins, 100_000);
+  for (const l of LEVELS) progress.stars[l.id] = Math.max(progress.stars[l.id] ?? 0, 3);
+  if (!progress.seen.includes('shop')) progress.seen.push('shop');
+  save();
+  debug.log('ui', 'unlocked everything (results no longer go to the boards)');
+  if (mode === 'menu') renderHome();
+  say(t('devUnlocked'), '🔓');
+});
+$('dev-go').addEventListener('click', () => {
+  prefs.cheat = true;
+  savePrefs();
+  closeMenu();
+  openIntro(Number(chapterPick.value));
+});
 $('m-install').addEventListener('click', () => {
   if (isIos()) say(t('installIos'));
   else void install();
@@ -750,6 +841,8 @@ $('m-install').addEventListener('click', () => {
 $('m-reset').addEventListener('click', () => {
   if (!confirm(t('resetConfirm'))) return;
   progress = newProgress();
+  prefs.cheat = false;
+  savePrefs();
   try {
     localStorage.removeItem(KEY);
   } catch {
@@ -927,6 +1020,7 @@ let last = performance.now();
 let time = 0;
 function tick(now: number) {
   requestAnimationFrame(tick);
+  debug.frame(now);
   const minFrame = prefs.battery ? 1 / 31 : 1 / 61;
   if ((now - last) / 1000 < minFrame) return;
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -980,6 +1074,7 @@ function readRecover(): Recover | null {
 
 // Reload into low quality and pick up the same chapter; lost again within a minute means reloading will not help.
 world.onLost = () => {
+  debug.log('gl', `onLost: mode ${mode} chapter ${level.id}, last recovery ${readRecover() ? `${((Date.now() - readRecover()!.at) / 1000).toFixed(0)}s ago` : 'never'}`);
   if (Date.now() - (readRecover()?.at ?? 0) < 60_000) {
     if (play && mode === 'play' && !play.over) play.paused = true;
     $('gfx-lost').classList.remove('hidden');

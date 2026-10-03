@@ -18,6 +18,7 @@ import { Effects, SMEAR } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setOutlines, setWindTime } from './look';
 import { free, share } from './optimize';
 import { Post } from './post';
+import { type GfxStats, log } from '../debug';
 import { bugModel, setBugDetail, type BugModel } from './bugs3d';
 import { disc, foodModel, kitchen, kitchenProps, mop, obstacleModel, slingshot, stretchBand } from './models';
 import { THEMES } from './themes';
@@ -164,8 +165,11 @@ export class World {
     this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 0.66;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // The post-processing draws in several passes: count the whole frame, reset by hand once per frame.
+    this.renderer.info.autoReset = false;
     stage.appendChild(this.renderer.domElement);
     this.watchContext(this.renderer.domElement);
+    this.logCapabilities();
     this.cam = new CameraRig(this.camera);
 
     this.makeEnvironment();
@@ -261,8 +265,12 @@ export class World {
    * the page hands it a view that is lost from the start, and no event ever comes.
    */
   private watchContext(canvas: HTMLCanvasElement) {
-    canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      log('gl', `webglcontextlost event ${this.describeState()}`);
+    });
     canvas.addEventListener('webglcontextrestored', () => {
+      log('gl', 'webglcontextrestored event: rebuilding in low quality');
       this.quality = 'low';
       this.makeEnvironment();
       this.applyQuality();
@@ -271,8 +279,105 @@ export class World {
     let lostFor = 0;
     setInterval(() => {
       lostFor = gl.isContextLost() ? lostFor + 1 : 0;
-      if (lostFor === 3) this.onLost();
+      if (lostFor === 1) log('gl', `context is lost (poll) ${this.describeState()}`);
+      if (lostFor === 3) {
+        log('gl', 'context still lost after 3s: asking the game to recover');
+        this.onLost();
+      }
     }, 1000);
+  }
+
+  private describeState() {
+    return `quality ${this.quality} res ${this.resScale.toFixed(2)} calls ${this.renderer.info.render.calls} geo ${this.renderer.info.memory.geometries} tex ${this.renderer.info.memory.textures} prog ${this.renderer.info.programs?.length ?? '?'}`;
+  }
+
+  private logCapabilities() {
+    const gl = this.renderer.getContext();
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const gpu = dbg ? `${gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)} / ${gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)}` : String(gl.getParameter(gl.RENDERER));
+    this.gpuName = gpu;
+    log(
+      'gl',
+      `${gl instanceof WebGL2RenderingContext ? 'WebGL2' : 'WebGL1'} ${gpu} | max texture ${gl.getParameter(gl.MAX_TEXTURE_SIZE)} | max varyings ${gl.getParameter(gl.MAX_VARYING_VECTORS)} | max samples ${gl instanceof WebGL2RenderingContext ? gl.getParameter(gl.MAX_SAMPLES) : 0} | start quality ${this.quality} | lost at start: ${gl.isContextLost()}`,
+    );
+  }
+
+  gpuName = '';
+  private cpuMs = 0;
+
+  /** For the crash test in the developer menu: the browser really drops the view, as a phone does when it is overloaded. */
+  loseContext() {
+    const ext = this.renderer.getContext().getExtension('WEBGL_lose_context');
+    log('gl', 'test: losing the context on purpose');
+    ext?.loseContext();
+    return Boolean(ext);
+  }
+
+  /** Numbers for the developer overlay and report. Walks the whole scene, so call it a few times a second at most. */
+  debugStats(): GfxStats {
+    const info = this.renderer.info;
+    const geos = new Set<THREE.BufferGeometry>();
+    const texs = new Set<THREE.Texture>();
+    let meshes = 0;
+    let total = 0;
+    let instances = 0;
+    let casters = 0;
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh && !(o as THREE.Points).isPoints && !(o as THREE.Line).isLine && !(o as THREE.Sprite).isSprite) return;
+      total++;
+      if (o.visible) meshes++;
+      if (m.castShadow) casters++;
+      if ((m as THREE.InstancedMesh).isInstancedMesh) instances += (m as THREE.InstancedMesh).count;
+      if (m.geometry) geos.add(m.geometry);
+      const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+      for (const x of mats) for (const v of Object.values(x)) if (v && (v as THREE.Texture).isTexture) texs.add(v as THREE.Texture);
+    });
+    if (this.scene.environment) texs.add(this.scene.environment);
+    let geoBytes = 0;
+    for (const g of geos) {
+      for (const a of Object.values(g.attributes)) geoBytes += a.array.byteLength;
+      if (g.index) geoBytes += g.index.array.byteLength;
+    }
+    let texBytes = 0;
+    for (const t of texs) {
+      const img = t.image as { width?: number; height?: number } | undefined;
+      if (img?.width && img.height) texBytes += img.width * img.height * 4 * (t.generateMipmaps ? 1.33 : 1);
+    }
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const shadow = this.sun.shadow.map ? this.sun.shadow.mapSize.x * this.sun.shadow.mapSize.y * 4 * (this.quality === 'high' ? 3 : 1) : 0;
+    const MB = 1 / 1048576;
+    return {
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      lines: info.render.lines,
+      points: info.render.points,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      programs: info.programs?.length ?? 0,
+      meshes,
+      meshesTotal: total,
+      instances,
+      casters,
+      sceneGeometries: geos.size,
+      sceneTextures: texs.size,
+      geometryMB: geoBytes * MB,
+      textureMB: texBytes * MB,
+      canvasMB: size.x * size.y * 4 * 3 * MB,
+      shadowMB: shadow * MB,
+      canvas: `${size.x}x${size.y}`,
+      pixelRatio: this.renderer.getPixelRatio(),
+      resScale: this.resScale,
+      quality: this.quality,
+      battery: this.battery,
+      lost: this.renderer.getContext().isContextLost(),
+      cpuMs: this.cpuMs,
+    };
+  }
+
+  /** What the arena holds right now, for the report. */
+  debugArena() {
+    return { bugs: this.arena?.bugs.length ?? 0, bugViews: this.bugViews.size, bodyViews: this.bodyViews.size };
   }
 
   setBatterySaver(on: boolean) {
@@ -284,6 +389,7 @@ export class World {
 
   private applyQuality() {
     const high = this.quality === 'high';
+    log('gl', `quality -> ${this.quality} (battery ${this.battery}) ${this.describeState()}`);
     // Soft blurred shadows (VSM, several passes) only on high; low uses the cheap filter and a smaller map.
     const type = high ? THREE.VSMShadowMap : THREE.PCFShadowMap;
     if (this.renderer.shadowMap.type !== type) {
@@ -314,6 +420,7 @@ export class World {
   /** The canvas resolution: capped by tier, then scaled down while the device cannot keep up. */
   private applyResolution() {
     const cap = this.quality === 'high' ? 1.5 : 1.25;
+    log('gl', `resolution scale ${this.resScale.toFixed(2)} pixel ratio ${(Math.min(devicePixelRatio, cap) * this.resScale).toFixed(2)}`);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, cap) * this.resScale);
   }
 
@@ -775,6 +882,8 @@ export class World {
    * debris) so slow motion slows the world but not the camera.
    */
   frame(dt: number, gameDt: number) {
+    const began = performance.now();
+    this.renderer.info.reset();
     this.time += dt;
     this.syncBugs(gameDt);
     this.syncBodies(gameDt);
@@ -788,6 +897,7 @@ export class World {
     setWindTime(this.time);
     if (this.quality === 'high') this.post.render();
     else this.renderer.render(this.scene, this.camera);
+    this.cpuMs += (performance.now() - began - this.cpuMs) * 0.1;
     this.watchSpeed();
   }
 
