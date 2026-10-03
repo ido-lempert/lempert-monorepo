@@ -402,7 +402,16 @@
       <button class="primary" id="update-now" data-i18n="updateNow"></button>
     </div>
 
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="f8c269e0-1f31-4e48-b573-d9869315f280"></script>
+    <script>
+      // Umami visit counting: web only, never inside the store apps (kids' store policies, privacy text).
+      if (!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) {
+        var umami = document.createElement('script');
+        umami.defer = true;
+        umami.src = 'https://cloud.umami.is/script.js';
+        umami.setAttribute('data-website-id', 'f8c269e0-1f31-4e48-b573-d9869315f280');
+        document.head.appendChild(umami);
+      }
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
