@@ -295,6 +295,14 @@ export const enUS: Dict = {
   coachCost: 'Big foods use up more shots, and upgrades make them cheaper. The number on each button is how many throws you have left of it.',
   prizeFriend: 'Helper bunny',
   prizeFriendText: 'A new bunny that helps you! Place it on the grass and it throws food by itself for a few seconds.',
+  dlTitle: 'Smash It! for Android',
+  dlLead: 'Download the installer straight from GitHub: no store, no cost.',
+  dlButton: 'Download the app (APK)',
+  dlStep1: 'Tap the button and open the file that downloads.',
+  dlStep2: 'If your phone asks, allow installs from this browser (just once).',
+  dlStep3: 'Install, open it and start flinging.',
+  dlWeb: 'Not on Android? Play right in the browser and add it to your home screen.',
+  dlMissing: 'The installer isn’t available right now. Try again in a bit.',
 
   // Foods
   food_cookie: 'Cookie',

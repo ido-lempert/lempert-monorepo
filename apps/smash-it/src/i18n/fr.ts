@@ -296,6 +296,14 @@ export const fr: Dict = {
   coachCost: 'Les gros aliments consomment plus de tirs, et les améliorations les rendent moins chers. Le nombre sur chaque bouton, c’est ce qu’il te reste de cet aliment.',
   prizeFriend: 'Lapin aidant',
   prizeFriendText: 'Un nouveau lapin qui t’aide ! Pose-le sur l’herbe et il lance de la nourriture tout seul, quelques secondes.',
+  dlTitle: 'Smash It! pour Android',
+  dlLead: 'Télécharge l’installeur directement depuis GitHub : sans boutique, sans payer.',
+  dlButton: 'Télécharger l’appli (APK)',
+  dlStep1: 'Touche le bouton et ouvre le fichier téléchargé.',
+  dlStep2: 'Si le téléphone le demande, autorise les installations depuis ce navigateur (une seule fois).',
+  dlStep3: 'Installe, ouvre et c’est parti pour lancer !',
+  dlWeb: 'Pas sous Android ? Joue directement dans le navigateur et ajoute le jeu à l’écran d’accueil.',
+  dlMissing: 'L’installeur n’est pas disponible pour le moment. Réessaie un peu plus tard.',
 
   // Foods
   food_cookie: 'Cookie',

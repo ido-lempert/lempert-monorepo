@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+// The release keystore lives outside the repo (public): ~/.smash-it-release/keystore.properties
+// (storeFile, storePassword, keyAlias, keyPassword), or the SMASH_KEYSTORE_PROPERTIES env var with another path.
+def keystoreProps = new Properties()
+def keystoreFile = new File(System.getenv('SMASH_KEYSTORE_PROPERTIES') ?: "${System.getProperty('user.home')}/.smash-it-release/keystore.properties")
+if (keystoreFile.exists()) {
+    keystoreFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace = "site.lempert.smash"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +24,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystoreProps['storeFile']) {
+            release {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystoreProps['storeFile']) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
