@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FOODS, MAX_TIER, withTier } from './foods';
-import { dailyLevel, DAILY_ID, LEVELS } from './levels';
+import { FOOD_ORDER, FOODS, MAX_TIER, withTier } from './foods';
+import { ALLY_FROM, dailyLevel, DAILY_ID, LEVELS } from './levels';
 import {
   ammoFor, buyTier, buyUpgrade, canAffordUpgrade, chooseSkin, finishDaily, finishLevel, firstTime, FOOD_PRIZES, guideLength,
   newProgress, nextPrize, parseProgress, shopOpen, tierBlocker, tierPrice, totalStars, friendFor, umbrellaFor, upgradePrice, upgradeVisible,
@@ -119,7 +119,22 @@ describe('progress', () => {
     p.coins = 1e9;
     buyUpgrade(p, 'ammo');
     buyUpgrade(p, 'ammo');
-    expect(ammoFor(p, 30)).toBe(38);
+    expect(ammoFor(p, 30)).toBe(37);
+    // Every tier adds more than the one before, so the last ones are the big ones.
+    const steps = [0, 1, 2, 3, 4, 5].map((n) => ammoFor({ ...p, upgrades: { ...p.upgrades, ammo: n } }, 30));
+    for (let i = 2; i < steps.length; i++) expect(steps[i] - steps[i - 1]).toBeGreaterThan(steps[i - 1] - steps[i - 2]);
+  });
+
+  it('foods cost different amounts of ammo, and heavy ones get cheaper with tiers', () => {
+    const costs = FOOD_ORDER.map((id) => FOODS[id].cost);
+    expect(new Set(costs).size).toBeGreaterThanOrEqual(4);
+    expect(FOODS.popcorn.cost).toBeLessThan(FOODS.cookie.cost);
+    expect(FOODS.pie.cost).toBeGreaterThan(FOODS.cookie.cost);
+    expect(withTier(FOODS.pie, 3).cost).toBe(FOODS.pie.cost - 1);
+    expect(withTier(FOODS.pie, 5).cost).toBe(FOODS.pie.cost - 2);
+    expect(withTier(FOODS.cookie, 5).cost).toBe(FOODS.cookie.cost);
+    expect(withTier(FOODS.popcorn, 5).cost).toBe(FOODS.popcorn.cost);
+    for (const id of FOOD_ORDER) expect(withTier(FOODS[id], 5).cost).toBeGreaterThanOrEqual(FOODS.popcorn.cost);
   });
 
   it('food tiers widen hits, add bounces and rings', () => {
@@ -192,10 +207,12 @@ describe('umbrella', () => {
 });
 
 describe('friend', () => {
-  it('appears from chapter 8 and each tier stays longer, throws faster and returns sooner', () => {
+  it('is a late prize: the king of chapter 30 gives it and it helps from chapter 31, and each tier stays longer, throws faster and returns sooner', () => {
     const p = newProgress();
     expect(upgradeVisible(p, 'friend')).toBe(false);
-    p.unlocked = 8;
+    p.unlocked = ALLY_FROM - 1;
+    expect(upgradeVisible(p, 'friend')).toBe(false);
+    p.unlocked = ALLY_FROM;
     expect(upgradeVisible(p, 'friend')).toBe(true);
     const base = friendFor(p);
     p.coins = 99999;
@@ -204,5 +221,18 @@ describe('friend', () => {
     expect(better.life).toBeGreaterThan(base.life);
     expect(better.every).toBeLessThan(base.every);
     expect(better.rest).toBeLessThan(base.rest);
+  });
+
+  it('is won once, by beating the chapter before the first one it helps in', () => {
+    expect(ALLY_FROM).toBeGreaterThanOrEqual(21);
+    expect(LEVELS[ALLY_FROM - 2].boss).toBeDefined();
+    expect(LEVELS[ALLY_FROM - 1].ally).toBe(true);
+    expect(LEVELS[ALLY_FROM - 2].ally).toBe(false);
+    const p = newProgress();
+    p.unlocked = ALLY_FROM - 1;
+    const win = (id: number) => finishLevel(p, { levelId: id, success: true, score: 1000, stars: 1, coins: 0 });
+    expect(win(ALLY_FROM - 3).friend).toBe(false);
+    expect(win(ALLY_FROM - 1).friend).toBe(true);
+    expect(win(ALLY_FROM - 1).friend).toBe(false);
   });
 });

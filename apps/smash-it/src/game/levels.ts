@@ -143,7 +143,8 @@ export const LEVELS_PER_WORLD = 10;
 /** From this chapter on the slingshot can walk around the world, and fences guard bugs. */
 export const ROTATE_FROM = 21;
 /** From this chapter on a friend can be called in to throw alongside the player. */
-export const ALLY_FROM = 8;
+/** The friend bunny is a late prize: the king of chapter 30 gives it, and it helps from chapter 31. */
+export const ALLY_FROM = 31;
 
 export interface Level {
   id: number;
@@ -219,6 +220,28 @@ function scatter(rng: Rng, radius: number, shape: WorldShape, kinds: Obstacle['k
   return out;
 }
 
+/**
+ * How long a chapter gives, from the work in it: a base for getting started, plus the hits needed times the
+ * seconds a hit takes (bugs get quicker and harder to hit in later worlds, so a hit gets less time), or the
+ * king's hearts times the seconds a heart takes (shells and charges make hearts slower). Goals that wait for a
+ * spawn (golden bug, cluster, line of ants) can't be done before the spawn comes, so they set a floor.
+ */
+export function timeFor(o: { w: number; goals: Goal[]; hits: number; boss?: BossDef; rareEvery?: number; groups: Group[] }): number {
+  const { w, goals, boss, rareEvery, groups } = o;
+  let t: number;
+  if (boss) {
+    const slow = 1 + (boss.shell ? 0.2 : 0) + (boss.charge ? 0.1 : 0) + (boss.regen ? 0.2 : 0) + (boss.summon ? 0.1 : 0);
+    t = 60 + boss.hp * (9 - w * 0.3) * slow;
+  } else {
+    const hitsNeeded = Math.max(0, ...goals.map((g) => (g.kind === 'hits' ? g.n : 0)), o.hits * 0.7);
+    t = 40 + hitsNeeded * (11 - w * 0.6);
+    for (const g of goals) if (g.kind === 'bug' && g.bug === 'golden' && rareEvery) t = Math.max(t, 20 + rareEvery * (g.n + 1) * 1.5);
+    const cluster = groups.find((g) => g.formation === 'cluster' || g.formation === 'line');
+    if (cluster?.every) t = Math.max(t, 30 + cluster.every * 4);
+  }
+  return Math.max(60, Math.min(boss ? 200 : 180, Math.round(t / 5) * 5));
+}
+
 function makeLevel(w: number, i: number, seed?: number): Level {
   const world = WORLDS[w];
   const n = w * LEVELS_PER_WORLD + i + 1;
@@ -237,7 +260,6 @@ function makeLevel(w: number, i: number, seed?: number): Level {
   // Throwing again while food is still flying makes play quicker, so bugs are a little quicker too.
   const pace = (1 + w * 0.05 + i * 0.01) * (n <= 2 ? 1 : 1.06);
   const guide = n <= 3 ? 1 : Math.max(0, 1 - (n - 3) * 0.035);
-  const time = boss ? 120 + w * 6 : n <= 2 ? 120 : 150 - (w >= 6 ? 15 : 0);
 
   // Obstacles: more and more varied through the game.
   const taken: { x: number; z: number; r: number }[] = [];
@@ -340,6 +362,7 @@ function makeLevel(w: number, i: number, seed?: number): Level {
   // Enough shots to win with a bit more than every other shot missing; a good player has some to spare.
   const need = boss ? bossDef!.hp * 1.6 + 8 + (bossDef!.regen ? 4 : 0) : Math.max(hits * 1.15, ...goals.map((g) => (g.kind === 'bug' || g.kind === 'multi' ? g.n * 2 : 0)));
   const ammo = Math.round(need * 1.8 + 6);
+  const time = timeFor({ w, goals, hits, boss: bossDef, rareEvery, groups });
   const expected = boss ? (bossDef!.hp * 150 * 2 + 1000) : avg * hits * 2.2;
   return {
     id: n, world: w + 1, index: i + 1, radius: R, theme: stage.theme, shape: stage.shape, time, ammo, goals,
@@ -369,7 +392,7 @@ export function dailyLevel(date: string, unlocked: number): Level {
   const worlds = Math.max(1, Math.min(WORLDS.length, Math.ceil(unlocked / LEVELS_PER_WORLD)));
   const w = Math.floor(rng() * worlds);
   const i = [0, 1, 2, 3, 5, 6, 7, 8][Math.floor(rng() * 8)];
-  return { ...makeLevel(w, i, h >>> 0), id: DAILY_ID, time: 120 };
+  return { ...makeLevel(w, i, h >>> 0), id: DAILY_ID };
 }
 
 export function worldOf(level: Level): WorldDef {

@@ -284,6 +284,7 @@ function startLevel(withMission = false, assist = false) {
   sound.setTheme(level.boss ? 'boss' : 'play');
   $('rotate').classList.toggle('hidden', !level.rotate);
   tip('ammo', '🧺', t('coachAmmo'));
+  if (progress.owned.length > 1) tip('costTip', '🍉', t('coachCost'));
   if (level.rotate) tip('rotate', '🔄', t('coachRotate'));
   if (level.ally) tip('friendTip', '🐰', t('coachFriend'));
   if (level.spit) tip('umbrellaTip', '🌂', t('coachUmbrella'));
@@ -329,7 +330,7 @@ function endLevel() {
   } else {
     const won = finishLevel(progress, { levelId: level.id, success: s.success, score: s.score, stars, coins, hits: s.byKind });
     unlocked = won.opened ? progress.unlocked : null;
-    prizes = [...won.foods.map((id) => ({ kind: 'food' as const, id })), ...won.skins.map((id) => ({ kind: 'skin' as const, id }))];
+    prizes = [...won.foods.map((id) => ({ kind: 'food' as const, id })), ...won.skins.map((id) => ({ kind: 'skin' as const, id })), ...(won.friend ? [{ kind: 'friend' as const }] : [])];
   }
   // Leaderboards (only for players who joined): stars and chapter, and today's challenge score.
   if (daily) void report(player, totalStars(progress), progress.unlocked, { date: daily, score: progress.daily.best });
@@ -354,10 +355,13 @@ function endLevel() {
   sound.setTheme('quiet');
   if (!shots.length) return showResult();
   mode = 'replay';
+  replayAt = performance.now();
   replay = new Replay(world, sound, level, shots);
   show('replay-bar', 'vignette');
   $('vignette').classList.remove('dark');
 }
+
+let replayAt = 0;
 
 function showResult() {
   replay?.stop();
@@ -399,6 +403,13 @@ function showPrize(prize: Prize) {
     $('reveal-bars').classList.remove('hidden');
     $('reveal-ok').textContent = t('prizeTake');
     $('reveal-later').classList.add('hidden');
+  } else if (prize.kind === 'friend') {
+    $('reveal-kicker').textContent = `🎁 ${t('prizeTitle')}`;
+    $('reveal-title').textContent = `🐰 ${t('prizeFriend')}`;
+    $('reveal-text').textContent = t('prizeFriendText');
+    $('reveal-bars').classList.add('hidden');
+    $('reveal-ok').textContent = t('prizeTake');
+    $('reveal-later').classList.add('hidden');
   } else {
     const s = SKINS.find((k) => k.id === prize.id)!;
     $('reveal-kicker').textContent = `${s.emoji} ${t('prizeSkin')}`;
@@ -437,7 +448,7 @@ function closePrize(use: boolean) {
   shownPrize = null;
   if (p && use) {
     if (p.kind === 'food') progress.food = p.id;
-    else if (chooseSkin(progress, p.id)) world.setSkin(p.id);
+    else if (p.kind === 'skin' && chooseSkin(progress, p.id)) world.setSkin(p.id);
     save();
     world.loadPouch(progress.food);
   }
@@ -624,7 +635,7 @@ $('result-again').addEventListener('click', () => {
 });
 $('result-shop').addEventListener('click', () => openShop());
 $('result-share').addEventListener('click', () => void shareResult());
-$('replay-skip').addEventListener('click', () => showResult());
+$('replay-skip').addEventListener('click', () => mode === 'replay' && showResult());
 $('reveal-ok').addEventListener('click', () => closePrize(true));
 $('reveal-later').addEventListener('click', () => closePrize(false));
 $('mop-skip').addEventListener('click', () => {
@@ -881,9 +892,11 @@ document.querySelectorAll<HTMLElement>('[data-page]').forEach((b) =>
 // --- Input ---------------------------------------------------------------------------------------------
 
 const canvas = world.canvas;
-let mopDrag: { id: number; x: number } | null = null;
+let mopDrag: { id: number; x: number; moved: boolean } | null = null;
 canvas.addEventListener('pointerdown', (e) => {
   closeMenu();
+  // A tap anywhere skips the replay (not in the first moment, so the last shots' taps don't skip it by accident).
+  if (mode === 'replay' && performance.now() - replayAt > 700) return showResult();
   if (mode === 'play' && play?.friendArmed) {
     // The friend button was pressed: this tap places it instead of aiming.
     if (!play.placeFriend(world.groundPoint(e.clientX, e.clientY))) say(t('friendGrass'));
@@ -894,18 +907,21 @@ canvas.addEventListener('pointerdown', (e) => {
     play.pointerDown(e);
   } else if (mode === 'mop') {
     canvas.setPointerCapture(e.pointerId);
-    mopDrag = { id: e.pointerId, x: e.clientX };
+    mopDrag = { id: e.pointerId, x: e.clientX, moved: false };
   }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (mode === 'play') play?.pointerMove(e);
   else if (mode === 'mop' && mopDrag && e.pointerId === mopDrag.id) {
+    if (Math.abs(e.clientX - mopDrag.x) > 8) mopDrag.moved = true;
     mop?.drag(e.clientX - mopDrag.x);
     mopDrag.x = Math.max(mopDrag.x, e.clientX);
   }
 });
 const up = (e: PointerEvent) => {
   if (mode === 'play') play?.pointerUp(e);
+  // Once the mop has been seen, a plain tap (no drag) skips it, like the button.
+  if (e.type === 'pointerup' && mode === 'mop' && mopDrag && !mopDrag.moved && progress.seen.includes('mop') && mop?.finish()) afterMop();
   mopDrag = null;
 };
 canvas.addEventListener('pointerup', up);
@@ -924,6 +940,10 @@ addEventListener('keydown', (e) => {
     if (mode === 'play') return pause(!play?.paused);
   }
   if (mode === 'play' && play && !play.paused && play.key(e)) e.preventDefault();
+  if (mode === 'replay' && (e.key === 'Escape' || e.key === 'Enter') && performance.now() - replayAt > 700) {
+    showResult();
+    return e.preventDefault();
+  }
   if (mode === 'mop' && (e.key === 'ArrowRight' || e.key === ' ')) {
     mop?.drag(innerWidth * 0.06);
     e.preventDefault();
@@ -960,11 +980,12 @@ function updateHud() {
   const s = play.arena.session;
   $('time-text').textContent = clock(s.timeLeft);
   const ammo = $('ammo-text');
-  const left = String(s.shotsLeft);
+  const shotsNow = play.shotsOf(play.food);
+  const left = String(shotsNow);
   if (ammo.textContent !== left) {
-    const more = Number(ammo.textContent) < s.shotsLeft && ammo.textContent !== '';
+    const more = Number(ammo.textContent) < shotsNow && ammo.textContent !== '';
     ammo.textContent = left;
-    $('hud-ammo').classList.toggle('low', s.shotsLeft <= 5);
+    $('hud-ammo').classList.toggle('low', shotsNow <= 5);
     if (more) {
       $('hud-ammo').classList.remove('pop');
       void $('hud-ammo').offsetWidth;
@@ -1028,7 +1049,7 @@ function updateHud() {
     }
     $('combo-bar').style.setProperty('--p', `${Math.round((s.comboLeft / s.comboWindow) * 100)}%`);
   } else combo.classList.add('hidden');
-  updateTray(play.food, play.reloadLeft);
+  updateTray(play.food, play.reloadLeft, (id) => play!.shotsOf(id));
 }
 
 // --- Loop ----------------------------------------------------------------------------------------------

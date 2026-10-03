@@ -5,7 +5,7 @@
  */
 import { Arena, type GameEvent } from './game/arena';
 import type { Sound, Sfx } from './audio';
-import { type Effect, FOODS, type FoodId } from './game/foods';
+import { type Effect, FOODS, type FoodId, withTier } from './game/foods';
 import type { Level } from './game/levels';
 import { type Aim, aimFromPull, dist2D, field, MAX_YAW, slingAt, type Vec3 } from './game/physics';
 import { type Bug, BUGS, hittable } from './game/bugs';
@@ -89,6 +89,7 @@ export class Play {
   ) {
     this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers, ammo: ammoFor(progress, level.ammo), umbrella: umbrellaFor(progress), ally: friendFor(progress) });
     this.food = progress.owned.includes(progress.food) ? progress.food : 'cookie';
+    this.arena.session.minCost = Math.min(...progress.owned.map((f) => this.costOf(f)));
     this.goalsMet = level.goals.map(() => false);
     world.setLevel(level);
     world.bind(this.arena);
@@ -102,6 +103,16 @@ export class Play {
 
   get over(): boolean {
     return this.ending !== null;
+  }
+
+  /** Ammo units one throw of `id` uses, with its upgrades. */
+  costOf(id: FoodId): number {
+    return withTier(FOODS[id], this.progress.tiers[id] ?? 0).cost;
+  }
+
+  /** How many throws of `id` are left. */
+  shotsOf(id: FoodId): number {
+    return this.arena.session.shotsWith(this.costOf(id));
   }
 
   selectFood(id: FoodId) {
@@ -242,14 +253,22 @@ export class Play {
   }
 
   private fire(aim: Aim) {
-    if (this.reloadLeft > 0 || this.ending !== null || this.arena.session.shotsLeft <= 0 || this.arena.player.stun > 0) return;
+    if (this.reloadLeft > 0 || this.ending !== null || this.arena.player.stun > 0) return;
+    if (this.shotsOf(this.food) <= 0) {
+      // Not enough ammo left for this food: switch to the biggest one that still fits.
+      const fits = this.progress.owned.filter((f) => this.shotsOf(f) > 0).sort((a, b) => this.costOf(b) - this.costOf(a))[0];
+      if (!fits) return;
+      this.ui.toast(t('switchedFood', { food: t(`food_${fits}` as StringKey) }));
+      this.selectFood(fits);
+      return;
+    }
     this.arena.fire(this.food, aim.yaw, aim.power);
     this.world.fired();
     this.sound.play('launch');
     this.reloadFor = FOODS[this.food].reload;
     this.reloadLeft = 1;
     this.ui.shot();
-    const left = this.arena.session.shotsLeft;
+    const left = this.shotsOf(this.food);
     if (left <= 5 && left > 0) this.ui.tip('ammoLow', '🧺', t('coachAmmoLow'));
     const f = FOODS[this.food];
     if (f.id !== 'cookie') this.ui.tip(`food:${f.id}`, f.emoji, t(`foodInfo_${f.id}` as StringKey));

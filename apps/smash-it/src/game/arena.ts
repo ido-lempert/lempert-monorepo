@@ -632,7 +632,7 @@ export class Arena {
     const shot: Shot = { id: shotId ?? this.nextId++, food, origin, velocity, at: this.session.clock, bodies: [], byAlly };
     shot.bodies.push(this.body(shot, 'whole', origin, velocity, food.radius, food.area));
     this.shots.push(shot);
-    if (!byAlly) this.session.shot();
+    if (!byAlly) this.session.shot(food.cost);
     this.session.inFlight = this.shots.length;
     this.records.set(shot.id, { shotId: shot.id, food: food.id, tier: this.tiers[food.id] ?? 0, origin: { ...origin }, velocity: { ...velocity }, hits: [] });
     return shot;

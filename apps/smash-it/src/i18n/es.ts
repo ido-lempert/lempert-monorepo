@@ -291,6 +291,11 @@ export const es: Dict = {
   missing: 'Faltan {n}',
   speed: 'Velocidad',
   area: 'Tamaño del impacto',
+  ammoCost: 'Disparos que gasta',
+  switchedFood: 'Quedan pocos disparos, cambiamos a {food}',
+  coachCost: 'Las comidas grandes gastan más disparos, y las mejoras las abaratan. El número de cada botón es lo que te queda de esa comida.',
+  prizeFriend: 'Conejo ayudante',
+  prizeFriendText: '¡Un conejo nuevo que te ayuda! Colócalo en el césped y lanza comida solo durante unos segundos.',
 
   // Foods
   food_cookie: 'Galleta',
@@ -312,7 +317,7 @@ export const es: Dict = {
 
   // Upgrades
   up_ammo: 'Cesta más grande',
-  upInfo_ammo: 'Cuatro disparos más en cada nivel, con cada mejora.',
+  upInfo_ammo: 'Más disparos en cada nivel: +3, +4, +5, +6 y luego +8. Las comidas grandes gastan más disparos.',
   up_guide: 'Línea de puntería larga',
   up_combo: 'Combo más largo',
   up_umbrella: 'Paraguas resistente',

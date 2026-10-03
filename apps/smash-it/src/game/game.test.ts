@@ -154,6 +154,40 @@ describe('session', () => {
     expect(free.over).toBe(false);
   });
 
+  it('counts ammo in units: light foods give more throws, heavy ones fewer, and it ends when not even the cheapest fits', () => {
+    const s = new Session({ ...quiet, goals: [{ kind: 'hits', n: 99 }] }, 3, 10);
+    expect(s.shotsWith(FOODS.cookie.cost)).toBe(10);
+    expect(s.shotsWith(FOODS.popcorn.cost)).toBe(20);
+    expect(s.shotsWith(FOODS.pie.cost)).toBe(4);
+    s.shot(FOODS.pie.cost);
+    s.shot(FOODS.pie.cost);
+    expect(s.unitsLeft).toBe(10);
+    expect(s.shotsWith(FOODS.pie.cost)).toBe(2);
+    expect(s.shotsWith(FOODS.popcorn.cost)).toBe(10);
+    // Holding only cookies and pies, the last 1 unit is useless; holding popcorn it is one more throw.
+    s.shot(FOODS.pie.cost);
+    s.shot(FOODS.pie.cost);
+    s.shot(FOODS.pie.cost);
+    expect(s.unitsLeft).toBe(0);
+    const t = new Session({ ...quiet, goals: [{ kind: 'hits', n: 99 }] }, 3, 1);
+    t.shot(FOODS.cookie.cost - 1);
+    t.minCost = FOODS.popcorn.cost;
+    expect(t.over).toBe(false);
+    t.minCost = FOODS.cookie.cost;
+    expect(t.over).toBe(true);
+  });
+
+  it('the arena spends the cost of the food that was thrown', () => {
+    const arena = new Arena({ ...quiet, ammo: 10 }, { seed: 3, ammo: 10 });
+    arena.fire('popcorn', 0, 0.5);
+    expect(arena.session.spent).toBe(FOODS.popcorn.cost);
+    arena.fire('pie', 0, 0.5);
+    expect(arena.session.spent).toBe(FOODS.popcorn.cost + FOODS.pie.cost);
+    const upgraded = new Arena({ ...quiet, ammo: 10 }, { seed: 3, ammo: 10, tiers: { pie: 5 } });
+    upgraded.fire('pie', 0, 0.5);
+    expect(upgraded.session.spent).toBe(FOODS.pie.cost - 2);
+  });
+
   it('pays more coins for winning than for trying', () => {
     const win = new Session(quiet, 3);
     const lose = new Session({ ...quiet, goals: [{ kind: 'hits', n: 99 }] }, 3);
@@ -300,6 +334,32 @@ describe('levels', () => {
       expect(l.ammo).toBeGreaterThanOrEqual(Math.ceil((l.boss ? l.boss.hp : hits) * 1.5));
     }
     expect(LEVELS.at(-2)!.ammo).toBeGreaterThan(LEVELS[0].ammo);
+  });
+
+  it('give time that follows the work: more for more hits or hearts, less per hit in later worlds, and never less than a spawn takes', () => {
+    const work = (l: Level) => (l.boss ? l.boss.hp : Math.max(...l.goals.map((g) => (g.kind === 'hits' ? g.n : 0))));
+    for (const l of LEVELS) {
+      expect(l.time).toBeGreaterThanOrEqual(60);
+      expect(l.time % 5).toBe(0);
+      // Not a king: seconds per needed hit fall with the world, but there is always time to aim.
+      if (!l.boss && work(l) > 0) {
+        expect(l.time / work(l)).toBeGreaterThan(4.5);
+        for (const g of l.goals) if (g.kind === 'bug' && g.bug === 'golden') expect(l.time).toBeGreaterThanOrEqual((l.rareEvery ?? 0) * (g.n + 1));
+        for (const g of l.groups ?? []) if (g.formation !== 'guard') expect(l.time).toBeGreaterThanOrEqual(g.every * 4);
+      }
+      if (l.boss) expect(l.time / l.boss.hp).toBeGreaterThan(8);
+    }
+    const perHit = (w: number) => {
+      const ls = LEVELS.filter((l) => l.world === w && !l.boss && l.goals.some((g) => g.kind === 'hits'));
+      return ls.reduce((s, l) => s + l.time / work(l), 0) / ls.length;
+    };
+    expect(perHit(1)).toBeGreaterThan(perHit(5));
+    expect(perHit(5)).toBeGreaterThan(perHit(10));
+    // More hearts, more time (compare kings within a world: the small one and the big one).
+    for (let w = 0; w < 10; w++) {
+      const [a, b] = [LEVELS[w * 10 + 4], LEVELS[w * 10 + 9]];
+      expect(b.time).toBeGreaterThanOrEqual(a.time);
+    }
   });
 
   it('have a king every 5 chapters, and rotation and fences from world 3', () => {

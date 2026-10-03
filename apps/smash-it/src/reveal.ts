@@ -6,10 +6,11 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { foodModel, slingshot } from './world/models';
+import { bunny } from './world/friend';
 import type { FoodId } from './game/foods';
 import type { SkinId } from './game/progress';
 
-export type Prize = { kind: 'food'; id: FoodId } | { kind: 'skin'; id: SkinId };
+export type Prize = { kind: 'food'; id: FoodId } | { kind: 'skin'; id: SkinId } | { kind: 'friend' };
 
 export class RevealStage {
   private renderer: THREE.WebGLRenderer | null = null;
@@ -47,7 +48,7 @@ export class RevealStage {
     const size = this.canvas.clientWidth || 260;
     r.setSize(size, size, false);
     if (this.item) this.scene.remove(this.item);
-    const thing = prize.kind === 'food' ? foodModel(prize.id) : slingshot(prize.id).root;
+    const thing = prize.kind === 'food' ? foodModel(prize.id) : prize.kind === 'friend' ? bunny().root : slingshot(prize.id).root;
     // Whatever it is, scale it to fit the little stage (with room for the pop and the turn) and centre it on its middle.
     const sphere = new THREE.Box3().setFromObject(thing).getBoundingSphere(new THREE.Sphere());
     thing.position.sub(sphere.center);

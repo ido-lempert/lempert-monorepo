@@ -801,6 +801,24 @@ body:has(#pause:not(.hidden)) .popups {
   pointer-events: none;
 }
 
+.tray .left {
+  position: absolute;
+  top: 1px;
+  inset-inline-start: 0;
+  min-width: 22px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--ink);
+  color: #fff;
+  font: 700 0.8rem/1.45 inherit;
+  text-align: center;
+  z-index: 1;
+}
+
+.tray button.empty {
+  opacity: 0.55;
+}
+
 .tray kbd {
   position: absolute;
   bottom: -2px;
