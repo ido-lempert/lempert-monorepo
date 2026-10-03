@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#5ec8e5" />
+    <meta name="description" content="ארכיפלגו – משחק פאזל תלת־ממדי שמלמד ארכיטקטורת תוכנה: שכבות, תבניות עיצוב, אירועים ועוד. בדפדפן, גם בלי אינטרנט." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ארכיפלגו 🏝️ לומדים ארכיטקטורת תוכנה במשחק" />
+    <meta property="og:description" content="בונים, מחברים ומריצים: יצורונים קטנים רצים בצינורות ומראים לכם אם הארכיטקטורה עובדת." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ארכיפלגו" />
+    <title>ארכיפלגו · Archipelago</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #5ec8e5;
+        font-family: 'Rubik Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: linear-gradient(180deg, #4ab3ff, #9edcff 70%, #e3f6ff);
+        color: #17324d;
+        font-weight: 800;
+        transition: opacity 0.4s ease;
+      }
+      #splash img {
+        width: min(34vmin, 170px);
+        animation: bob 0.9s ease-in-out infinite alternate;
+      }
+      #splash.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      @keyframes bob {
+        to {
+          transform: translateY(-12px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash" role="status"><img src="icon.svg" alt="" /><div>טוען…</div></div>
+
+    <main id="stage" aria-label="האי"></main>
+
+    <!-- Title -->
+    <section class="title-screen" id="title">
+      <img class="logo" src="icon.svg" alt="" width="140" height="140" />
+      <h1 id="title-name"></h1>
+      <p id="title-tag"></p>
+      <button class="primary big" id="play"></button>
+    </section>
+
+    <!-- In a level -->
+    <header class="hud hidden" id="hud">
+      <button class="icon" id="menu-btn" aria-expanded="false" aria-controls="menu">☰</button>
+      <div class="goal">
+        <div class="goal-title"><span id="level-num"></span> · <b id="level-title"></b></div>
+        <div class="goal-text" id="level-goal"></div>
+      </div>
+      <button class="icon hidden" id="book-btn">📘</button>
+    </header>
+
+    <div class="coach hidden" id="coach" role="status" aria-live="polite"></div>
+
+    <footer class="dock hidden" id="dock">
+      <div class="tray" id="tray" role="toolbar"></div>
+      <button class="secondary remove-btn hidden" id="remove-btn"></button>
+      <div class="dock-actions">
+        <button class="secondary icon-text" id="clear-btn">↺</button>
+        <button class="primary run" id="run-btn"><span aria-hidden="true">▶</span> <span id="run-label"></span></button>
+      </div>
+    </footer>
+
+    <nav class="menu hidden" id="menu">
+      <button id="m-levels" class="hidden"><span aria-hidden="true">🗺️</span> <span id="m-levels-label"></span></button>
+      <button id="m-book" class="hidden"><span aria-hidden="true">📘</span> <span id="m-book-label"></span></button>
+      <button id="m-sound" aria-pressed="true"><span aria-hidden="true">🔊</span> <span id="m-sound-label"></span></button>
+      <button id="m-fullscreen"><span aria-hidden="true">⛶</span> <span id="m-fullscreen-label"></span></button>
+      <button id="m-install" class="hidden"><span aria-hidden="true">⤓</span> <span id="m-install-label"></span></button>
+      <hr />
+      <button id="m-reset"><span aria-hidden="true">🗑️</span> <span id="m-reset-label"></span></button>
+      <p class="version"><span id="m-version-label"></span> <span dir="ltr" id="app-version"></span></p>
+    </nav>
+
+    <!-- Win: stars and the concept card -->
+    <div class="overlay hidden" id="win">
+      <div class="card" role="dialog" aria-modal="true" aria-labelledby="win-title">
+        <div class="stars" id="win-stars"></div>
+        <h2 id="win-title"></h2>
+        <p class="muted" id="win-sub"></p>
+        <div id="win-card"></div>
+        <div class="actions">
+          <button class="primary" id="win-next"></button>
+          <button class="secondary" id="win-again"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Levels and the blueprint book -->
+    <div class="overlay hidden" id="sheet">
+      <div class="card sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <header class="sheet-head">
+          <h2 id="sheet-title"></h2>
+          <button class="icon" id="sheet-close">✕</button>
+        </header>
+        <div class="sheet-body" id="sheet-body"></div>
+      </div>
+    </div>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
