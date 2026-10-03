@@ -1,5 +1,5 @@
 /**
- * UI text, Hebrew for now. Voice: how Israeli teens talk in 2026 – light slang ("אש", "פצצה", "GG",
+ * UI text, Hebrew source (the other languages are typed by `Dict`, so a missing key is a compile error). Voice: how Israeli teens talk in 2026 – light slang ("אש", "פצצה", "GG",
  * "באסה", "סגרתם את זה", "טיפ פרו", "איזי"), short and energetic, always clean, in the plural, never
  * babyish or forced. Menus and buttons stay plain and clear (buttons in the infinitive, "לשחק"); the
  * slang lives in the game's voice: tips, cheers and results. Legal pages and screen-reader labels stay plain.
@@ -8,6 +8,7 @@ export const he = {
   appName: 'Smash It!',
   tagline: 'זורקים אוכל על חרקים ומפוצצים את העולם בפירורים. אש!',
   loading: 'שנייה, נטען…',
+  metaDescription: 'Smash It! – משחק רוגטקה תלת־ממדי לילדים: זורקים אוכל על חרקים מצחיקים, צוברים קומבו ופותחים אוכל חדש.',
   sceneLabel: 'עולם קטן ועגול מלא חרקים, ורוגטקה בתחתית המסך',
 
   // Home
@@ -23,6 +24,7 @@ export const he = {
   chapter: 'שלב {n}',
 
   // Settings
+  language: 'שפה',
   music: 'מוזיקה',
   sfx: 'צלילים',
   lessMotion: 'פחות תנועה (בלי זום ורעידות)',
@@ -176,6 +178,9 @@ export const he = {
   leaveBoard: 'לצאת מהטבלה',
   leaveConfirm: 'למחוק את הכינוי והתוצאות שלכם מטבלת השיאים?',
   leftBoard: 'יצאתם מהטבלה',
+
+  // Nicknames offered at random (at most 11 characters each, a number is added)
+  randomNicks: 'נמלה טסה|חיפושית אש|פרפר פרו|זבוב טורבו|שבלול איזי|פרת פצצה|עוגייה טסה|אבטיח בום|פופקורן אש|ג׳לי קופצני|פיצה אגדית|דונאט אש',
 
   // Album and daily challenge
   album: 'אלבום',

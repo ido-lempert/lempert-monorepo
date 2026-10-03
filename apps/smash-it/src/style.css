@@ -1019,6 +1019,30 @@ body:has(#pause:not(.hidden)) .popups {
   width: min(520px, 100%);
 }
 
+.lang-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--target);
+  margin-bottom: 8px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: var(--paper-2);
+  font-weight: 700;
+}
+
+.lang-pick select {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--target);
+  padding: 4px 10px;
+  border: 2px solid var(--ink-soft);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

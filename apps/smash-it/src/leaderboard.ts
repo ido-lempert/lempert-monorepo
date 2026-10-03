@@ -3,6 +3,7 @@
  * nothing is sent. The player is known to the server by a random id kept here, never by anything personal.
  */
 import { pick, makeRng } from './game/rng';
+import { t } from './i18n';
 
 const KEY = 'smashIt.player';
 const API = 'api/scores';
@@ -20,12 +21,10 @@ export interface Boards {
   rank: { all: number | null; daily: number | null };
 }
 
-/** Fun nicknames, so kids don't need to type their real name. */
-const NICKS = ['נמלה טסה', 'חיפושית אש', 'פרפר פרו', 'זבוב טורבו', 'שבלול איזי', 'פרת משה פצצה', 'עוגייה מעופפת', 'אבטיח בום', 'פופקורן מטורף', 'ג׳לי קופצני', 'פיצה אגדית', 'דונאט נינג׳ה'];
-
+/** A fun nickname in the current language, so kids don't need to type their real name. */
 export function randomNick(): string {
   const rng = makeRng((Math.random() * 2 ** 32) >>> 0);
-  return `${pick(rng, NICKS)} ${1 + Math.floor(rng() * 99)}`;
+  return `${pick(rng, t('randomNicks').split('|'))} ${1 + Math.floor(rng() * 99)}`;
 }
 
 export function loadPlayer(): Player {

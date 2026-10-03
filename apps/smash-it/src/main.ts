@@ -19,7 +19,7 @@ import {
 } from './game/progress';
 import { type Boards, fetchBoards, leave, loadPlayer, randomNick, report as sendReport, savePlayer } from './leaderboard';
 import { bestShots } from './game/replay';
-import { applyDocument, type StringKey, t } from './i18n';
+import { applyDocument, getLang, type Lang, LANGUAGES, setLang, type StringKey, t } from './i18n';
 import { Notice } from './notice';
 import { Play } from './play';
 import { canFullscreen, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
@@ -740,6 +740,20 @@ function refreshMenu() {
   $('dev-tools').classList.toggle('hidden', !prefs.debug);
 }
 onPwaChange(refreshMenu);
+
+const langPick = $('m-lang') as HTMLSelectElement;
+for (const l of LANGUAGES) {
+  const o = new Option(l.name, l.code);
+  o.lang = l.code;
+  langPick.add(o);
+}
+langPick.value = getLang();
+langPick.addEventListener('change', () => {
+  setLang(langPick.value as Lang);
+  debug.log('ui', `language ${getLang()}`);
+  renderHome();
+  refreshMenu();
+});
 $('m-music').addEventListener('click', () => {
   sound.setMusic(!sound.prefs.music);
   refreshMenu();
