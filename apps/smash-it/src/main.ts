@@ -265,6 +265,9 @@ function startLevel(withMission = false, assist = false) {
   if (level.rotate) tip('rotate', '🔄', t('coachRotate'));
   if (level.ally) tip('friendTip', '🐰', t('coachFriend'));
   if (level.spit) tip('umbrellaTip', '🌂', t('coachUmbrella'));
+  if (level.effects?.includes('dark')) tip('weatherDark', '🌙', t('coachDark'));
+  if (level.effects?.includes('fire')) tip('weatherFire', '🔥', t('coachFire'));
+  if (level.effects?.includes('smoke')) tip('weatherSmoke', '💨', t('coachSmoke'));
   if (level.obstacles.some((o) => o.kind === 'fence')) tip('fence', '🚧', t('coachFence'));
   if (progress.owned.length > 1 && tip('tray', '👇', t('coachTray'))) {
     $('tray').classList.remove('pulse');

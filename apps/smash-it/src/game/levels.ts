@@ -63,7 +63,6 @@ export interface WorldDef {
   radius: number;
   /** Its bugs, in the order they show up. */
   bugs: BugKind[];
-  king: BossDef['look'];
   /** The look changes every 2 chapters, so it isn't always a round lawn. */
   stages: Stage[];
 }
@@ -75,17 +74,70 @@ const st = (spec: string): Stage[] =>
   });
 
 export const WORLDS: WorldDef[] = [
-  { id: 1, theme: 'garden', radius: 7.5, bugs: ['snail', 'ladybug', 'ant'], king: 'ladybug', stages: st('garden/circle picnic/square meadow/flower board/hex cake/circle') },
-  { id: 2, theme: 'meadow', radius: 8, bugs: ['ladybug', 'ant', 'butterfly', 'snail'], king: 'ant', stages: st('meadow/flower lily/blob garden/oval picnic/hex beach/circle') },
-  { id: 3, theme: 'beach', radius: 8.5, bugs: ['ant', 'ladybug', 'fly', 'butterfly'], king: 'snail', stages: st('beach/oval lily/flower desert/blob board/square beach/hex') },
-  { id: 4, theme: 'autumn', radius: 9, bugs: ['beetle', 'ant', 'ladybug', 'butterfly'], king: 'beetle', stages: st('autumn/circle board/oval forest/blob picnic/square autumn/flower') },
-  { id: 5, theme: 'candy', radius: 9, bugs: ['ant', 'butterfly', 'fly', 'ladybug'], king: 'butterfly', stages: st('candy/flower cake/circle candy/hex cake/square candy/blob') },
-  { id: 6, theme: 'forest', radius: 9.5, bugs: ['beetle', 'snail', 'ant', 'fly'], king: 'ant', stages: st('forest/blob lily/oval autumn/hex garden/flower forest/circle') },
-  { id: 7, theme: 'desert', radius: 10, bugs: ['ant', 'beetle', 'fly', 'butterfly'], king: 'beetle', stages: st('desert/hex beach/blob board/circle desert/oval picnic/square') },
-  { id: 8, theme: 'snow', radius: 10, bugs: ['ladybug', 'beetle', 'butterfly', 'fly', 'snail'], king: 'snail', stages: st('snow/circle snow/flower cake/hex board/blob snow/oval') },
-  { id: 9, theme: 'night', radius: 10.5, bugs: ['fly', 'butterfly', 'beetle', 'ant'], king: 'fly', stages: st('night/blob lily/flower night/hex forest/oval night/circle') },
-  { id: 10, theme: 'castle', radius: 11, bugs: ['ant', 'beetle', 'butterfly', 'fly', 'ladybug'], king: 'ladybug', stages: st('castle/square board/hex cake/flower castle/circle night/oval') },
+  { id: 1, theme: 'garden', radius: 7.5, bugs: ['snail', 'ladybug', 'ant'], stages: st('garden/circle picnic/square meadow/flower board/hex cake/circle') },
+  { id: 2, theme: 'meadow', radius: 8, bugs: ['ladybug', 'ant', 'butterfly', 'snail'], stages: st('meadow/flower lily/blob garden/oval picnic/hex beach/circle') },
+  { id: 3, theme: 'beach', radius: 8.5, bugs: ['ant', 'ladybug', 'fly', 'butterfly'], stages: st('beach/oval lily/flower desert/blob board/square beach/hex') },
+  { id: 4, theme: 'autumn', radius: 9, bugs: ['beetle', 'ant', 'ladybug', 'butterfly'], stages: st('autumn/circle board/oval forest/blob picnic/square autumn/flower') },
+  { id: 5, theme: 'candy', radius: 9, bugs: ['ant', 'butterfly', 'fly', 'ladybug'], stages: st('candy/flower cake/circle candy/hex cake/square candy/blob') },
+  { id: 6, theme: 'forest', radius: 9.5, bugs: ['beetle', 'snail', 'ant', 'fly'], stages: st('forest/blob lily/oval autumn/hex garden/flower forest/circle') },
+  { id: 7, theme: 'desert', radius: 10, bugs: ['ant', 'beetle', 'fly', 'butterfly'], stages: st('desert/hex beach/blob board/circle desert/oval picnic/square') },
+  { id: 8, theme: 'snow', radius: 10, bugs: ['ladybug', 'beetle', 'butterfly', 'fly', 'snail'], stages: st('snow/circle snow/flower cake/hex board/blob snow/oval') },
+  { id: 9, theme: 'night', radius: 10.5, bugs: ['fly', 'butterfly', 'beetle', 'ant'], stages: st('night/blob lily/flower night/hex forest/oval night/circle') },
+  { id: 10, theme: 'castle', radius: 11, bugs: ['ant', 'beetle', 'butterfly', 'fly', 'ladybug'], stages: st('castle/square board/hex cake/flower castle/circle night/oval') },
 ];
+
+/** What makes a chapter's weather unusual: flames that scare bugs, smoke that hides them, or a dark night lit by fireflies. */
+export type Effect = 'fire' | 'smoke' | 'dark';
+
+/** A king: what it looks like and what it can do. Each world has two (chapters 5 and 10), and no two are alike. */
+interface KingSpec {
+  look: BossDef['look'];
+  charge?: boolean;
+  summon?: boolean;
+  shell?: boolean;
+  armor?: boolean;
+  regen?: boolean;
+  /** Hits shake helpers loose. */
+  split?: boolean;
+}
+
+const KINGS: KingSpec[] = [
+  { look: 'ladybug' },
+  { look: 'ant', charge: true },
+  { look: 'butterfly', summon: true },
+  { look: 'snail', shell: true, split: true },
+  { look: 'fly', charge: true, summon: true },
+  { look: 'beetle', shell: true, regen: true },
+  { look: 'ladybug', split: true, charge: true },
+  { look: 'beetle', armor: true, summon: true },
+  { look: 'butterfly', regen: true, summon: true },
+  { look: 'ant', charge: true, split: true, armor: true },
+  { look: 'snail', shell: true, regen: true, summon: true },
+  { look: 'fly', charge: true, regen: true },
+  { look: 'beetle', shell: true, charge: true },
+  { look: 'ladybug', armor: true, split: true, summon: true },
+  { look: 'butterfly', charge: true, summon: true, regen: true },
+  { look: 'snail', shell: true, armor: true, split: true },
+  { look: 'fly', charge: true, split: true },
+  { look: 'ant', summon: true, regen: true, charge: true },
+  { look: 'beetle', shell: true, charge: true, summon: true },
+  { look: 'ladybug', armor: true, regen: true, split: true, charge: true, shell: true },
+];
+
+/** From this chapter on the weather changes now and then. */
+export const EFFECTS_FROM = 12;
+
+/** Every third ordinary chapter has weather, in turn; kings get it from chapter 25. */
+export function effectsFor(n: number, king: boolean): Effect[] | undefined {
+  if (n < EFFECTS_FROM) return undefined;
+  if (king) {
+    if (n < 25) return undefined;
+    if (n % 10 === 5) return n >= 65 ? ['fire', 'smoke'] : ['fire'];
+    return n >= 40 ? ['dark'] : ['smoke'];
+  }
+  if (n % 3 !== 0) return undefined;
+  return [(['dark', 'fire', 'smoke'] as const)[(n / 3) % 3]];
+}
 
 export const LEVELS_PER_WORLD = 10;
 /** From this chapter on the slingshot can walk around the world, and fences guard bugs. */
@@ -125,6 +177,8 @@ export interface Level {
   spit?: { every: number };
   /** A friend can be placed to help (from `ALLY_FROM`). */
   ally?: boolean;
+  /** Fire, smoke or darkness (see `effectsFor`). */
+  effects?: Effect[];
   /** The food that suits this chapter best (a tip suggests it). */
   tip: FoodId;
   /** Points for the 2nd and 3rd star. */
@@ -268,25 +322,29 @@ function makeLevel(w: number, i: number, seed?: number): Level {
     if (w >= 4 && i !== 6 && i % 3 === 0) rareEvery = 22;
   }
 
-  const bossDef: BossDef | undefined = boss
+  const spec = boss ? KINGS[w * 2 + (big ? 1 : 0)] : undefined;
+  const bossDef: BossDef | undefined = spec
     ? {
-        look: world.king,
+        look: spec.look,
         hp: Math.round(4 + w * 1.2 + (big ? 3 : 0)),
         radius: (big ? 1.35 : 1.1) + w * 0.03,
         speed: 0.6 + w * 0.05,
-        summon: w >= 1 ? { kind: world.bugs[big ? 1 : 0], every: big ? 10 : 14, count: 2 + Math.floor(w / 3) } : undefined,
-        shell: world.king === 'snail' || world.king === 'beetle' || (big && w >= 6) ? { every: 7, time: 2.5 } : undefined,
-        armor: big && w >= 7 ? 1.1 : undefined,
+        summon: spec.summon ? { kind: world.bugs[big ? 1 : 0], every: big ? 10 : 14, count: 2 + Math.floor(w / 3) } : undefined,
+        shell: spec.shell ? { every: 7, time: 2.5 } : undefined,
+        armor: spec.armor ? 1.1 : undefined,
+        charge: spec.charge ? { every: Math.max(5, Math.round(10 - w * 0.4)), time: 1.1 } : undefined,
+        regen: spec.regen ? { every: 9 } : undefined,
+        summonOnHit: spec.split ? { kind: world.bugs[0], count: 1 + (w >= 5 ? 1 : 0) } : undefined,
       }
     : undefined;
   // Enough shots to win with a bit more than every other shot missing; a good player has some to spare.
-  const need = boss ? bossDef!.hp * 1.6 + 8 : Math.max(hits * 1.15, ...goals.map((g) => (g.kind === 'bug' || g.kind === 'multi' ? g.n * 2 : 0)));
+  const need = boss ? bossDef!.hp * 1.6 + 8 + (bossDef!.regen ? 4 : 0) : Math.max(hits * 1.15, ...goals.map((g) => (g.kind === 'bug' || g.kind === 'multi' ? g.n * 2 : 0)));
   const ammo = Math.round(need * 1.8 + 6);
   const expected = boss ? (bossDef!.hp * 150 * 2 + 1000) : avg * hits * 2.2;
   return {
     id: n, world: w + 1, index: i + 1, radius: R, theme: stage.theme, shape: stage.shape, time, ammo, goals,
     mix, max: Math.max(2, max), groups: groups.length ? groups : undefined, rareEvery,
-    guide, pace, obstacles, rotate, boss: bossDef, tip, ally: n >= ALLY_FROM, spit: rotate ? { every: Math.max(9, Math.round(19 - w * 1.1 - (boss ? 4 : 0))) } : undefined,
+    guide, pace, obstacles, rotate, boss: bossDef, tip, ally: n >= ALLY_FROM, effects: effectsFor(n, boss), spit: rotate ? { every: Math.max(9, Math.round(19 - w * 1.1 - (boss ? 4 : 0))) } : undefined,
     stars: [round(expected * 0.9, 100), round(expected * 1.4, 100)],
   };
 }

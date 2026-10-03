@@ -407,7 +407,10 @@ export class Play {
               this.sound.play('fanfare');
               this.ui.banner(t('kingDown'), 'mint', 1800);
               this.world.cam.shake(0.5);
-            } else this.sound.voice(voiceOf(h.bug), i % 3 === 2 ? 'whee' : 'ouch', s.hits + i);
+            } else {
+              this.sound.voice(voiceOf(h.bug), i % 3 === 2 ? 'whee' : 'ouch', s.hits + i);
+              if (h.bug.boss?.summonOnHit) this.ui.tip('kingSplit', '🐜', t('coachKingSplit'));
+            }
             const r = h.result;
             const text = r.multiplier > 1 ? `+${r.points} <small>×${r.multiplier}</small>` : `+${r.points}`;
             this.ui.popup(text, at, h.bug.def.rare || h.bug.boss ? 'gold' : '');
@@ -478,6 +481,19 @@ export class Play {
           break;
         case 'ally-out':
           this.sound.play('whoosh');
+          break;
+        case 'firefly':
+          this.sound.play('firefly');
+          this.ui.popup(t('lightOn'), { x: e.firefly.x, y: e.firefly.y + 0.5, z: e.firefly.z }, 'cheer');
+          break;
+        case 'rear':
+          this.sound.play('rumble');
+          this.sound.voice(voiceOf(e.bug), 'hmph');
+          this.ui.tip('kingCharge', '🐎', t('coachKingCharge'));
+          break;
+        case 'heal':
+          this.sound.play('heal');
+          this.ui.tip('kingHeal', '💚', t('coachKingHeal'));
           break;
       }
     }

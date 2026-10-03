@@ -29,6 +29,9 @@ export type Sfx =
   | 'spit'
   | 'umbrella'
   | 'friend'
+  | 'firefly'
+  | 'rumble'
+  | 'heal'
   | 'buy'
   | 'whoosh'
   | 'tink'
@@ -549,6 +552,16 @@ export class Sound {
         break;
       case 'friend':
         [76, 83, 88].forEach((n, i) => this.pluck(bus, midi(n + 12), t + i * 0.07, 0.3, 0.25, 2.5, 2));
+        break;
+      case 'firefly':
+        [84, 88, 91, 96].forEach((n, i) => this.pluck(bus, midi(n + 12), t + i * 0.06, 0.35, 0.2, 3, 2));
+        break;
+      case 'rumble':
+        this.tone(bus, 'sawtooth', 70, 120, t, 0.6, 0.1, 0.05);
+        this.hiss(bus, t, 0.5, 300, 0.2, 2, 'bandpass', 400);
+        break;
+      case 'heal':
+        [72, 76, 79].forEach((n, i) => this.pluck(bus, midi(n + 12), t + i * 0.09, 0.35, 0.2, 1.6, 2));
         break;
       case 'umbrella':
         this.hiss(bus, t, 0.14, 1400, 0.3, 0.8, 'bandpass', 3200);

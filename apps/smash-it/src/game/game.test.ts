@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Arena, type GameEvent, levelBugs } from './arena';
+import { Arena, type GameEvent, LIGHT_TIME, levelBugs } from './arena';
 import { BUGS, type BugKind, isSmall, makeBug, moveBug } from './bugs';
 import { FOOD_ORDER, FOODS } from './foods';
-import { LEVELS, type Level, ROTATE_FROM } from './levels';
+import { effectsFor, LEVELS, type Level, ROTATE_FROM } from './levels';
 import { aimAt, aimFromPull, edgeAt, field, onDisc, type WorldShape, flightTime, launchVelocity, MAX_YAW, maxRange, MIN_RANGE, predictPath, setField, slingAt, SURFACE_Y } from './physics';
 import { bestShots, stage, stageLength } from './replay';
 import { makeRng } from './rng';
@@ -545,5 +545,113 @@ describe('friend', () => {
     expect(arena.session.shotsLeft).toBe(0);
     for (let i = 0; i < 3 * 60; i++) arena.update(1 / 60);
     expect(arena.session.over).toBe(arena.shots.length === 0);
+  });
+});
+
+describe('kings with tricks', () => {
+  const kingLevel: Level = { ...quiet, max: 0, radius: 9, goals: [{ kind: 'boss' }], boss: { look: 'ladybug', hp: 3, radius: 1.2, speed: 0.6 } };
+  const run = (arena: Arena, seconds: number, each?: (e: GameEvent) => void) => {
+    for (let i = 0; i < seconds * 60; i++) for (const e of arena.update(1 / 60)) each?.(e);
+  };
+
+  it('every king is different, and the two kings of a world do not look alike', () => {
+    const kings = LEVELS.filter((l) => l.boss).map((l) => l.boss!);
+    expect(kings).toHaveLength(20);
+    const traits = (b: (typeof kings)[number]) => JSON.stringify([b.look, !!b.charge, !!b.summon, !!b.shell, !!b.armor, !!b.regen, !!b.summonOnHit]);
+    expect(new Set(kings.map(traits)).size).toBe(20);
+    for (let w = 0; w < 10; w++) expect(kings[w * 2].look).not.toBe(kings[w * 2 + 1].look);
+  });
+
+  it('a charging king rears up, then runs much faster than it walks', () => {
+    const arena = new Arena({ ...kingLevel, boss: { ...kingLevel.boss!, charge: { every: 1, time: 1 } } }, { seed: 3 });
+    let rears = 0;
+    let top = 0;
+    run(arena, 5, (e) => e.type === 'rear' && rears++);
+    arena.update(0);
+    const king = arena.king!;
+    for (let i = 0; i < 5 * 60; i++) {
+      arena.update(1 / 60);
+      top = Math.max(top, king.speed);
+    }
+    expect(rears).toBeGreaterThanOrEqual(1);
+    expect(top).toBeGreaterThan(1.5);
+  });
+
+  it('a king wins a heart back when left alone, but not past its full hearts', () => {
+    const arena = new Arena({ ...kingLevel, boss: { ...kingLevel.boss!, regen: { every: 2 } } }, { seed: 3 });
+    const king = arena.king!;
+    king.hp = 1;
+    let heals = 0;
+    run(arena, 7, (e) => e.type === 'heal' && heals++);
+    expect(king.hp).toBe(3);
+    expect(heals).toBe(2);
+  });
+
+  it('hitting a king shakes helpers loose', () => {
+    const arena = new Arena({ ...kingLevel, boss: { ...kingLevel.boss!, summonOnHit: { kind: 'ant', count: 2 } } }, { seed: 3 });
+    const king = arena.king!;
+    const aim = aimAt(king.x, king.z);
+    arena.fire('cookie', aim.yaw, aim.power);
+    run(arena, 3);
+    expect(king.hp).toBe(2);
+    expect(arena.bugs.filter((b) => b.kind === 'ant')).toHaveLength(2);
+  });
+});
+
+describe('weather', () => {
+  const weather = (effects: Level['effects']): Level => ({ ...quiet, max: 0, effects });
+  const run = (arena: Arena, seconds: number, each?: (e: GameEvent) => void) => {
+    for (let i = 0; i < seconds * 60; i++) for (const e of arena.update(1 / 60)) each?.(e);
+  };
+
+  it('is planned: every third ordinary chapter from 12, kings from 25, never in the first chapters', () => {
+    for (let n = 1; n < 12; n++) expect(effectsFor(n, n % 5 === 0)).toBeUndefined();
+    expect(effectsFor(12, false)).toEqual(['fire']);
+    expect(effectsFor(18, false)).toEqual(['dark']);
+    expect(effectsFor(24, false)).toEqual(['smoke']);
+    expect(effectsFor(20, true)).toBeUndefined();
+    expect(effectsFor(25, true)).toEqual(['fire']);
+    expect(effectsFor(50, true)).toEqual(['dark']);
+    const kinds = new Set(LEVELS.flatMap((l) => l.effects ?? []));
+    expect([...kinds].sort()).toEqual(['dark', 'fire', 'smoke']);
+  });
+
+  it('fire starts patches that burn out, and bugs running through one panic', () => {
+    const arena = new Arena(weather(['fire']), { seed: 8 });
+    let started = 0;
+    run(arena, 6, (e) => e.type === 'flame' && started++);
+    expect(started).toBeGreaterThanOrEqual(1);
+    const flame = arena.flames[0];
+    const bug = arena.addBug('snail', flame.x, flame.z, 0);
+    bug.state = 'walk';
+    run(arena, 3);
+    // It may have run out of the flame by now, but it was scared.
+    expect(bug.panic > 0 || Math.hypot(bug.x - flame.x, bug.z - flame.z) > 0.5).toBe(true);
+    run(arena, 30);
+    expect(arena.flames.length).toBeLessThanOrEqual(3);
+  });
+
+  it('the dark has fireflies, and food that touches one lights the world for a while', () => {
+    const arena = new Arena(weather(['dark']), { seed: 8 });
+    expect(arena.fireflies).toHaveLength(5);
+    expect(arena.light).toBe(0);
+    const f = arena.fireflies[0];
+    let caught = 0;
+    arena.launch(FOODS.cookie, { x: f.x, y: f.y, z: f.z }, { x: 0, y: 0, z: 0 });
+    run(arena, 0.2, (e) => e.type === 'firefly' && caught++);
+    expect(caught).toBe(1);
+    expect(arena.light).toBeGreaterThan(LIGHT_TIME - 1);
+    expect(arena.fireflies).toHaveLength(4);
+    run(arena, 4);
+    expect(arena.fireflies).toHaveLength(5);
+    run(arena, LIGHT_TIME);
+    expect(arena.light).toBe(0);
+  });
+
+  it('a chapter without weather has none of it', () => {
+    const arena = new Arena(weather(undefined), { seed: 8 });
+    run(arena, 12);
+    expect(arena.flames).toHaveLength(0);
+    expect(arena.fireflies).toHaveLength(0);
   });
 });

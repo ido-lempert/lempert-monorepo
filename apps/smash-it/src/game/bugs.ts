@@ -2,7 +2,7 @@
  * The bugs: what each kind is like (size, speed, value, how it moves) and how one moves around the disc.
  * Small means hard to hit, fast means hard to follow, and the harder a bug is the more points it is worth.
  */
-import { COUNTER_Y, edgeAt, groundAt } from './physics';
+import { COUNTER_Y, edgeAt, groundAt, slingAt } from './physics';
 import type { Rng } from './rng';
 
 export type BugKind = 'snail' | 'ladybug' | 'ant' | 'beetle' | 'butterfly' | 'fly' | 'golden' | 'king';
@@ -56,7 +56,17 @@ export interface BossDef {
   summon?: { kind: BugKind; every: number; count: number };
   shell?: { every: number; time: number };
   armor?: number;
+  /** Rears up, then rushes across the world for a moment (hard to hit while it runs). */
+  charge?: { every: number; time: number };
+  /** Wins a heart back when nobody has hit it for this many seconds. */
+  regen?: { every: number };
+  /** Every hit shakes helpers loose. */
+  summonOnHit?: { kind: BugKind; count: number };
 }
+
+/** How long a charging king rears up before it runs, and how much faster it runs. */
+export const REAR_UP = 0.8;
+export const CHARGE_SPEED = 3.2;
 
 /** Small bugs, for goals like "hit 3 small bugs". */
 export const isSmall = (k: BugKind) => BUGS[k].radius < 0.4;
@@ -147,6 +157,14 @@ export interface Bug {
   shelled: number;
   /** Seconds left of winding up to spit acid (stands still, glowing green); 0 when not spitting. */
   spitT: number;
+  /** A charging king: seconds until the next charge, left of rearing up, left of running. */
+  chargeIn: number;
+  rearT: number;
+  chargeT: number;
+  /** Seconds since a king was last hit (for winning hearts back). */
+  sinceHit: number;
+  /** Seconds left of running about in panic (scared by fire). */
+  panic: number;
   // Being thrown
   vx: number;
   vy: number;
@@ -161,7 +179,7 @@ export function makeBug(id: number, kind: BugKind, x: number, z: number, heading
     boss, hp: boss?.hp ?? 1, hurt: 0,
     summonIn: boss?.summon?.every ?? Infinity,
     shellIn: boss?.shell?.every ?? Infinity,
-    shelled: 0, spitT: 0,
+    shelled: 0, spitT: 0, chargeIn: boss?.charge?.every ?? Infinity, rearT: 0, chargeT: 0, sinceHit: 0, panic: 0,
     id, kind, def, x, z, heading,
     y: def.hover ? def.hover + 2 : groundAt(x, z),
     speed: def.speed, state: 'enter', t: 0, age: rng() * 10,
@@ -198,6 +216,9 @@ function steer(b: Bug, target: number, rate: number) {
   b.heading += Math.max(-rate, Math.min(rate, d));
 }
 
+/** How much faster a bug runs while scared by fire. */
+const PANIC_SPEED = 1.7;
+
 export interface MoveContext {
   obstacles: readonly Obstacle[];
   /** Level-wide speed multiplier. */
@@ -230,7 +251,8 @@ export function moveBug(b: Bug, dt: number, rng: Rng, ctx: MoveContext) {
   }
 
   const def = b.def;
-  const base = def.speed * ctx.pace;
+  if (b.panic > 0) b.panic = Math.max(0, b.panic - dt);
+  const base = def.speed * ctx.pace * (b.panic > 0 ? PANIC_SPEED : 1);
   if (b.boss) {
     // Kings: pushed back after a hit, and now and then hide in their shell.
     b.shellIn -= dt;
@@ -261,6 +283,33 @@ export function moveBug(b: Bug, dt: number, rng: Rng, ctx: MoveContext) {
   }
 
   if (b.state === 'enter' && b.t > 0.8) setState(b, 'walk');
+  if (b.boss?.charge && b.state === 'walk') {
+    const c = b.boss.charge;
+    if (b.rearT > 0) {
+      // Rearing up: stands still, then runs where it was facing.
+      b.speed = 0;
+      b.rearT = Math.max(0, b.rearT - dt);
+      if (b.rearT === 0) b.chargeT = c.time;
+      hover(b);
+      return;
+    }
+    if (b.chargeT > 0) {
+      b.chargeT = Math.max(0, b.chargeT - dt);
+      b.speed = base * CHARGE_SPEED;
+      b.x += Math.sin(b.heading) * b.speed * dt;
+      b.z += Math.cos(b.heading) * b.speed * dt;
+      keepOnDisc(b, dt);
+      avoid(b, ctx.obstacles);
+      hover(b);
+      return;
+    }
+    b.chargeIn -= dt;
+    if (b.chargeIn <= 0) {
+      b.chargeIn = c.every;
+      b.rearT = REAR_UP;
+      b.heading = Math.atan2(slingAt().x - b.x, slingAt().z - b.z) + (rng() - 0.5) * 0.9;
+    }
+  }
   if (b.state === 'leaving') {
     // Head straight out over the edge, then vanish.
     steer(b, Math.atan2(b.x, b.z), 4 * dt);

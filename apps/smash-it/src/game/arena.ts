@@ -22,6 +22,30 @@ export interface Acid {
   z: number;
 }
 
+/** A patch of fire: it grows for a second, burns for a while, and scares the bugs that run through it. */
+export interface Flame {
+  id: number;
+  x: number;
+  z: number;
+  r: number;
+  t: number;
+  life: number;
+}
+
+/** A firefly drifting in circles; food that touches it lights the whole world for a while. */
+export interface Firefly {
+  id: number;
+  cx: number;
+  cz: number;
+  r: number;
+  a: number;
+  speed: number;
+  ph: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
 /** What acid does to the player, and the umbrella that stops it. */
 export interface PlayerState {
   /** Seconds left of not being able to shoot. */
@@ -144,7 +168,15 @@ export type GameEvent =
   | { type: 'umbrella'; open: boolean }
   | { type: 'ally-in'; ally: Ally }
   | { type: 'ally-throw'; ally: Ally; shot: Shot; at: Vec3 }
-  | { type: 'ally-out'; ally: Ally };
+  | { type: 'ally-out'; ally: Ally }
+  /** A charging king rears up. */
+  | { type: 'rear'; bug: Bug }
+  /** A king won a heart back. */
+  | { type: 'heal'; bug: Bug }
+  /** A firefly was caught: the world lights up. */
+  | { type: 'firefly'; firefly: Firefly; byAlly: boolean }
+  /** A patch of fire started. */
+  | { type: 'flame'; flame: Flame };
 
 export interface ArenaOptions {
   seed?: number;
@@ -162,6 +194,15 @@ export interface ArenaOptions {
 }
 
 const STEP = 1 / 120;
+/** Seconds the world stays lit after a firefly is caught, and how many fireflies drift about. */
+export const LIGHT_TIME = 8;
+const FIREFLIES = 5;
+/** Fire: seconds between patches, how long one burns, how many at once, how big, and how long a scared bug runs. */
+const FLAME_EVERY = 5;
+const FLAME_LIFE = 9;
+const FLAMES_MAX = 3;
+const FLAME_RADIUS = 1.3;
+const PANIC = 2;
 /** Dizzy bugs kept on the disc for the mop; beyond this the oldest ones pop away. */
 const MAX_DAZED = 40;
 
@@ -188,6 +229,14 @@ export class Arena {
   readonly allyOptions: AllyOptions;
   private spitIn: number;
   private pending: GameEvent[] = [];
+  readonly flames: Flame[] = [];
+  readonly fireflies: Firefly[] = [];
+  /** Seconds of light left after catching a firefly. */
+  light = 0;
+  private flameIn = 4;
+  private flyIn = 0;
+  /** Kings that were just hit and shake helpers loose. */
+  private helpersDue: Bug[] = [];
 
   constructor(
     readonly level: Level,
@@ -204,7 +253,13 @@ export class Arena {
     this.groupIn = (level.groups ?? []).map((g) => Math.min(6, g.every * 0.4));
     this.rareIn = level.rareEvery ?? Infinity;
     setField(level.radius, 0, level.shape);
+    if (level.effects?.includes('dark') && !this.scripted) for (let i = 0; i < FIREFLIES; i++) this.fireflies.push(this.newFirefly());
     if (level.boss && !this.scripted) this.addBug('king', 0, -level.radius * 0.3, 0, level.boss).state = 'walk';
+  }
+
+  /** A dark chapter (the world draws itself dim until a firefly is caught). */
+  get dark(): boolean {
+    return !!this.level.effects?.includes('dark') && !this.scripted;
   }
 
   /** The king, while there is one standing. */
@@ -234,10 +289,13 @@ export class Arena {
       this.spawning(dt, events);
       this.spitting(dt, events);
       this.friend(dt, events);
+      this.weather(dt, events);
     }
     for (const b of this.bugs) {
       const was = b.state;
+      const rearing = b.rearT > 0;
       moveBug(b, dt, this.rng, { obstacles: this.obstacles, pace: this.level.pace });
+      if (b.rearT > 0 && !rearing) events.push({ type: 'rear', bug: b });
       if (b.state === 'hidden' && was !== 'hidden') events.push({ type: 'hide', bug: b });
       if (b.state === 'gone' && was === 'leaving') events.push({ type: 'escape', bug: b });
       if (b.state === 'dazed' && was === 'knocked') events.push({ type: 'land', bug: b });
@@ -252,6 +310,75 @@ export class Arena {
     for (let i = this.shots.length - 1; i >= 0; i--) if (this.shots[i].bodies.every((b) => b.mode === 'done')) this.shots.splice(i, 1);
     this.session.inFlight = this.shots.length;
     for (let i = this.bugs.length - 1; i >= 0; i--) if (this.bugs[i].state === 'gone') this.bugs.splice(i, 1);
+  }
+
+  // --- Fire and fireflies -------------------------------------------------------------------------------
+
+  private newFirefly(): Firefly {
+    const a = this.rng() * Math.PI * 2;
+    const d = this.level.radius * (0.15 + this.rng() * 0.4);
+    const f: Firefly = {
+      id: this.nextId++, cx: Math.sin(a) * d, cz: -Math.cos(a) * d, r: 1 + this.rng() * 1.6, a: this.rng() * Math.PI * 2,
+      speed: (0.5 + this.rng() * 0.5) * (this.rng() < 0.5 ? -1 : 1), ph: this.rng() * Math.PI * 2, x: 0, y: 0, z: 0,
+    };
+    this.driftFirefly(f, 0);
+    return f;
+  }
+
+  private driftFirefly(f: Firefly, dt: number) {
+    f.a += f.speed * dt;
+    f.x = f.cx + Math.cos(f.a) * f.r;
+    f.z = f.cz + Math.sin(f.a) * f.r;
+    f.y = groundAt(f.x, f.z) + 1.5 + Math.sin(f.a * 1.7 + f.ph) * 0.6;
+  }
+
+  /** Flames start and burn out and scare the bugs in them; fireflies drift about and come back after being caught. */
+  private weather(dt: number, events: GameEvent[]) {
+    const fx = this.level.effects;
+    if (!fx) return;
+    if (fx.includes('fire')) {
+      this.flameIn -= dt;
+      if (this.flameIn <= 0 && this.flames.length < FLAMES_MAX) {
+        this.flameIn = FLAME_EVERY * (0.8 + this.rng() * 0.4);
+        for (let tries = 0; tries < 10; tries++) {
+          const a = this.rng() * Math.PI * 2;
+          const d = this.level.radius * (0.15 + this.rng() * 0.5);
+          const x = Math.sin(a) * d;
+          const z = -Math.cos(a) * d;
+          if (!onDisc(x, z) || dist2D({ x, z }, slingAt()) < 4 || this.flames.some((f) => dist2D(f, { x, z }) < FLAME_RADIUS * 2.5)) continue;
+          if (this.obstacles.some((o) => footprint(o, x, z).d < FLAME_RADIUS)) continue;
+          const flame: Flame = { id: this.nextId++, x, z, r: FLAME_RADIUS, t: 0, life: FLAME_LIFE };
+          this.flames.push(flame);
+          events.push({ type: 'flame', flame });
+          break;
+        }
+      }
+      for (let i = this.flames.length - 1; i >= 0; i--) if ((this.flames[i].t += dt) >= this.flames[i].life) this.flames.splice(i, 1);
+      for (const b of this.bugs) {
+        if (b.def.hover || b.boss || !hittable(b)) continue;
+        if (this.flames.some((f) => f.t > 1 && dist2D(f, b) < f.r + b.def.radius * 0.5)) b.panic = PANIC;
+      }
+    }
+    if (fx.includes('dark')) {
+      this.light = Math.max(0, this.light - dt);
+      for (const f of this.fireflies) this.driftFirefly(f, dt);
+      if (this.fireflies.length < FIREFLIES && (this.flyIn -= dt) <= 0) {
+        this.flyIn = 2.5;
+        this.fireflies.push(this.newFirefly());
+      }
+    }
+  }
+
+  /** Food touching a firefly in the air catches it. */
+  private catchFireflies(shot: Shot, b: Body, events: GameEvent[]) {
+    for (let i = this.fireflies.length - 1; i >= 0; i--) {
+      const f = this.fireflies[i];
+      if (Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) > b.radius + 0.85) continue;
+      this.fireflies.splice(i, 1);
+      this.light = LIGHT_TIME;
+      this.flyIn = 2.5;
+      events.push({ type: 'firefly', firefly: f, byAlly: !!shot.byAlly });
+    }
   }
 
   // --- The friend ------------------------------------------------------------------------------------
@@ -375,7 +502,7 @@ export class Arena {
     this.spitIn -= dt;
     if (this.spitIn > 0) return;
     const busy = this.acids.length + this.bugs.filter((b) => b.spitT > 0).length;
-    const far = this.bugs.filter((b) => hittable(b) && b.state === 'walk' && !b.script && b.spitT === 0 && dist2D(b, slingAt()) > 5);
+    const far = this.bugs.filter((b) => hittable(b) && b.state === 'walk' && !b.script && b.spitT === 0 && b.rearT === 0 && b.chargeT === 0 && dist2D(b, slingAt()) > 5);
     if (p.goo > 0 || busy >= (this.king ? 2 : 1) || !far.length) {
       this.spitIn = 1.5;
       return;
@@ -407,7 +534,21 @@ export class Arena {
       this.rareIn = lv.rareEvery ?? Infinity;
       events.push({ type: 'spawn', bug: this.spawnAtEdge('golden') });
     }
-    // Kings call in helpers.
+    // Kings win hearts back, shake helpers loose when hit, and call in more.
+    for (const k of this.bugs) {
+      if (k.boss?.regen && k.state === 'walk' && k.hp < k.boss.hp && (k.sinceHit += dt) >= k.boss.regen.every) {
+        k.hp++;
+        k.sinceHit = 0;
+        events.push({ type: 'heal', bug: k });
+      }
+    }
+    for (const k of this.helpersDue.splice(0)) {
+      const s = k.boss?.summonOnHit;
+      for (let i = 0; s && i < s.count && this.activeBugs < lv.max + 5; i++) {
+        const a = this.rng() * Math.PI * 2;
+        events.push({ type: 'spawn', bug: this.addBug(s.kind, k.x + Math.sin(a) * (k.def.radius + 0.8), k.z + Math.cos(a) * (k.def.radius + 0.8), a) });
+      }
+    }
     for (const k of this.bugs) {
       const s = k.boss?.summon;
       if (!s || !hittable(k)) continue;
@@ -515,6 +656,7 @@ export class Arena {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.z += b.vz * dt;
+    if (this.fireflies.length) this.catchFireflies(shot, b, events);
 
     // Pizza splits into slices at the top of its flight.
     if (food.after.kind === 'split' && b.piece === 'whole' && !b.split && b.vy <= 0) {
@@ -685,7 +827,9 @@ export class Arena {
     const none = { points: 0, multiplier: 1, chain: this.session.chain, mega: false };
     if (bug.shelled > 0 || (boss.armor && b.food.knock < boss.armor)) return { bug, result: none, blocked: true };
     bug.hp--;
+    bug.sinceHit = 0;
     const down = bug.hp <= 0;
+    if (!down && boss.summonOnHit && !this.scripted) this.helpersDue.push(bug);
     if (down) knock(bug, from, dir, 2, this.rng);
     else {
       let dx = bug.x - from.x;

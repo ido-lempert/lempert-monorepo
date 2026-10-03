@@ -25,8 +25,14 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<
 
 export const foodName = (id: FoodId) => t(`food_${id}` as StringKey);
 
-/** "מלך הנמלים" and so on. */
-export const kingName = (level: Level) => (level.boss ? t(`king_${level.boss.look}` as StringKey) : '');
+/** "המלך נמלון הדוהר" and so on: the king of that bug, and its best-known trick (the first one it has). */
+export function kingName(level: Level): string {
+  const b = level.boss;
+  if (!b) return '';
+  const trick = b.charge ? 'charge' : b.shell ? 'shell' : b.armor ? 'armor' : b.regen ? 'regen' : b.summon ? 'summon' : b.summonOnHit ? 'split' : '';
+  const name = t(`king_${b.look}` as StringKey);
+  return trick ? `${name} ${t(`kingTrait${b.look === 'butterfly' ? 'F' : ''}_${trick}` as StringKey)}` : name;
+}
 
 export const worldName = (world: number) => t(`world_${WORLDS[world - 1].theme}` as StringKey);
 

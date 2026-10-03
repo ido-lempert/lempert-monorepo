@@ -398,7 +398,7 @@ export function disc(theme: Theme, radius: number, shape: WorldShape): THREE.Gro
   const g = new THREE.Group();
   const depth = -COUNTER_Y;
   const groundTex = worldGround(theme);
-  const ground = mat('#ffffff', { map: groundTex, rough: look.gloss ? 0.35 : theme === 'snow' ? 0.5 : 0.95, rim: 0, clearcoat: look.gloss ? 0.8 : undefined, sheen: theme === 'snow' ? 0.7 : undefined });
+  const ground = mat('#ffffff', { map: groundTex, rough: look.gloss ? 0.55 : theme === 'snow' ? 0.5 : 0.95, rim: 0, sheen: theme === 'snow' ? 0.7 : undefined });
   const [s1, s2, s3] = look.soil;
   g.add(slab(radius, shape, 0, 0, 0.3, ground, mat(look.lip, { rough: 0.85, rim: 0 })));
   // A soft rounded rim along the edge.
