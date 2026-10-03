@@ -25,6 +25,13 @@ export type Sfx =
   | 'win'
   | 'lose'
   | 'swish'
+  | 'wind'
+  | 'spit'
+  | 'umbrella'
+  | 'friend'
+  | 'firefly'
+  | 'rumble'
+  | 'heal'
   | 'buy'
   | 'whoosh'
   | 'tink'
@@ -533,6 +540,32 @@ export class Sound {
         break;
       case 'swish':
         this.hiss(bus, t, 0.35, 500, 0.4, 0.6, 'bandpass', 2500);
+        break;
+      case 'wind':
+        // A bubbling gurgle that rises: something is about to be spat.
+        this.tone(bus, 'sine', 140, 420, t, 0.85, 0.12, 0.05);
+        this.hiss(bus, t, 0.8, 900, 0.18, 3, 'bandpass', 1800);
+        break;
+      case 'spit':
+        this.hiss(bus, t, 0.18, 1800, 0.4, 1.2, 'bandpass', 600);
+        this.tone(bus, 'sine', 600, 220, t, 0.2, 0.14);
+        break;
+      case 'friend':
+        [76, 83, 88].forEach((n, i) => this.pluck(bus, midi(n + 12), t + i * 0.07, 0.3, 0.25, 2.5, 2));
+        break;
+      case 'firefly':
+        [84, 88, 91, 96].forEach((n, i) => this.pluck(bus, midi(n + 12), t + i * 0.06, 0.35, 0.2, 3, 2));
+        break;
+      case 'rumble':
+        this.tone(bus, 'sawtooth', 70, 120, t, 0.6, 0.1, 0.05);
+        this.hiss(bus, t, 0.5, 300, 0.2, 2, 'bandpass', 400);
+        break;
+      case 'heal':
+        [72, 76, 79].forEach((n, i) => this.pluck(bus, midi(n + 12), t + i * 0.09, 0.35, 0.2, 1.6, 2));
+        break;
+      case 'umbrella':
+        this.hiss(bus, t, 0.14, 1400, 0.3, 0.8, 'bandpass', 3200);
+        this.pluck(bus, midi(79), t + 0.06, 0.3, 0.25, 2, 2);
         break;
       case 'buy':
         this.pluck(bus, midi(88), t, 0.3, 0.3, 1.4, 3);

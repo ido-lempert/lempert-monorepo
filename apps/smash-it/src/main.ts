@@ -104,11 +104,16 @@ function popup(html: string, at: Vec3, cls = '') {
   setTimeout(() => d.remove(), 1150);
 }
 
+/** Goo on the screen: full right after a hit, fading out over the last second or so. */
+function goo(seconds: number) {
+  $('goo').style.opacity = String(Math.min(1, seconds / 1.2));
+}
+
 function buzz(ms: number) {
   if (prefs.haptics && !prefs.calm) navigator.vibrate?.(ms);
 }
 
-const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'combo', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'reveal', 'album', 'board', 'join'];
+const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'combo', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'umbrella', 'friend', 'reveal', 'album', 'board', 'join'];
 function show(...ids: string[]) {
   for (const id of screens) $(id).classList.toggle('hidden', !ids.includes(id));
   closeMenu();
@@ -182,7 +187,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 /** The player's current world, with its bugs wandering about (no king, no clock). */
 function demoLevel(): Level {
   const l = levelById(progress.unlocked);
-  return { ...l, time: 1e9, boss: undefined, groups: undefined, rareEvery: undefined, max: 7, obstacles: l.obstacles.filter((o) => o.kind !== 'fence') };
+  return { ...l, time: 1e9, boss: undefined, groups: undefined, rareEvery: undefined, max: 7, obstacles: l.obstacles.filter((o) => o.kind !== 'fence'), spit: undefined };
 }
 let demo = new Arena(demoLevel());
 
@@ -242,9 +247,11 @@ function startLevel(withMission = false, assist = false) {
     $('aim-hint').classList.add('hidden');
     if (firstTime(progress, 'aim')) save();
   };
-  play = new Play(world, sound, progress, level, { popup, banner, toast: (text) => say(text), shot, tip, buzz }, () => prefs.calm, assist);
+  play = new Play(world, sound, progress, level, { popup, banner, toast: (text) => say(text), shot, tip, buzz, goo }, () => prefs.calm, assist);
   starsReached = 1;
-  show('hud', 'tray', 'top-stack', 'rotate', ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
+  $('ammo-text').textContent = '';
+  show('hud', 'tray', 'top-stack', 'rotate', ...(level.spit ? ['umbrella'] : []), ...(level.ally ? ['friend'] : []), ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
+  goo(0);
   renderTray(progress, play.food, pickFood);
   banner(daily ? t('daily') : t('chapter', { n: level.id }), '', 1100);
   // Tips for this moment, in order: the mission (when there was no intro card), the food tray, the best food here.
@@ -254,7 +261,13 @@ function startLevel(withMission = false, assist = false) {
   if (level.boss) coach.say('👑', t('coachKing', { name: kingName(level), n: level.boss.hp }));
   sound.setTheme(level.boss ? 'boss' : 'play');
   $('rotate').classList.toggle('hidden', !level.rotate);
+  tip('ammo', '🧺', t('coachAmmo'));
   if (level.rotate) tip('rotate', '🔄', t('coachRotate'));
+  if (level.ally) tip('friendTip', '🐰', t('coachFriend'));
+  if (level.spit) tip('umbrellaTip', '🌂', t('coachUmbrella'));
+  if (level.effects?.includes('dark')) tip('weatherDark', '🌙', t('coachDark'));
+  if (level.effects?.includes('fire')) tip('weatherFire', '🔥', t('coachFire'));
+  if (level.effects?.includes('smoke')) tip('weatherSmoke', '💨', t('coachSmoke'));
   if (level.obstacles.some((o) => o.kind === 'fence')) tip('fence', '🚧', t('coachFence'));
   if (progress.owned.length > 1 && tip('tray', '👇', t('coachTray'))) {
     $('tray').classList.remove('pulse');
@@ -761,6 +774,11 @@ const canvas = world.canvas;
 let mopDrag: { id: number; x: number } | null = null;
 canvas.addEventListener('pointerdown', (e) => {
   closeMenu();
+  if (mode === 'play' && play?.friendArmed) {
+    // The friend button was pressed: this tap places it instead of aiming.
+    if (!play.placeFriend(world.groundPoint(e.clientX, e.clientY))) say(t('friendGrass'));
+    return;
+  }
   if (mode === 'play' && play) {
     canvas.setPointerCapture(e.pointerId);
     play.pointerDown(e);
@@ -819,6 +837,11 @@ for (const [id, dir] of [['rot-ccw', -1], ['rot-cw', 1]] as const) {
   });
 }
 
+$('umbrella').addEventListener('click', () => play?.openUmbrella());
+$('friend').addEventListener('click', () => {
+  if (play?.armFriend()) say(t('friendPlace'));
+});
+
 // --- HUD -----------------------------------------------------------------------------------------------
 
 let lastSecond = -1;
@@ -826,6 +849,19 @@ function updateHud() {
   if (!play) return;
   const s = play.arena.session;
   $('time-text').textContent = clock(s.timeLeft);
+  const ammo = $('ammo-text');
+  const left = String(s.shotsLeft);
+  if (ammo.textContent !== left) {
+    const more = Number(ammo.textContent) < s.shotsLeft && ammo.textContent !== '';
+    ammo.textContent = left;
+    $('hud-ammo').classList.toggle('low', s.shotsLeft <= 5);
+    if (more) {
+      $('hud-ammo').classList.remove('pop');
+      void $('hud-ammo').offsetWidth;
+      $('hud-ammo').classList.add('pop');
+      sound.play('coin');
+    }
+  }
   const sec = Math.ceil(s.timeLeft);
   const hurry = sec <= 10 && !play.over;
   $('hud-time').classList.toggle('hurry', hurry);
@@ -835,6 +871,29 @@ function updateHud() {
     if (!play.over) sound.setTheme(sec <= 20 ? 'hurry' : level.boss ? 'boss' : 'play');
   }
   $('score-text').textContent = num(s.score);
+  const me = play.arena.player;
+  goo(me.goo);
+  const um = $('umbrella');
+  const uo = play.arena.umbrellaOptions;
+  if (!um.classList.contains('hidden')) {
+    const ready = me.cooldown <= 0;
+    um.classList.toggle('ready', ready);
+    um.classList.toggle('open', me.umbrella > 0);
+    (um as HTMLButtonElement).disabled = !ready;
+    $('umbrella-ring').style.setProperty('--k', String(me.umbrella > 0 ? me.umbrella / uo.open : 1 - me.cooldown / (uo.cooldown + uo.open)));
+  }
+  const fr = $('friend');
+  if (!fr.classList.contains('hidden')) {
+    const arena = play.arena;
+    const ready = arena.allyReady;
+    fr.classList.toggle('ready', ready);
+    fr.classList.toggle('open', !!arena.ally);
+    fr.classList.toggle('armed', play.friendArmed && ready);
+    (fr as HTMLButtonElement).disabled = !ready;
+    const ao = arena.allyOptions;
+    $('friend-ring').style.setProperty('--k', String(arena.ally ? arena.ally.life / arena.ally.max : 1 - arena.allyRest / ao.rest));
+    if (!ready) play.friendArmed = false;
+  }
   // The star meter: a little cheer each time the score passes a star.
   const reached = updateStarMeter(level, s.score);
   if (reached > starsReached) {

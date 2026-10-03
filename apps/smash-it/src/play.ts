@@ -10,7 +10,7 @@ import type { Level } from './game/levels';
 import { type Aim, aimFromPull, dist2D, field, MAX_YAW, slingAt, type Vec3 } from './game/physics';
 import { type Bug, BUGS, hittable } from './game/bugs';
 import type { Voice } from './audio';
-import { comboWindow, guideLength, type Progress } from './game/progress';
+import { ammoFor, comboWindow, friendFor, guideLength, type Progress, umbrellaFor } from './game/progress';
 import { type StringKey, t } from './i18n';
 import type { World } from './world/world';
 
@@ -26,6 +26,8 @@ export interface PlayUi {
   tip(id: string, icon: string, text: string): boolean;
   /** A short vibration (phones that support it). */
   buzz(ms: number): void;
+  /** Goo on the screen for this many seconds (0 clears it). */
+  goo(seconds: number): void;
 }
 
 const EFFECT_SOUND: Record<Effect, Sfx> = {
@@ -85,7 +87,7 @@ export class Play {
     /** A longer aiming guide, offered after failing a chapter twice. */
     private readonly assist = false,
   ) {
-    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers });
+    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers, ammo: ammoFor(progress, level.ammo), umbrella: umbrellaFor(progress), ally: friendFor(progress) });
     this.food = progress.owned.includes(progress.food) ? progress.food : 'cookie';
     this.goalsMet = level.goals.map(() => false);
     world.setLevel(level);
@@ -146,6 +148,36 @@ export class Play {
     this.world.setSlingAngle(field.angle);
   }
 
+  /** The friend button was pressed: the next tap on the grass places it (pressed again: changes its mind). */
+  friendArmed = false;
+
+  armFriend(): boolean {
+    if (!this.level.ally || this.paused || this.ending !== null || !this.arena.allyReady) return false;
+    this.friendArmed = !this.friendArmed;
+    return this.friendArmed;
+  }
+
+  /** Places the friend at a spot on the grass; false when that is not possible. */
+  placeFriend(at: Vec3 | null): boolean {
+    if (!at || !this.arena.placeAlly(at.x, at.z, this.food)) return false;
+    this.friendArmed = false;
+    return true;
+  }
+
+  /** The keyboard has no pointer, so the friend goes to a spot between the middle and the slingshot. */
+  private placeFriendDefault(): boolean {
+    if (!this.arena.allyReady) return false;
+    const s = slingAt();
+    const k = 0.5;
+    return this.placeFriend({ x: s.x * k, y: 0, z: s.z * k });
+  }
+
+  /** Opens the umbrella against acid. */
+  openUmbrella(): boolean {
+    if (!this.level.spit || this.paused || this.ending !== null) return false;
+    return this.arena.openUmbrella();
+  }
+
   /** Arrows aim, Q and E walk around the world, space or Enter throws, 1–8 picks a food. */
   key(e: KeyboardEvent): boolean {
     if (!this.canAim()) return false;
@@ -171,6 +203,12 @@ export class Play {
         if (!this.level.rotate) return false;
         this.turn(e.key.toLowerCase() === 'q' ? -0.12 : 0.12);
         return true;
+      case 'f':
+      case 'F':
+        return this.level.ally ? this.placeFriendDefault() : false;
+      case 'u':
+      case 'U':
+        return this.openUmbrella();
       case ' ':
       case 'Enter':
         if (k.on) this.fire({ yaw: k.yaw, power: k.power });
@@ -204,13 +242,15 @@ export class Play {
   }
 
   private fire(aim: Aim) {
-    if (this.reloadLeft > 0 || this.ending !== null) return;
+    if (this.reloadLeft > 0 || this.ending !== null || this.arena.session.shotsLeft <= 0 || this.arena.player.stun > 0) return;
     this.arena.fire(this.food, aim.yaw, aim.power);
     this.world.fired();
     this.sound.play('launch');
     this.reloadFor = FOODS[this.food].reload;
     this.reloadLeft = 1;
     this.ui.shot();
+    const left = this.arena.session.shotsLeft;
+    if (left <= 5 && left > 0) this.ui.tip('ammoLow', '🧺', t('coachAmmoLow'));
     const f = FOODS[this.food];
     if (f.id !== 'cookie') this.ui.tip(`food:${f.id}`, f.emoji, t(`foodInfo_${f.id}` as StringKey));
   }
@@ -254,7 +294,7 @@ export class Play {
       this.ui.banner(t('allDone'), 'mint', 2000);
       this.sound.play('win');
     } else {
-      this.ui.banner(t('timeUp'), 'pink', 2000);
+      this.ui.banner(t(s.outOfAmmo && s.timeLeft > 0 ? 'noAmmo' : 'timeUp'), 'pink', 2000);
       this.sound.play('buzzer');
     }
   }
@@ -338,8 +378,10 @@ export class Play {
       switch (e.type) {
         case 'impact':
         case 'roll-hit': {
-          this.shotHits.set(e.shot.id, (this.shotHits.get(e.shot.id) ?? 0) + e.hits.length);
-          this.landed.set(e.shot.id, e.point);
+          if (!e.shot.byAlly) {
+            this.shotHits.set(e.shot.id, (this.shotHits.get(e.shot.id) ?? 0) + e.hits.length);
+            this.landed.set(e.shot.id, e.point);
+          }
           for (const h of e.hits) {
             if (h.bug.boss) continue;
             const d = BUGS[h.bug.kind];
@@ -365,7 +407,10 @@ export class Play {
               this.sound.play('fanfare');
               this.ui.banner(t('kingDown'), 'mint', 1800);
               this.world.cam.shake(0.5);
-            } else this.sound.voice(voiceOf(h.bug), i % 3 === 2 ? 'whee' : 'ouch', s.hits + i);
+            } else {
+              this.sound.voice(voiceOf(h.bug), i % 3 === 2 ? 'whee' : 'ouch', s.hits + i);
+              if (h.bug.boss?.summonOnHit) this.ui.tip('kingSplit', '🐜', t('coachKingSplit'));
+            }
             const r = h.result;
             const text = r.multiplier > 1 ? `+${r.points} <small>×${r.multiplier}</small>` : `+${r.points}`;
             this.ui.popup(text, at, h.bug.def.rare || h.bug.boss ? 'gold' : '');
@@ -402,6 +447,53 @@ export class Play {
           break;
         case 'land':
           this.sound.voice(voiceOf(e.bug), 'dizzy');
+          break;
+        case 'wind':
+          this.ui.tip('wind', '🌂', t('coachSpit'));
+          this.sound.play('wind');
+          break;
+        case 'spit':
+          this.sound.play('spit');
+          break;
+        case 'splat':
+          this.ui.goo(this.arena.player.goo);
+          this.ui.buzz(80);
+          this.world.cam.shake(0.35);
+          this.sound.play('splat');
+          this.ui.tip('goo', '🟢', t('coachGoo'));
+          break;
+        case 'blocked':
+          this.sound.play('boing');
+          this.world.cam.shake(0.1);
+          this.ui.popup(t('blocked'), { x: e.acid.to.x, y: e.acid.y + 1, z: e.acid.to.z }, 'cheer');
+          break;
+        case 'dodged':
+          this.sound.play('splat');
+          break;
+        case 'umbrella':
+          if (e.open) this.sound.play('umbrella');
+          break;
+        case 'ally-in':
+          this.sound.play('friend');
+          break;
+        case 'ally-throw':
+          this.sound.play('swish');
+          break;
+        case 'ally-out':
+          this.sound.play('whoosh');
+          break;
+        case 'firefly':
+          this.sound.play('firefly');
+          this.ui.popup(t('lightOn'), { x: e.firefly.x, y: e.firefly.y + 0.5, z: e.firefly.z }, 'cheer');
+          break;
+        case 'rear':
+          this.sound.play('rumble');
+          this.sound.voice(voiceOf(e.bug), 'hmph');
+          this.ui.tip('kingCharge', '🐎', t('coachKingCharge'));
+          break;
+        case 'heal':
+          this.sound.play('heal');
+          this.ui.tip('kingHeal', '💚', t('coachKingHeal'));
           break;
       }
     }

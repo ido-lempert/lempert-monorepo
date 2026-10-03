@@ -5,7 +5,7 @@
 import { BUGS, type BugKind } from './game/bugs';
 import { areaRank, BOOST, FOOD_ORDER, FOODS, type FoodId, MAX_TIER } from './game/foods';
 import { type Goal, type Level, levelById, LEVELS, WORLDS } from './game/levels';
-import { FOOD_PRIZES, nextPrize, type Progress, shopOpen, SKINS, type SkinId, tierPrice, totalStars, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice } from './game/progress';
+import { FOOD_PRIZES, nextPrize, type Progress, shopOpen, SKINS, type SkinId, tierBlocker, tierPrice, totalStars, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice, upgradeVisible } from './game/progress';
 import type { Session } from './game/session';
 import { type StringKey, t } from './i18n';
 
@@ -25,8 +25,14 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<
 
 export const foodName = (id: FoodId) => t(`food_${id}` as StringKey);
 
-/** "מלך הנמלים" and so on. */
-export const kingName = (level: Level) => (level.boss ? t(`king_${level.boss.look}` as StringKey) : '');
+/** "המלך נמלון הדוהר" and so on: the king of that bug, and its best-known trick (the first one it has). */
+export function kingName(level: Level): string {
+  const b = level.boss;
+  if (!b) return '';
+  const trick = b.charge ? 'charge' : b.shell ? 'shell' : b.armor ? 'armor' : b.regen ? 'regen' : b.summon ? 'summon' : b.summonOnHit ? 'split' : '';
+  const name = t(`king_${b.look}` as StringKey);
+  return trick ? `${name} ${t(`kingTrait${b.look === 'butterfly' ? 'F' : ''}_${trick}` as StringKey)}` : name;
+}
 
 export const worldName = (world: number) => t(`world_${WORLDS[world - 1].theme}` as StringKey);
 
@@ -150,6 +156,12 @@ function priceButton(price: number | null, coins: number, onBuy: () => void): HT
   return btn;
 }
 
+function lockedButton(): HTMLButtonElement {
+  const btn = el('button', { class: 'primary' }, '🔒');
+  btn.disabled = true;
+  return btn;
+}
+
 export function renderShop(p: Progress, tab: ShopTab, a: ShopActions) {
   $('shop-coins').textContent = num(p.coins);
   for (const id of ['foods', 'upgrades', 'skins'] as ShopTab[]) $(`tab-${id}`).setAttribute('aria-selected', String(tab === id));
@@ -161,6 +173,7 @@ export function renderShop(p: Progress, tab: ShopTab, a: ShopActions) {
         const owned = p.owned.includes(id);
         const chosen = p.food === id;
         const tier = p.tiers[id] ?? 0;
+        const blocker = tierBlocker(p, id);
         const head = el('div', { class: 'item-head' }, el('span', { class: 'item-emoji', 'aria-hidden': 'true' }, owned ? f.emoji : '🎁'), el('h3', {}, owned ? foodName(id) : '?'));
         if (!owned) return el('div', { class: 'item locked' }, head, el('p', {}, t('foodLockedAt', { n: prizeChapter(id) })));
         const choose = el('button', { class: 'secondary' }, chosen ? `✓ ${t('chosen')}` : t('choose'));
@@ -173,13 +186,14 @@ export function renderShop(p: Progress, tab: ShopTab, a: ShopActions) {
           el('p', {}, t(`foodInfo_${id}` as StringKey)),
           el('div', { class: 'bars' }, ...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f))),
           el('p', { class: 'muted' }, `⬆️ ${t(`boost_${BOOST[id]}` as StringKey)} · ${t('tierOf', { n: tier, max: MAX_TIER })}`),
-          el('div', { class: 'item-actions' }, priceButton(tierPrice(p, id), p.coins, () => a.buyTier(id)), choose),
+          ...(blocker ? [el('p', { class: 'muted lock-note' }, `🔒 ${t('tierLocked', { food: foodName(blocker) })}`)] : []),
+          el('div', { class: 'item-actions' }, blocker ? lockedButton() : priceButton(tierPrice(p, id), p.coins, () => a.buyTier(id)), choose),
         );
       }),
     );
   } else if (tab === 'upgrades') {
     list.replaceChildren(
-      ...UPGRADE_ORDER.map((id) => {
+      ...UPGRADE_ORDER.filter((id) => upgradeVisible(p, id)).map((id) => {
         const u = UPGRADES[id];
         return el(
           'div',

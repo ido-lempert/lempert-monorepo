@@ -11,6 +11,9 @@ import { FOODS, type FoodId } from '../game/foods';
 import { type Level, LEVELS } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
+import { AcidView } from './acid';
+import { FriendView } from './friend';
+import { WeatherView } from './weather';
 import { Effects, SMEAR } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setOutlines, setWindTime } from './look';
 import { free, share } from './optimize';
@@ -103,6 +106,9 @@ export class CameraRig {
   }
 }
 
+const DARK_SUN = new THREE.Color('#8aa4ff');
+const DARK_SKY = [new THREE.Color('#080b26'), new THREE.Color('#141240'), new THREE.Color('#221a40')];
+
 export class World {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -117,6 +123,9 @@ export class World {
   private readonly bugLayer = new THREE.Group();
   private readonly foodLayer = new THREE.Group();
   private readonly obstacleLayer = new THREE.Group();
+  private readonly acid = new AcidView();
+  private readonly friend = new FriendView();
+  private readonly weather = new WeatherView();
   private sling = slingshot();
   private pouchFood: THREE.Group | null = null;
   private pouchFoodId: FoodId | null = null;
@@ -127,6 +136,10 @@ export class World {
   private readonly sun: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
   private readonly sky: THREE.Mesh;
+  /** How dark a dark chapter is right now (0 daylight .. 1 night); it eases back to 0 while a caught firefly lights the world. */
+  private dim = 0;
+  private dimApplied = -1;
+  private readonly lit = { sun: 2.6, hemi: 0.55, sunColor: new THREE.Color(), sky: [new THREE.Color(), new THREE.Color(), new THREE.Color()] };
   private ground: THREE.Group | null = null;
   private level: Level = LEVELS[0];
   private quality: Quality = initialQuality();
@@ -182,7 +195,7 @@ export class World {
     this.scene.add(back, fill);
     this.post = new Post(this.renderer, this.scene, this.camera, this.quality === 'high');
 
-    this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group);
+    this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group, this.acid.group, this.friend.group, this.weather.group);
     this.scene.add(this.sling.root);
     this.mopModel.visible = false;
     this.scene.add(this.mopModel);
@@ -342,14 +355,33 @@ export class World {
     this.mopModel.visible = false;
     this.scene.add(this.mopModel);
     const night = !!THEMES[theme].night;
-    this.sun.color.set(night ? '#9fb8ff' : '#ffe9c9');
-    this.sun.intensity = night ? 1.1 : 2.6;
-    this.hemi.intensity = night ? 0.3 : 0.55;
+    this.lit.sun = night ? 1.1 : 2.6;
+    this.lit.hemi = night ? 0.3 : 0.55;
+    this.lit.sunColor.set(night ? '#9fb8ff' : '#ffe9c9');
     this.hemi.color.set(night ? '#8090ff' : '#fff3df');
+    this.lit.sky[0].set(night ? '#1a1f4a' : '#5fb0e6');
+    this.lit.sky[1].set(night ? '#3a2f6a' : '#efcf9c');
+    this.lit.sky[2].set(night ? '#5a3f6a' : '#d99a64');
+    this.dimApplied = -1;
+  }
+
+  private darkTarget(): number {
+    const a = this.arena;
+    return a?.dark ? 1 - Math.min(1, a.light / 1.5) : 0;
+  }
+
+  /** A dark chapter dims the sun, the sky and the room until a firefly is caught. */
+  private dimLights(dt: number) {
+    this.dim += (this.darkTarget() - this.dim) * Math.min(1, dt * 3);
+    if (Math.abs(this.dim - this.dimApplied) < 0.002) return;
+    this.dimApplied = this.dim;
+    const k = this.dim;
+    this.sun.intensity = this.lit.sun * (1 - 0.8 * k);
+    this.hemi.intensity = this.lit.hemi * (1 - 0.4 * k);
+    this.scene.environmentIntensity = 1 - 0.86 * k;
+    this.sun.color.copy(this.lit.sunColor).lerp(DARK_SUN, k);
     const u = (this.sky.material as THREE.ShaderMaterial).uniforms;
-    u.top.value.set(night ? '#1a1f4a' : '#5fb0e6');
-    u.middle.value.set(night ? '#3a2f6a' : '#efcf9c');
-    u.bottom.value.set(night ? '#5a3f6a' : '#d99a64');
+    ['top', 'middle', 'bottom'].forEach((name, i) => u[name].value.copy(this.lit.sky[i]).lerp(DARK_SKY[i], k));
   }
 
   /** Repaints the slingshot (colours unlocked with stars). */
@@ -409,6 +441,10 @@ export class World {
   /** Draws `arena` from now on, with its own `effects` (the replay passes a fresh one). */
   bind(arena: Arena | null, effects: Effects = this.mess) {
     this.arena = arena;
+    this.acid.clear();
+    this.friend.clear();
+    this.weather.clear();
+    this.dim = this.darkTarget();
     for (const v of this.bugViews.values()) this.dropBug(v);
     this.bugViews.clear();
     for (const v of this.bodyViews.values()) this.dropBody(v);
@@ -609,6 +645,15 @@ export class World {
     this.post.setFocus(1.2, [0.2, 0.62]);
   }
 
+  /** The spot on the grass under a point of the screen (null when it points above the horizon). */
+  groundPoint(clientX: number, clientY: number): Vec3 | null {
+    const ndc = new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+    return hit ? { x: hit.x, y: 0, z: hit.z } : null;
+  }
+
   /** Where a 3D point is on the screen, in CSS pixels. */
   project(p: Vec3): { x: number; y: number; visible: boolean } {
     const v = v3(p).project(this.camera);
@@ -619,8 +664,19 @@ export class World {
 
   /** Turns game events into things to see. */
   show(events: GameEvent[]) {
+    this.friend.show(events, this.effects);
+    this.weather.show(events, this.effects);
     for (const e of events) {
       switch (e.type) {
+        case 'splat':
+        case 'dodged':
+        case 'blocked': {
+          // A puddle where it came down (the umbrella only gets a few drops).
+          const at = { x: e.acid.to.x, y: groundAt(e.acid.to.x, e.acid.to.z), z: e.acid.to.z };
+          if (e.type !== 'blocked') this.effects.splat(at, e.type === 'splat' ? 2.6 : 2, '#7bd62a', { x: 0, z: 1 });
+          this.effects.dust(at, '#9be83a', e.type === 'blocked' ? 0.5 : 1, e.type === 'blocked' ? 6 : 12);
+          break;
+        }
         case 'impact': {
           const n = Math.hypot(e.body.vx, e.body.vz) || 1;
           const effect = e.body.piece === 'slice' ? 'slices' : e.body.food.effect;
@@ -722,6 +778,10 @@ export class World {
     this.time += dt;
     this.syncBugs(gameDt);
     this.syncBodies(gameDt);
+    this.acid.update(this.arena, gameDt, this.time, this.effects);
+    this.friend.update(this.arena, gameDt, this.time);
+    this.weather.update(this.arena, gameDt, this.time, this.quality === 'high', this.effects);
+    this.dimLights(dt);
     this.effects.update(gameDt);
     this.updateSling(dt);
     this.cam.update(dt);

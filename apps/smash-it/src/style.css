@@ -834,6 +834,65 @@ body:has(#pause:not(.hidden)) .popups {
   background: rgba(26, 16, 48, 0.35);
 }
 
+.goo {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 38% 30% at 12% 18%, rgba(110, 200, 40, 0.92) 0 55%, transparent 100%),
+    radial-gradient(ellipse 34% 28% at 88% 24%, rgba(120, 210, 50, 0.9) 0 55%, transparent 100%),
+    radial-gradient(ellipse 40% 26% at 30% 86%, rgba(100, 190, 40, 0.92) 0 55%, transparent 100%),
+    radial-gradient(ellipse 36% 30% at 82% 82%, rgba(125, 215, 55, 0.9) 0 55%, transparent 100%),
+    radial-gradient(ellipse at center, transparent 40%, rgba(120, 205, 50, 0.5) 100%);
+}
+
+.skill {
+  position: fixed;
+  z-index: 10;
+  inset-inline-end: 16px;
+  width: 64px;
+  height: 64px;
+  font-size: 2rem;
+  touch-action: manipulation;
+}
+
+.skill.umbrella {
+  bottom: calc(max(12px, var(--safe-bottom)) + 150px);
+}
+
+.skill.friend {
+  bottom: calc(max(12px, var(--safe-bottom)) + 226px);
+}
+
+.skill.open,
+.skill.armed {
+  background: var(--sun);
+}
+
+.skill.armed {
+  animation: pulse 0.5s ease-in-out infinite alternate;
+}
+
+.skill:disabled {
+  opacity: 0.75;
+}
+
+.skill i {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ink) calc(var(--k, 1) * 360deg), transparent 0);
+  -webkit-mask: radial-gradient(circle, transparent 29px, #000 30px);
+  mask: radial-gradient(circle, transparent 29px, #000 30px);
+  pointer-events: none;
+}
+
+.skill.ready i {
+  display: none;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -1853,5 +1912,44 @@ body:has(#pause:not(.hidden)) .popups {
   .reveal-card > .actions {
     grid-area: actions;
     margin-top: 8px;
+  }
+}
+
+/* --- Ammo ------------------------------------------------------------------------------------------- */
+
+.hud-ammo {
+  min-height: var(--target);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: var(--lift);
+  font-size: 1.15rem;
+  white-space: nowrap;
+}
+
+.hud-ammo b {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.3rem;
+}
+
+.hud-ammo.low {
+  background: #ffe0e8;
+}
+
+.hud-ammo.pop {
+  animation: pulse 0.35s ease-in-out 2 alternate;
+}
+
+.lock-note {
+  margin: 4px 0;
+}
+
+@media (max-width: 560px) {
+  .hud-ammo {
+    font-size: 1rem;
+    padding: 4px 12px;
   }
 }

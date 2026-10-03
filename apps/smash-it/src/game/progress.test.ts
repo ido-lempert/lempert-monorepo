@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { FOODS, withTier } from './foods';
+import { FOODS, MAX_TIER, withTier } from './foods';
 import { dailyLevel, DAILY_ID, LEVELS } from './levels';
 import {
-  buyTier, buyUpgrade, canAffordUpgrade, chooseSkin, finishDaily, finishLevel, firstTime, FOOD_PRIZES, guideLength,
-  newProgress, nextPrize, parseProgress, shopOpen, tierPrice, totalStars, upgradePrice,
+  ammoFor, buyTier, buyUpgrade, canAffordUpgrade, chooseSkin, finishDaily, finishLevel, firstTime, FOOD_PRIZES, guideLength,
+  newProgress, nextPrize, parseProgress, shopOpen, tierBlocker, tierPrice, totalStars, friendFor, umbrellaFor, upgradePrice, upgradeVisible,
 } from './progress';
 
 describe('progress', () => {
@@ -19,7 +19,7 @@ describe('progress', () => {
       unlocked: 999, stars: { 1: 7, 777: 3 }, best: { 2: 1234.6 }, food: 'pizza', skin: 'galaxy',
     });
     expect(p.coins).toBe(0);
-    expect(p.upgrades).toEqual({ guide: 3, combo: 0 });
+    expect(p.upgrades).toEqual({ ammo: 0, guide: 3, combo: 0, umbrella: 0, friend: 0 });
     expect(p.unlocked).toBe(LEVELS.length);
     expect(p.stars).toEqual({ 1: 3 });
     expect(p.best).toEqual({ 2: 1234 });
@@ -65,18 +65,61 @@ describe('progress', () => {
     expect(p.skin).toBe('mint');
   });
 
-  it('upgrades foods it has, two tiers each, and other upgrades', () => {
+  it('upgrades foods it has, five tiers each, and other upgrades', () => {
     const p = newProgress();
     expect(tierPrice(p, 'pie')).toBeNull();
     expect(canAffordUpgrade(p)).toBe(false);
-    p.coins = 10_000;
+    p.coins = 100_000;
     expect(canAffordUpgrade(p)).toBe(true);
-    expect(buyTier(p, 'cookie')).toBe(true);
-    expect(buyTier(p, 'cookie')).toBe(true);
+    for (let i = 0; i < MAX_TIER; i++) expect(buyTier(p, 'cookie')).toBe(true);
     expect(buyTier(p, 'cookie')).toBe(false);
-    expect(p.tiers.cookie).toBe(2);
+    expect(p.tiers.cookie).toBe(MAX_TIER);
     for (let i = 0; i < 3; i++) expect(buyUpgrade(p, 'guide')).toBe(true);
     expect(upgradePrice(p, 'guide')).toBeNull();
+  });
+
+  it('prices climb with each tier and with each food', () => {
+    const p = newProgress();
+    p.owned = ['cookie', 'pizza'];
+    const prices: number[] = [];
+    p.coins = 1e9;
+    p.tiers.pizza = 0;
+    for (let i = 0; i < MAX_TIER; i++) {
+      prices.push(tierPrice(p, 'pizza')!);
+      p.tiers.pizza = i + 1;
+    }
+    expect(prices).toEqual([...prices].sort((a, b) => a - b));
+    expect(new Set(prices).size).toBe(MAX_TIER);
+    expect(tierPrice(newProgress(), 'cookie')!).toBeLessThan(prices[0]);
+  });
+
+  it('a food can only be upgraded once the food before it is fully upgraded', () => {
+    const p = newProgress();
+    p.owned = ['cookie', 'popcorn', 'cheese'];
+    p.coins = 1e9;
+    expect(tierBlocker(p, 'cookie')).toBeNull();
+    expect(tierBlocker(p, 'popcorn')).toBe('cookie');
+    expect(buyTier(p, 'popcorn')).toBe(false);
+    expect(tierBlocker(p, 'cheese')).toBe('popcorn');
+    for (let i = 0; i < MAX_TIER; i++) buyTier(p, 'cookie');
+    expect(tierBlocker(p, 'popcorn')).toBeNull();
+    expect(buyTier(p, 'popcorn')).toBe(true);
+    expect(buyTier(p, 'cheese')).toBe(false);
+    // Coins alone do not make the shop worth opening while the food is locked.
+    const q = newProgress();
+    q.owned = ['cookie', 'popcorn'];
+    for (let i = 0; i < MAX_TIER; i++) q.tiers.cookie = i + 1;
+    q.coins = 0;
+    expect(canAffordUpgrade(q)).toBe(false);
+  });
+
+  it('the ammo upgrade adds shots to every chapter', () => {
+    const p = newProgress();
+    expect(ammoFor(p, 30)).toBe(30);
+    p.coins = 1e9;
+    buyUpgrade(p, 'ammo');
+    buyUpgrade(p, 'ammo');
+    expect(ammoFor(p, 30)).toBe(38);
   });
 
   it('food tiers widen hits, add bounces and rings', () => {
@@ -84,6 +127,10 @@ describe('progress', () => {
     expect(withTier(FOODS.jelly, 1).after).toEqual({ kind: 'bounce', times: 3 });
     expect(withTier(FOODS.donut, 2).after).toEqual({ kind: 'rings', count: 5 });
     expect(withTier(FOODS.pie, 0)).toBe(FOODS.pie);
+    // The later tiers keep adding a little, and never past the top.
+    expect(withTier(FOODS.cookie, 5).area).toBeGreaterThan(withTier(FOODS.cookie, 2).area);
+    expect(withTier(FOODS.cookie, 99)).toEqual(withTier(FOODS.cookie, MAX_TIER));
+    expect(withTier(FOODS.jelly, 5).after).toEqual({ kind: 'bounce', times: 5 });
   });
 
   it('the guide upgrade never shortens a chapter guide', () => {
@@ -115,5 +162,47 @@ describe('progress', () => {
     expect(p.daily).toEqual({ date: '2026-10-02', best: 500 });
     expect(finishDaily(p, '2026-10-03', 100, 10)).toBe(true);
     expect(p.coins).toBe(90);
+  });
+});
+
+describe('umbrella', () => {
+  it('shows up in the shop only once acid does, and gets longer and quicker with each tier', () => {
+    const p = newProgress();
+    expect(upgradeVisible(p, 'umbrella')).toBe(false);
+    expect(upgradeVisible(p, 'ammo')).toBe(true);
+    p.unlocked = 21;
+    expect(upgradeVisible(p, 'umbrella')).toBe(true);
+    const base = umbrellaFor(p);
+    p.coins = 99999;
+    expect(buyUpgrade(p, 'umbrella')).toBe(true);
+    const better = umbrellaFor(p);
+    expect(better.open).toBeGreaterThan(base.open);
+    expect(better.cooldown).toBeLessThan(base.cooldown);
+  });
+
+  it('is not offered to a player who cannot use it yet', () => {
+    const p = newProgress();
+    p.coins = 300;
+    p.tiers = { cookie: MAX_TIER };
+    p.upgrades = { ammo: 5, guide: 3, combo: 3, umbrella: 0, friend: 0 };
+    expect(canAffordUpgrade(p)).toBe(false);
+    p.unlocked = 21;
+    expect(canAffordUpgrade(p)).toBe(true);
+  });
+});
+
+describe('friend', () => {
+  it('appears from chapter 8 and each tier stays longer, throws faster and returns sooner', () => {
+    const p = newProgress();
+    expect(upgradeVisible(p, 'friend')).toBe(false);
+    p.unlocked = 8;
+    expect(upgradeVisible(p, 'friend')).toBe(true);
+    const base = friendFor(p);
+    p.coins = 99999;
+    expect(buyUpgrade(p, 'friend')).toBe(true);
+    const better = friendFor(p);
+    expect(better.life).toBeGreaterThan(base.life);
+    expect(better.every).toBeLessThan(base.every);
+    expect(better.rest).toBeLessThan(base.rest);
   });
 });

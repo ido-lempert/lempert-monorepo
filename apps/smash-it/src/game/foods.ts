@@ -100,24 +100,29 @@ export function areaRank(f: Food): 1 | 2 | 3 {
   return f.area < 0.9 ? 1 : f.area < 1.6 ? 2 : 3;
 }
 
-/** What a food's two upgrade tiers improve. */
+/** What a food's upgrade tiers improve. */
 export type Boost = 'area' | 'bounce' | 'rings' | 'splash';
 export const BOOST: Record<FoodId, Boost> = {
   cookie: 'area', popcorn: 'area', cheese: 'area', pizza: 'area',
   jelly: 'bounce', donut: 'rings', watermelon: 'splash', pie: 'splash',
 };
-export const MAX_TIER = 2;
+export const MAX_TIER = 5;
+
+/** The first two tiers are the big steps; the later ones add a little more each (and a little reach for every food). */
+const stepsOf = (tier: number) => (tier <= 2 ? tier : 2 + (tier - 2) * 0.5);
 
 /** A food with its upgrades: wider hits, an extra bounce, an extra ring, or a bigger splash. */
 export function withTier(f: Food, tier: number): Food {
   if (tier <= 0) return f;
   const t = Math.min(MAX_TIER, tier);
+  const steps = stepsOf(t);
+  const extra = Math.floor(steps);
   switch (BOOST[f.id]) {
     case 'bounce':
-      return { ...f, after: f.after.kind === 'bounce' ? { kind: 'bounce', times: f.after.times + t } : f.after };
+      return { ...f, area: f.area * (1 + 0.06 * Math.max(0, t - 2)), after: f.after.kind === 'bounce' ? { kind: 'bounce', times: f.after.times + extra } : f.after };
     case 'rings':
-      return { ...f, after: f.after.kind === 'rings' ? { kind: 'rings', count: f.after.count + t } : f.after };
+      return { ...f, area: f.area * (1 + 0.06 * Math.max(0, t - 2)), after: f.after.kind === 'rings' ? { kind: 'rings', count: f.after.count + extra } : f.after };
     default:
-      return { ...f, area: f.area * (1 + 0.2 * t) };
+      return { ...f, area: f.area * (1 + 0.2 * steps) };
   }
 }

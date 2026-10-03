@@ -153,6 +153,7 @@
     <!-- Playing -->
     <header class="hud hidden" id="hud">
       <div class="hud-time" id="hud-time" role="timer"><span class="hud-label" data-i18n="time"></span> <b id="time-text" dir="ltr">03:00</b></div>
+      <div class="hud-ammo" id="hud-ammo" role="status"><span aria-hidden="true">🧺</span> <b id="ammo-text" dir="ltr"></b><span class="sr-only" data-i18n="ammoLeft"></span></div>
       <div class="hud-goals" id="hud-goals"></div>
       <div class="hud-score">
         <b id="score-text">0</b> <span class="hud-label" data-i18n="score"></span>
@@ -172,6 +173,10 @@
       <button class="icon" id="rot-ccw" data-i18n-attr="aria-label:rotateCcw;title:rotateCcw" dir="ltr">⟲</button>
       <button class="icon" id="rot-cw" data-i18n-attr="aria-label:rotateCw;title:rotateCw" dir="ltr">⟳</button>
     </div>
+
+    <button class="icon skill umbrella hidden" id="umbrella" data-i18n-attr="aria-label:umbrella;title:umbrella"><span aria-hidden="true">🌂</span><i id="umbrella-ring" aria-hidden="true"></i></button>
+ <button class="icon skill friend hidden" id="friend" data-i18n-attr="aria-label:friend;title:friend"><span aria-hidden="true">🐰</span><i id="friend-ring" aria-hidden="true"></i></button>
+    <div class="goo" id="goo" aria-hidden="true"></div>
 
     <!-- Replay -->
     <div class="replay-bar hidden" id="replay-bar">

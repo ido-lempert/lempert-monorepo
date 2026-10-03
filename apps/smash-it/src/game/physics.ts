@@ -169,6 +169,17 @@ export function launchVelocity(yaw: number, distance: number, angleDeg: number, 
   return { x: d.x * v * cos, y: v * Math.sin(th), z: d.z * v * cos };
 }
 
+/** The launch velocity from anywhere that lands on the grass at `to`, at a fixed launch angle (a friend's throw). */
+export function launchToward(from: Vec3, to: { x: number; z: number }, angleDeg: number, gravity: number): Vec3 {
+  const th = (angleDeg * Math.PI) / 180;
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const d = Math.max(0.5, Math.hypot(dx, dz));
+  const cos = Math.cos(th);
+  const v = Math.sqrt((gravity * d * d) / (2 * cos * cos * (from.y - SURFACE_Y + d * Math.tan(th))));
+  return { x: (dx / d) * v * cos, y: v * Math.sin(th), z: (dz / d) * v * cos };
+}
+
 /** Seconds until a body launched with `vy` from height `y0` comes down to `ground`. */
 export function flightTime(y0: number, vy: number, gravity: number, ground = SURFACE_Y): number {
   return (vy + Math.sqrt(vy * vy + 2 * gravity * (y0 - ground))) / gravity;
