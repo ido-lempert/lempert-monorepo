@@ -354,10 +354,13 @@ function endLevel() {
   sound.setTheme('quiet');
   if (!shots.length) return showResult();
   mode = 'replay';
+  replayAt = performance.now();
   replay = new Replay(world, sound, level, shots);
   show('replay-bar', 'vignette');
   $('vignette').classList.remove('dark');
 }
+
+let replayAt = 0;
 
 function showResult() {
   replay?.stop();
@@ -624,7 +627,7 @@ $('result-again').addEventListener('click', () => {
 });
 $('result-shop').addEventListener('click', () => openShop());
 $('result-share').addEventListener('click', () => void shareResult());
-$('replay-skip').addEventListener('click', () => showResult());
+$('replay-skip').addEventListener('click', () => mode === 'replay' && showResult());
 $('reveal-ok').addEventListener('click', () => closePrize(true));
 $('reveal-later').addEventListener('click', () => closePrize(false));
 $('mop-skip').addEventListener('click', () => {
@@ -881,9 +884,11 @@ document.querySelectorAll<HTMLElement>('[data-page]').forEach((b) =>
 // --- Input ---------------------------------------------------------------------------------------------
 
 const canvas = world.canvas;
-let mopDrag: { id: number; x: number } | null = null;
+let mopDrag: { id: number; x: number; moved: boolean } | null = null;
 canvas.addEventListener('pointerdown', (e) => {
   closeMenu();
+  // A tap anywhere skips the replay (not in the first moment, so the last shots' taps don't skip it by accident).
+  if (mode === 'replay' && performance.now() - replayAt > 700) return showResult();
   if (mode === 'play' && play?.friendArmed) {
     // The friend button was pressed: this tap places it instead of aiming.
     if (!play.placeFriend(world.groundPoint(e.clientX, e.clientY))) say(t('friendGrass'));
@@ -894,18 +899,21 @@ canvas.addEventListener('pointerdown', (e) => {
     play.pointerDown(e);
   } else if (mode === 'mop') {
     canvas.setPointerCapture(e.pointerId);
-    mopDrag = { id: e.pointerId, x: e.clientX };
+    mopDrag = { id: e.pointerId, x: e.clientX, moved: false };
   }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (mode === 'play') play?.pointerMove(e);
   else if (mode === 'mop' && mopDrag && e.pointerId === mopDrag.id) {
+    if (Math.abs(e.clientX - mopDrag.x) > 8) mopDrag.moved = true;
     mop?.drag(e.clientX - mopDrag.x);
     mopDrag.x = Math.max(mopDrag.x, e.clientX);
   }
 });
 const up = (e: PointerEvent) => {
   if (mode === 'play') play?.pointerUp(e);
+  // Once the mop has been seen, a plain tap (no drag) skips it, like the button.
+  if (e.type === 'pointerup' && mode === 'mop' && mopDrag && !mopDrag.moved && progress.seen.includes('mop') && mop?.finish()) afterMop();
   mopDrag = null;
 };
 canvas.addEventListener('pointerup', up);
@@ -924,6 +932,10 @@ addEventListener('keydown', (e) => {
     if (mode === 'play') return pause(!play?.paused);
   }
   if (mode === 'play' && play && !play.paused && play.key(e)) e.preventDefault();
+  if (mode === 'replay' && (e.key === 'Escape' || e.key === 'Enter') && performance.now() - replayAt > 700) {
+    showResult();
+    return e.preventDefault();
+  }
   if (mode === 'mop' && (e.key === 'ArrowRight' || e.key === ' ')) {
     mop?.drag(innerWidth * 0.06);
     e.preventDefault();
