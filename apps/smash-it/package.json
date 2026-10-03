@@ -9,14 +9,23 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "start": "node server/index.ts"
+    "start": "node server/index.ts",
+    "native:sync": "test -n \"$VITE_API_BASE\" || (echo 'Set VITE_API_BASE to the public https address of the game, ending with a slash' && exit 1) && npm run build && cap sync",
+    "native:assets": "capacitor-assets generate --iconBackgroundColor '#ff9f43' --splashBackgroundColor '#ffb84d' && rm -rf icons public/manifest.webmanifest",
+    "native:ios": "cap open ios",
+    "native:android": "cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
     "@fontsource-variable/rubik": "^5.3.0",
     "@libsql/client": "^0.18.0",
     "three": "^0.186.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@types/node": "^26.6.2",
     "@types/three": "^0.186.0",
     "typescript": "^5.9.3",

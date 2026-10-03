@@ -341,7 +341,7 @@ export const enUS: Dict = {
   // Pages
   privacyTitle: 'Privacy',
   privacyBody:
-    'The game doesn’t collect personal information, doesn’t ask you to sign up and doesn’t show ads. Your progress, coins and settings are saved only on your device (in the browser’s storage), and you can delete them from the menu at any time. If you choose to appear on the leaderboard, only a nickname (not a full name), a random device ID, your stars, your level and your daily challenge score are sent to the server. You can leave the leaderboard at any time, and then everything is deleted from the server.',
+    'The game doesn’t collect personal information, doesn’t ask you to sign up and doesn’t show ads. Your progress, coins and settings are saved only on your device (in the browser’s storage), and you can delete them from the menu at any time. If you choose to appear on the leaderboard, only a nickname (not a full name), a random device ID, your stars, your level and your daily challenge score are sent to the server. You can leave the leaderboard at any time, and then everything is deleted from the server. There are no analytics, no tracking, no purchases and no links out of the game. In the mobile apps, the nickname is picked from a list of silly names, so nobody types free text.',
   termsTitle: 'Terms of use',
   termsBody:
     'The game is free and made for fun. The bugs in the game are cartoons and nobody gets really hurt: they just spin around dizzy, and then the mop sweeps them off the screen. In the real world, we don’t throw food at anyone 🙂 The game is provided as is, and we may change it from time to time. Some of the food and kitchen models: Kenney (www.kenney.nl), licensed CC0.',

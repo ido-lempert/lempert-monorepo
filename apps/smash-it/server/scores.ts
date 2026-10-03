@@ -218,6 +218,9 @@ export class Scores {
   }
 }
 
+/** The store apps run the game from these origins (Capacitor: iOS `capacitor://localhost`, Android `https://localhost`). */
+export const APP_ORIGINS = new Set(['capacitor://localhost', 'https://localhost', 'http://localhost']);
+
 function send(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(status === 204 ? undefined : JSON.stringify(body));
@@ -234,6 +237,16 @@ function send(res: ServerResponse, status: number, body: unknown) {
 export function handleScores(scores: Scores, req: IncomingMessage, res: ServerResponse): boolean {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname !== SCORES_PATH) return false;
+  const origin = req.headers.origin;
+  if (origin && APP_ORIGINS.has(origin)) {
+    res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('vary', 'origin');
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, { 'access-control-allow-methods': 'GET, POST, DELETE', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' });
+    res.end();
+    return true;
+  }
   if (req.method === 'GET') {
     const date = url.searchParams.get('date') ?? '';
     const id = url.searchParams.get('id') ?? '';

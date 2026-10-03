@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Smash It!</string>
+    <string name="title_activity_main">Smash It!</string>
+    <string name="package_name">com.lempert.smashit</string>
+    <string name="custom_url_scheme">com.lempert.smashit</string>
+</resources>

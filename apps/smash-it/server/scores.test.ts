@@ -2,7 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanName, parseReport, Scores, type ScoreStore } from './scores.ts';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { cleanName, handleScores, parseReport, Scores, type ScoreStore } from './scores.ts';
 import { fileStore, storeFromEnv } from './scoresStore.ts';
 
 const ID = 'abcd1234-ef';
@@ -110,5 +111,38 @@ describe('saving', () => {
   it('trims pasted settings, and falls back to the file for a broken database address', () => {
     expect(() => storeFromEnv({ TURSO_DATABASE_URL: 'libsql://example.turso.io\n', TURSO_AUTH_TOKEN: 'abc\n' }, '/tmp/x.json')).not.toThrow();
     expect(() => storeFromEnv({ TURSO_DATABASE_URL: 'not a url at all' }, '/tmp/x.json')).not.toThrow();
+  });
+});
+
+describe('store apps (CORS)', () => {
+  const call = (method: string, origin?: string) => {
+    const headers: Record<string, string> = {};
+    let status = 0;
+    const res = {
+      setHeader: (k: string, v: string) => void (headers[k] = v),
+      writeHead: (code: number, h?: Record<string, string>) => {
+        status = code;
+        Object.assign(headers, h);
+      },
+      end: () => {},
+    } as unknown as ServerResponse;
+    const req = { url: '/api/scores', method, headers: origin ? { origin } : {} } as unknown as IncomingMessage;
+    const handled = handleScores(new Scores(), req, res);
+    return { handled, status, headers };
+  };
+
+  it('answers the preflight of an app origin', () => {
+    for (const origin of ['capacitor://localhost', 'https://localhost']) {
+      const r = call('OPTIONS', origin);
+      expect(r.handled).toBe(true);
+      expect(r.status).toBe(204);
+      expect(r.headers['access-control-allow-origin']).toBe(origin);
+      expect(r.headers['access-control-allow-methods']).toContain('DELETE');
+    }
+  });
+
+  it('does not open the API to other sites', () => {
+    expect(call('OPTIONS', 'https://evil.example').headers['access-control-allow-origin']).toBeUndefined();
+    expect(call('OPTIONS').headers['access-control-allow-origin']).toBeUndefined();
   });
 });

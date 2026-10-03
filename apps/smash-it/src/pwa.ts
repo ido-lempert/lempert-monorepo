@@ -1,4 +1,5 @@
 /** Install prompt, full-screen and connectivity helpers for the PWA. */
+import { isNative } from './native';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -29,7 +30,7 @@ export function onPwaChange(fn: () => void) {
 }
 
 export function isStandalone(): boolean {
-  return matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+  return isNative() || matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 }
 
 export function canInstall(): boolean {

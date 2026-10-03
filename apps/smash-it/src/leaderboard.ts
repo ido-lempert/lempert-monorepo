@@ -6,7 +6,8 @@ import { pick, makeRng } from './game/rng';
 import { t } from './i18n';
 
 const KEY = 'smashIt.player';
-const API = 'api/scores';
+/** The web build asks its own server; a store app (served from the device) needs the full address at build time. */
+const API = `${import.meta.env.VITE_API_BASE ?? ''}api/scores`;
 
 export interface Player {
   id: string;
