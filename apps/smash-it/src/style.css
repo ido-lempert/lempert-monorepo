@@ -1026,7 +1026,9 @@ body:has(#pause:not(.hidden)) .popups {
 }
 
 .menu-grid button,
-.menu-links button {
+.menu-links button,
+.dev > button,
+.dev-tools button {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1039,15 +1041,18 @@ body:has(#pause:not(.hidden)) .popups {
 }
 
 .menu-grid button:hover,
-.menu-links button:hover {
+.menu-links button:hover,
+.dev button:hover {
   background: var(--line);
 }
 
-.menu-grid button[aria-pressed='false'] {
+.menu-grid button[aria-pressed='false'],
+.dev > button[aria-pressed='false'] {
   color: var(--ink-soft);
 }
 
-.menu-grid button[aria-pressed='false'] > span:first-child {
+.menu-grid button[aria-pressed='false'] > span:first-child,
+.dev > button[aria-pressed='false'] > span:first-child {
   filter: grayscale(1);
   opacity: 0.6;
 }
@@ -1070,6 +1075,97 @@ body:has(#pause:not(.hidden)) .popups {
   font-size: 0.9rem;
   color: var(--ink-soft);
   text-align: start;
+}
+
+.version {
+  display: block;
+  width: 100%;
+  min-height: var(--target);
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.dev {
+  margin-top: 14px;
+  padding: 12px;
+  border: 2px dashed var(--ink-soft);
+  border-radius: 14px;
+}
+
+.dev h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.dev-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dev-tools button,
+.dev-chapter {
+  min-height: var(--target);
+}
+
+.dev-chapter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.dev-chapter select {
+  min-height: var(--target);
+  flex: 1;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink-soft);
+  border-radius: 10px;
+}
+
+.debug-hud {
+  position: fixed;
+  z-index: 90;
+  inset-inline-start: 4px;
+  bottom: 4px;
+  max-width: calc(100vw - 8px);
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #d9ffd9;
+  font: 10px/1.25 ui-monospace, Menlo, monospace;
+  pointer-events: none;
+}
+
+.debug-hud pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.debug-hud div {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.debug-hud button {
+  pointer-events: auto;
+  min-height: var(--target);
+  min-width: var(--target);
+  padding: 0 10px;
+  font: 12px ui-monospace, Menlo, monospace;
+  color: #fff;
+  background: #2d5a2d;
+  border: 1px solid #9f9;
+  border-radius: 8px;
 }
 
 .page-body {

@@ -332,7 +332,21 @@
           <button data-page="terms"><span aria-hidden="true">📜</span> <span data-i18n="terms"></span></button>
           <button id="m-reset"><span aria-hidden="true">↺</span> <span data-i18n="reset"></span></button>
         </div>
-        <p class="version"><span data-i18n="version"></span> <span id="app-version" dir="ltr"></span></p>
+        <section class="dev hidden" id="dev" aria-labelledby="dev-title">
+          <h3 id="dev-title" data-i18n="devTitle"></h3>
+          <button id="dev-toggle" aria-pressed="false"><span aria-hidden="true">🛠</span> <span data-i18n="devMode"></span></button>
+          <div class="dev-tools hidden" id="dev-tools">
+            <button id="dev-copy"><span aria-hidden="true">📋</span> <span data-i18n="devCopy"></span></button>
+            <button id="dev-download"><span aria-hidden="true">💾</span> <span data-i18n="devDownload"></span></button>
+            <button id="dev-share" class="hidden"><span aria-hidden="true">📤</span> <span data-i18n="devShare"></span></button>
+            <button id="dev-clear"><span aria-hidden="true">🧹</span> <span data-i18n="devClear"></span></button>
+            <button id="dev-unlock"><span aria-hidden="true">🔓</span> <span data-i18n="devUnlock"></span></button>
+            <button id="dev-lose"><span aria-hidden="true">💥</span> <span data-i18n="devLose"></span></button>
+            <label class="dev-chapter"><span data-i18n="devChapter"></span> <select id="dev-chapter"></select></label>
+            <button id="dev-go"><span aria-hidden="true">▶</span> <span data-i18n="devGo"></span></button>
+          </div>
+        </section>
+        <button class="version" id="version-tap" type="button"><span data-i18n="version"></span> <span id="app-version" dir="ltr"></span></button>
       </div>
     </section>
 
