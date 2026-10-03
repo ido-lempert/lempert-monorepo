@@ -296,6 +296,14 @@ export const es: Dict = {
   coachCost: 'Las comidas grandes gastan más disparos, y las mejoras las abaratan. El número de cada botón es lo que te queda de esa comida.',
   prizeFriend: 'Conejo ayudante',
   prizeFriendText: '¡Un conejo nuevo que te ayuda! Colócalo en el césped y lanza comida solo durante unos segundos.',
+  dlTitle: 'Smash It! para Android',
+  dlLead: 'Descarga el instalador directamente de GitHub: sin tienda y sin pagar.',
+  dlButton: 'Descargar la app (APK)',
+  dlStep1: 'Toca el botón y abre el archivo descargado.',
+  dlStep2: 'Si el teléfono lo pide, permite instalar desde este navegador (solo una vez).',
+  dlStep3: 'Instala, ábrela y a lanzar comida.',
+  dlWeb: '¿No tienes Android? Juega en el navegador y añádelo a la pantalla de inicio.',
+  dlMissing: 'El instalador no está disponible ahora. Prueba otra vez en un rato.',
 
   // Foods
   food_cookie: 'Galleta',

@@ -78,6 +78,53 @@ ${contact ? `<p>Contact: <a href="mailto:${esc(contact)}">${esc(contact)}</a></p
   },
 });
 
+/**
+ * The Android download page (download.html): the installer (APK) lives in a GitHub release, so the page asks
+ * the GitHub API for the newest `smash-it-v*` release and links its .apk (the repo hosts several products,
+ * so "latest" can't be used). Texts come from the dictionaries, in the device's language.
+ */
+const REPO = 'ido-lempert/lempert-monorepo';
+const downloadPage = (): Plugin => ({
+  name: 'download-page',
+  generateBundle() {
+    const dicts = { he, 'en-US': enUS, 'en-GB': enGB, fr, ru, es, ar };
+    const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+    const sections = LANGUAGES.map(({ code, dir }) => {
+      const d = dicts[code];
+      return `<section id="${code}" lang="${code}" dir="${dir}"><h1>${esc(d.dlTitle)}</h1><p>${esc(d.dlLead)}</p>
+<p><a class="dl" href="https://github.com/${REPO}/releases">${esc(d.dlButton)}</a></p><p class="miss" hidden>${esc(d.dlMissing)}</p>
+<ol><li>${esc(d.dlStep1)}</li><li>${esc(d.dlStep2)}</li><li>${esc(d.dlStep3)}</li></ol><p><a href="./">${esc(d.dlWeb)}</a></p></section>`;
+    }).join('\n');
+    const nav = LANGUAGES.map(({ code, name }) => `<a href="#${code}" lang="${code}" data-lang="${code}">${esc(name)}</a>`).join(' · ');
+    const codes = JSON.stringify(LANGUAGES.map((l) => l.code));
+    const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smash It! – Android</title>
+<style>:root{color-scheme:light dark;--bg:#fff7e8;--ink:#2a1d3d;--btn:#ffd23f}@media(prefers-color-scheme:dark){:root{--bg:#1d1330;--ink:#fff3dc}}
+body{margin:0;padding:24px 16px;background:var(--bg);color:var(--ink);font:18px/1.6 system-ui,sans-serif}
+main{max-width:34rem;margin:0 auto}nav a{display:inline-block;padding:10px 4px;font-weight:700;color:inherit}
+a.dl{display:inline-block;min-height:44px;padding:14px 22px;border-radius:999px;background:var(--btn);color:#2a1d3d;font-weight:800;text-decoration:none}
+section{margin:1.5rem 0}li{margin:.4rem 0}</style></head>
+<body><main><nav>${nav}</nav>
+${sections}
+</main><script>
+(function(){var codes=${codes},api='https://api.github.com/repos/${REPO}/releases?per_page=30';
+function pick(){var l=(navigator.language||'en').toLowerCase();if(l==='en-gb'||l==='en-au'||l==='en-nz'||l==='en-ie')return 'en-GB';
+for(var i=0;i<codes.length;i++)if(l.split('-')[0]===codes[i].toLowerCase().split('-')[0]&&codes[i].indexOf('en-')!==0)return codes[i];return 'en-US';}
+function show(c){codes.forEach(function(k){document.getElementById(k).hidden=k!==c;});document.documentElement.lang=c;}
+show(location.hash.slice(1)&&codes.indexOf(location.hash.slice(1))>=0?location.hash.slice(1):pick());
+document.querySelectorAll('nav a').forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();show(a.dataset.lang);});});
+fetch(api).then(function(r){return r.json();}).then(function(rs){
+var rel=rs.filter(function(r){return /^smash-it-v/.test(r.tag_name)&&!r.draft&&!r.prerelease;})[0];
+var asset=rel&&rel.assets.filter(function(a){return /\.apk$/.test(a.name);})[0];
+if(!asset)throw 0;document.querySelectorAll('a.dl').forEach(function(a){a.href=asset.browser_download_url;});
+}).catch(function(){document.querySelectorAll('.miss').forEach(function(p){p.hidden=false;});});
+})();
+</script></body></html>`;
+    this.emitFile({ type: 'asset', fileName: 'download.html', source: html });
+  },
+});
+
 export default defineConfig({
   base: './',
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
@@ -85,6 +132,7 @@ export default defineConfig({
     scoresServer(),
     siteUrlInHtml(),
     privacyPage(),
+    downloadPage(),
     VitePWA({
       // main.ts offers an "Update" button instead of reloading mid-level.
       registerType: 'prompt',
@@ -115,7 +163,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2,glb}'],
         navigateFallback: 'index.html',
         // The leaderboards are live: never answered from the cache.
-        navigateFallbackDenylist: [/^\/api\//, /\/privacy\.html$/],
+        navigateFallbackDenylist: [/^\/api\//, /\/privacy\.html$/, /\/download\.html$/],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,

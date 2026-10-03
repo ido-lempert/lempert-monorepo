@@ -36,6 +36,22 @@ App id: `site.lempert.smash`. Texts for every language: `apps/smash-it/store/lis
 11. Screenshots: 6.9-inch iPhone portrait (1320x2868) per language.
 12. Build section: choose the uploaded build > Add for Review > Submit.
 
+## Free: signed APK from GitHub (no developer account)
+
+The page `https://smash.lempert.site/download.html` (all languages) links the newest GitHub release tagged `smash-it-v*`, so Android players install without a store.
+
+Once: the keystore is `~/.smash-it-release/smash-it.jks` with `keystore.properties` next to it (never in git; the repo is public). Back both up: a lost keystore means players can't update, they would have to uninstall first.
+
+Each release:
+
+1. Raise `versionCode` and `versionName` in `apps/smash-it/android/app/build.gradle`.
+2. `export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home VITE_API_BASE=https://smash.lempert.site/`
+3. `npm run native:sync -w smash-it`
+4. `cd apps/smash-it/android && ./gradlew assembleRelease`
+5. `cp app/build/outputs/apk/release/app-release.apk /tmp/smash-it.apk`
+6. `gh release create smash-it-v<versionName> /tmp/smash-it.apk --title "Smash It! <versionName>" --notes "..." --target smash-it`
+7. Merge to `main` once so `download.html` is deployed.
+
 ## Each update
 
 Raise `versionCode` and `versionName` in `apps/smash-it/android/app/build.gradle` and the Xcode Build number, then repeat from step 1.3 and the build steps.
