@@ -113,7 +113,7 @@ function buzz(ms: number) {
   if (prefs.haptics && !prefs.calm) navigator.vibrate?.(ms);
 }
 
-const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'combo', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'umbrella', 'reveal', 'album', 'board', 'join'];
+const screens = ['home', 'chapters', 'shop', 'intro', 'hud', 'tray', 'top-stack', 'combo', 'replay-bar', 'result', 'mop-hint', 'mop-skip', 'pause', 'vignette', 'aim-hint', 'banner', 'rotate', 'umbrella', 'friend', 'reveal', 'album', 'board', 'join'];
 function show(...ids: string[]) {
   for (const id of screens) $(id).classList.toggle('hidden', !ids.includes(id));
   closeMenu();
@@ -250,7 +250,7 @@ function startLevel(withMission = false, assist = false) {
   play = new Play(world, sound, progress, level, { popup, banner, toast: (text) => say(text), shot, tip, buzz, goo }, () => prefs.calm, assist);
   starsReached = 1;
   $('ammo-text').textContent = '';
-  show('hud', 'tray', 'top-stack', 'rotate', ...(level.spit ? ['umbrella'] : []), ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
+  show('hud', 'tray', 'top-stack', 'rotate', ...(level.spit ? ['umbrella'] : []), ...(level.ally ? ['friend'] : []), ...(progress.seen.includes('aim') ? [] : ['aim-hint']));
   goo(0);
   renderTray(progress, play.food, pickFood);
   banner(daily ? t('daily') : t('chapter', { n: level.id }), '', 1100);
@@ -263,6 +263,7 @@ function startLevel(withMission = false, assist = false) {
   $('rotate').classList.toggle('hidden', !level.rotate);
   tip('ammo', '🧺', t('coachAmmo'));
   if (level.rotate) tip('rotate', '🔄', t('coachRotate'));
+  if (level.ally) tip('friendTip', '🐰', t('coachFriend'));
   if (level.spit) tip('umbrellaTip', '🌂', t('coachUmbrella'));
   if (level.obstacles.some((o) => o.kind === 'fence')) tip('fence', '🚧', t('coachFence'));
   if (progress.owned.length > 1 && tip('tray', '👇', t('coachTray'))) {
@@ -770,6 +771,11 @@ const canvas = world.canvas;
 let mopDrag: { id: number; x: number } | null = null;
 canvas.addEventListener('pointerdown', (e) => {
   closeMenu();
+  if (mode === 'play' && play?.friendArmed) {
+    // The friend button was pressed: this tap places it instead of aiming.
+    if (!play.placeFriend(world.groundPoint(e.clientX, e.clientY))) say(t('friendGrass'));
+    return;
+  }
   if (mode === 'play' && play) {
     canvas.setPointerCapture(e.pointerId);
     play.pointerDown(e);
@@ -829,6 +835,9 @@ for (const [id, dir] of [['rot-ccw', -1], ['rot-cw', 1]] as const) {
 }
 
 $('umbrella').addEventListener('click', () => play?.openUmbrella());
+$('friend').addEventListener('click', () => {
+  if (play?.armFriend()) say(t('friendPlace'));
+});
 
 // --- HUD -----------------------------------------------------------------------------------------------
 
@@ -869,6 +878,18 @@ function updateHud() {
     um.classList.toggle('open', me.umbrella > 0);
     (um as HTMLButtonElement).disabled = !ready;
     $('umbrella-ring').style.setProperty('--k', String(me.umbrella > 0 ? me.umbrella / uo.open : 1 - me.cooldown / (uo.cooldown + uo.open)));
+  }
+  const fr = $('friend');
+  if (!fr.classList.contains('hidden')) {
+    const arena = play.arena;
+    const ready = arena.allyReady;
+    fr.classList.toggle('ready', ready);
+    fr.classList.toggle('open', !!arena.ally);
+    fr.classList.toggle('armed', play.friendArmed && ready);
+    (fr as HTMLButtonElement).disabled = !ready;
+    const ao = arena.allyOptions;
+    $('friend-ring').style.setProperty('--k', String(arena.ally ? arena.ally.life / arena.ally.max : 1 - arena.allyRest / ao.rest));
+    if (!ready) play.friendArmed = false;
   }
   // The star meter: a little cheer each time the score passes a star.
   const reached = updateStarMeter(level, s.score);

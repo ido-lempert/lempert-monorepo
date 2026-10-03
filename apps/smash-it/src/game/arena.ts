@@ -6,7 +6,7 @@
 import { active, type BossDef, type Bug, BUGS, type BugKind, footprint, hittable, knock, makeBug, moveBug, type Obstacle } from './bugs';
 import { type Food, FOODS, type FoodId, withTier } from './foods';
 import type { Level } from './levels';
-import { COUNTER_Y, dist2D, edgeAt, field, groundAt, innerRadius, launchVelocity, onDisc, rangeFor, setField, slingAt, SURFACE_Y, type Vec3 } from './physics';
+import { COUNTER_Y, dist2D, edgeAt, field, flightTime, groundAt, innerRadius, launchToward, launchVelocity, onDisc, rangeFor, setField, slingAt, SURFACE_Y, type Vec3 } from './physics';
 import { makeRng, type Rng, weighted } from './rng';
 import { type HitResult, Session } from './session';
 
@@ -33,6 +33,24 @@ export interface PlayerState {
   /** Seconds of umbrella left, and seconds until it can open again. */
   umbrella: number;
   cooldown: number;
+}
+
+/** A friend standing on the grass, throwing at the nearest bug until its time runs out. */
+export interface Ally {
+  id: number;
+  x: number;
+  z: number;
+  life: number;
+  max: number;
+  fireIn: number;
+  food: FoodId;
+}
+
+/** How long a friend stays, how often it throws, and how long before another can come. */
+export interface AllyOptions {
+  life: number;
+  every: number;
+  rest: number;
 }
 
 /** How close acid must come to the slingshot to hit it. */
@@ -75,6 +93,8 @@ export interface Shot {
   /** Session clock at launch. */
   at: number;
   bodies: Body[];
+  /** Thrown by the friend (costs no shots, and says nothing about the player's aim). */
+  byAlly?: boolean;
 }
 
 /** What a replay needs to stage a shot again. */
@@ -121,7 +141,10 @@ export type GameEvent =
   | { type: 'blocked'; acid: Acid }
   /** It came down where the player wasn't. */
   | { type: 'dodged'; acid: Acid }
-  | { type: 'umbrella'; open: boolean };
+  | { type: 'umbrella'; open: boolean }
+  | { type: 'ally-in'; ally: Ally }
+  | { type: 'ally-throw'; ally: Ally; shot: Shot; at: Vec3 }
+  | { type: 'ally-out'; ally: Ally };
 
 export interface ArenaOptions {
   seed?: number;
@@ -134,6 +157,8 @@ export interface ArenaOptions {
   ammo?: number;
   /** The umbrella: seconds open, and seconds before it can open again. */
   umbrella?: { open: number; cooldown: number };
+  /** The friend: seconds it stays, seconds between throws, seconds of rest before the next one. */
+  ally?: AllyOptions;
 }
 
 const STEP = 1 / 120;
@@ -157,6 +182,10 @@ export class Arena {
   readonly acids: Acid[] = [];
   readonly player: PlayerState = { stun: 0, goo: 0, safe: 0, umbrella: 0, cooldown: 0 };
   readonly umbrellaOptions: { open: number; cooldown: number };
+  ally: Ally | null = null;
+  /** Seconds until a friend can be called again. */
+  allyRest = 0;
+  readonly allyOptions: AllyOptions;
   private spitIn: number;
   private pending: GameEvent[] = [];
 
@@ -170,6 +199,7 @@ export class Arena {
     this.scripted = !!o.scripted;
     this.tiers = o.tiers ?? {};
     this.umbrellaOptions = o.umbrella ?? { open: 3, cooldown: 7 };
+    this.allyOptions = o.ally ?? { life: 8, every: 1.5, rest: 22 };
     this.spitIn = level.spit ? 8 : Infinity;
     this.groupIn = (level.groups ?? []).map((g) => Math.min(6, g.every * 0.4));
     this.rareIn = level.rareEvery ?? Infinity;
@@ -203,6 +233,7 @@ export class Arena {
       this.session.tick(dt);
       this.spawning(dt, events);
       this.spitting(dt, events);
+      this.friend(dt, events);
     }
     for (const b of this.bugs) {
       const was = b.state;
@@ -221,6 +252,66 @@ export class Arena {
     for (let i = this.shots.length - 1; i >= 0; i--) if (this.shots[i].bodies.every((b) => b.mode === 'done')) this.shots.splice(i, 1);
     this.session.inFlight = this.shots.length;
     for (let i = this.bugs.length - 1; i >= 0; i--) if (this.bugs[i].state === 'gone') this.bugs.splice(i, 1);
+  }
+
+  // --- The friend ------------------------------------------------------------------------------------
+
+  /** Whether a friend can be called in right now. */
+  get allyReady(): boolean {
+    return !!this.level.ally && !this.scripted && !this.ally && this.allyRest <= 0;
+  }
+
+  /** Puts a friend on the grass at (x, z); it throws `food` from there. */
+  placeAlly(x: number, z: number, food: FoodId = 'cookie'): boolean {
+    if (!this.allyReady || !onDisc(x, z)) return false;
+    this.ally = { id: this.nextId++, x, z, life: this.allyOptions.life, max: this.allyOptions.life, fireIn: 0.6, food };
+    this.pending.push({ type: 'ally-in', ally: this.ally });
+    return true;
+  }
+
+  private friend(dt: number, events: GameEvent[]) {
+    this.allyRest = Math.max(0, this.allyRest - dt);
+    const a = this.ally;
+    if (!a) return;
+    a.life -= dt;
+    if (a.life <= 0) {
+      this.ally = null;
+      this.allyRest = this.allyOptions.rest;
+      events.push({ type: 'ally-out', ally: a });
+      return;
+    }
+    a.fireIn -= dt;
+    if (a.fireIn > 0) return;
+    // The nearest bug that can be hit (not too close, not out of reach).
+    let target: Bug | null = null;
+    let best = Infinity;
+    for (const b of this.bugs) {
+      if (!hittable(b)) continue;
+      const d = dist2D(a, b);
+      if (d >= 2.5 && d < best && d < field.radius * 2) [target, best] = [b, d];
+    }
+    if (!target) {
+      a.fireIn = 0.3;
+      return;
+    }
+    a.fireIn = this.allyOptions.every;
+    const food = withTier(FOODS[a.food], this.tiers[a.food] ?? 0);
+    const from = { x: a.x, y: 1.2, z: a.z };
+    // Aims a little ahead of a walking bug, and a little off: a friend is not perfect.
+    const walking = target.state === 'walk' || target.state === 'enter';
+    const tvx = walking ? Math.sin(target.heading) * target.speed : 0;
+    const tvz = walking ? Math.cos(target.heading) * target.speed : 0;
+    const miss = { x: (this.rng() - 0.5) * 1.1, z: (this.rng() - 0.5) * 1.1 };
+    const at = { x: target.x + miss.x, y: 0, z: target.z + miss.z };
+    let v = launchToward(from, at, food.angle, food.gravity);
+    for (let i = 0; i < 2; i++) {
+      const t = flightTime(from.y, v.y, food.gravity);
+      at.x = target.x + tvx * t + miss.x;
+      at.z = target.z + tvz * t + miss.z;
+      v = launchToward(from, at, food.angle, food.gravity);
+    }
+    const shot = this.launch(food, from, v, undefined, true);
+    events.push({ type: 'ally-throw', ally: a, shot, at });
   }
 
   // --- Acid and the umbrella --------------------------------------------------------------------------
@@ -396,11 +487,11 @@ export class Arena {
     return this.launch(food, slingAt(), launchVelocity(yaw, rangeFor(power), food.angle, food.gravity));
   }
 
-  launch(food: Food, origin: Vec3, velocity: Vec3, shotId?: number): Shot {
-    const shot: Shot = { id: shotId ?? this.nextId++, food, origin, velocity, at: this.session.clock, bodies: [] };
+  launch(food: Food, origin: Vec3, velocity: Vec3, shotId?: number, byAlly = false): Shot {
+    const shot: Shot = { id: shotId ?? this.nextId++, food, origin, velocity, at: this.session.clock, bodies: [], byAlly };
     shot.bodies.push(this.body(shot, 'whole', origin, velocity, food.radius, food.area));
     this.shots.push(shot);
-    this.session.shot();
+    if (!byAlly) this.session.shot();
     this.session.inFlight = this.shots.length;
     this.records.set(shot.id, { shotId: shot.id, food: food.id, tier: this.tiers[food.id] ?? 0, origin: { ...origin }, velocity: { ...velocity }, hits: [] });
     return shot;

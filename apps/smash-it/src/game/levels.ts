@@ -90,6 +90,8 @@ export const WORLDS: WorldDef[] = [
 export const LEVELS_PER_WORLD = 10;
 /** From this chapter on the slingshot can walk around the world, and fences guard bugs. */
 export const ROTATE_FROM = 21;
+/** From this chapter on a friend can be called in to throw alongside the player. */
+export const ALLY_FROM = 8;
 
 export interface Level {
   id: number;
@@ -121,6 +123,8 @@ export interface Level {
   boss?: BossDef;
   /** Bugs spit acid at the player every so many seconds (from the chapter where the slingshot can walk away from it). */
   spit?: { every: number };
+  /** A friend can be placed to help (from `ALLY_FROM`). */
+  ally?: boolean;
   /** The food that suits this chapter best (a tip suggests it). */
   tip: FoodId;
   /** Points for the 2nd and 3rd star. */
@@ -282,7 +286,7 @@ function makeLevel(w: number, i: number, seed?: number): Level {
   return {
     id: n, world: w + 1, index: i + 1, radius: R, theme: stage.theme, shape: stage.shape, time, ammo, goals,
     mix, max: Math.max(2, max), groups: groups.length ? groups : undefined, rareEvery,
-    guide, pace, obstacles, rotate, boss: bossDef, tip, spit: rotate ? { every: Math.max(9, Math.round(19 - w * 1.1 - (boss ? 4 : 0))) } : undefined,
+    guide, pace, obstacles, rotate, boss: bossDef, tip, ally: n >= ALLY_FROM, spit: rotate ? { every: Math.max(9, Math.round(19 - w * 1.1 - (boss ? 4 : 0))) } : undefined,
     stars: [round(expected * 0.9, 100), round(expected * 1.4, 100)],
   };
 }

@@ -3,7 +3,7 @@ import { FOODS, MAX_TIER, withTier } from './foods';
 import { dailyLevel, DAILY_ID, LEVELS } from './levels';
 import {
   ammoFor, buyTier, buyUpgrade, canAffordUpgrade, chooseSkin, finishDaily, finishLevel, firstTime, FOOD_PRIZES, guideLength,
-  newProgress, nextPrize, parseProgress, shopOpen, tierBlocker, tierPrice, totalStars, umbrellaFor, upgradePrice, upgradeVisible,
+  newProgress, nextPrize, parseProgress, shopOpen, tierBlocker, tierPrice, totalStars, friendFor, umbrellaFor, upgradePrice, upgradeVisible,
 } from './progress';
 
 describe('progress', () => {
@@ -19,7 +19,7 @@ describe('progress', () => {
       unlocked: 999, stars: { 1: 7, 777: 3 }, best: { 2: 1234.6 }, food: 'pizza', skin: 'galaxy',
     });
     expect(p.coins).toBe(0);
-    expect(p.upgrades).toEqual({ ammo: 0, guide: 3, combo: 0, umbrella: 0 });
+    expect(p.upgrades).toEqual({ ammo: 0, guide: 3, combo: 0, umbrella: 0, friend: 0 });
     expect(p.unlocked).toBe(LEVELS.length);
     expect(p.stars).toEqual({ 1: 3 });
     expect(p.best).toEqual({ 2: 1234 });
@@ -184,9 +184,25 @@ describe('umbrella', () => {
     const p = newProgress();
     p.coins = 300;
     p.tiers = { cookie: MAX_TIER };
-    p.upgrades = { ammo: 5, guide: 3, combo: 3, umbrella: 0 };
+    p.upgrades = { ammo: 5, guide: 3, combo: 3, umbrella: 0, friend: 0 };
     expect(canAffordUpgrade(p)).toBe(false);
     p.unlocked = 21;
     expect(canAffordUpgrade(p)).toBe(true);
+  });
+});
+
+describe('friend', () => {
+  it('appears from chapter 8 and each tier stays longer, throws faster and returns sooner', () => {
+    const p = newProgress();
+    expect(upgradeVisible(p, 'friend')).toBe(false);
+    p.unlocked = 8;
+    expect(upgradeVisible(p, 'friend')).toBe(true);
+    const base = friendFor(p);
+    p.coins = 99999;
+    expect(buyUpgrade(p, 'friend')).toBe(true);
+    const better = friendFor(p);
+    expect(better.life).toBeGreaterThan(base.life);
+    expect(better.every).toBeLessThan(base.every);
+    expect(better.rest).toBeLessThan(base.rest);
   });
 });

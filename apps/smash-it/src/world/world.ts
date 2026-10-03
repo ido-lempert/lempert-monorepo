@@ -12,6 +12,7 @@ import { type Level, LEVELS } from '../game/levels';
 import type { SkinId } from '../game/progress';
 import { type Aim, aimDir, field, groundAt, onDisc, launchVelocity, predictPath, rangeFor, slingAt, type Vec3 } from '../game/physics';
 import { AcidView } from './acid';
+import { FriendView } from './friend';
 import { Effects, SMEAR } from './effects';
 import { backdrop, blobTexture, dotTexture, grassField, initialQuality, mat, type Quality, setOutlines, setWindTime } from './look';
 import { free, share } from './optimize';
@@ -119,6 +120,7 @@ export class World {
   private readonly foodLayer = new THREE.Group();
   private readonly obstacleLayer = new THREE.Group();
   private readonly acid = new AcidView();
+  private readonly friend = new FriendView();
   private sling = slingshot();
   private pouchFood: THREE.Group | null = null;
   private pouchFoodId: FoodId | null = null;
@@ -184,7 +186,7 @@ export class World {
     this.scene.add(back, fill);
     this.post = new Post(this.renderer, this.scene, this.camera, this.quality === 'high');
 
-    this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group, this.acid.group);
+    this.scene.add(kitchen(), this.obstacleLayer, this.bugLayer, this.foodLayer, this.mess.group, this.acid.group, this.friend.group);
     this.scene.add(this.sling.root);
     this.mopModel.visible = false;
     this.scene.add(this.mopModel);
@@ -412,6 +414,7 @@ export class World {
   bind(arena: Arena | null, effects: Effects = this.mess) {
     this.arena = arena;
     this.acid.clear();
+    this.friend.clear();
     for (const v of this.bugViews.values()) this.dropBug(v);
     this.bugViews.clear();
     for (const v of this.bodyViews.values()) this.dropBody(v);
@@ -612,6 +615,15 @@ export class World {
     this.post.setFocus(1.2, [0.2, 0.62]);
   }
 
+  /** The spot on the grass under a point of the screen (null when it points above the horizon). */
+  groundPoint(clientX: number, clientY: number): Vec3 | null {
+    const ndc = new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+    return hit ? { x: hit.x, y: 0, z: hit.z } : null;
+  }
+
   /** Where a 3D point is on the screen, in CSS pixels. */
   project(p: Vec3): { x: number; y: number; visible: boolean } {
     const v = v3(p).project(this.camera);
@@ -622,6 +634,7 @@ export class World {
 
   /** Turns game events into things to see. */
   show(events: GameEvent[]) {
+    this.friend.show(events, this.effects);
     for (const e of events) {
       switch (e.type) {
         case 'splat':
@@ -735,6 +748,7 @@ export class World {
     this.syncBugs(gameDt);
     this.syncBodies(gameDt);
     this.acid.update(this.arena, gameDt, this.time, this.effects);
+    this.friend.update(this.arena, gameDt, this.time);
     this.effects.update(gameDt);
     this.updateSling(dt);
     this.cam.update(dt);

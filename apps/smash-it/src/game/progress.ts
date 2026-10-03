@@ -7,12 +7,13 @@
  * upgrades: two tiers for each food, a longer aiming guide and a longer combo window. Stars, summed over
  * all chapters, unlock slingshot colours (looks only).
  */
+import type { AllyOptions } from './arena';
 import type { BugKind } from './bugs';
 import { FOOD_ORDER, type FoodId, isFoodId, MAX_TIER } from './foods';
-import { LEVELS, ROTATE_FROM } from './levels';
+import { ALLY_FROM, LEVELS, ROTATE_FROM } from './levels';
 import { BASE_COMBO_WINDOW } from './session';
 
-export type UpgradeId = 'ammo' | 'guide' | 'combo' | 'umbrella';
+export type UpgradeId = 'ammo' | 'guide' | 'combo' | 'umbrella' | 'friend';
 
 export interface Upgrade {
   id: UpgradeId;
@@ -30,11 +31,13 @@ export const UPGRADES: Record<UpgradeId, Upgrade> = {
   combo: { id: 'combo', emoji: '⏱️', prices: [400, 900, 1800] },
   /** A longer-lasting umbrella that comes back sooner (acid only starts in the chapters that rotate). */
   umbrella: { id: 'umbrella', emoji: '🌂', prices: [300, 700, 1400, 2400] },
+  /** A friend that stays longer, throws faster and comes back sooner. */
+  friend: { id: 'friend', emoji: '🐰', prices: [350, 800, 1500, 2600] },
 };
-export const UPGRADE_ORDER: UpgradeId[] = ['ammo', 'guide', 'combo', 'umbrella'];
-/** The umbrella shows up in the shop once acid is a thing. */
+export const UPGRADE_ORDER: UpgradeId[] = ['ammo', 'guide', 'combo', 'friend', 'umbrella'];
+/** The umbrella and the friend show up in the shop once they are a thing. */
 export function upgradeVisible(p: Progress, id: UpgradeId): boolean {
-  return id !== 'umbrella' || p.unlocked >= ROTATE_FROM;
+  return id === 'umbrella' ? p.unlocked >= ROTATE_FROM : id !== 'friend' || p.unlocked >= ALLY_FROM;
 }
 /** Extra shots for each ammo tier. */
 export const AMMO_PER_TIER = 4;
@@ -84,7 +87,7 @@ export const KEY = 'smashIt.progress';
 
 export function newProgress(): Progress {
   return {
-    v: 1, coins: 0, owned: ['cookie'], upgrades: { ammo: 0, guide: 0, combo: 0, umbrella: 0 }, tiers: {}, unlocked: 1, stars: {}, best: {},
+    v: 1, coins: 0, owned: ['cookie'], upgrades: { ammo: 0, guide: 0, combo: 0, umbrella: 0, friend: 0 }, tiers: {}, unlocked: 1, stars: {}, best: {},
     food: 'cookie', skin: 'classic', album: {}, daily: { date: '', best: 0 }, fails: { level: 0, n: 0 }, seen: [],
   };
 }
@@ -253,6 +256,12 @@ export function guideLength(p: Progress, levelGuide: number): number {
 /** How many shots a chapter gives: its own, plus the ammo upgrade. */
 export function ammoFor(p: Progress, levelAmmo: number): number {
   return levelAmmo + p.upgrades.ammo * AMMO_PER_TIER;
+}
+
+/** How long the friend stays, how often it throws and how long before it can be called again. */
+export function friendFor(p: Progress): AllyOptions {
+  const t = p.upgrades.friend;
+  return { life: 8 + t * 2, every: 1.5 - t * 0.15, rest: 22 - t * 2 };
 }
 
 /** How long the umbrella stays open, and how long before it can open again. */

@@ -848,26 +848,38 @@ body:has(#pause:not(.hidden)) .popups {
     radial-gradient(ellipse at center, transparent 40%, rgba(120, 205, 50, 0.5) 100%);
 }
 
-.umbrella {
+.skill {
   position: fixed;
   z-index: 10;
   inset-inline-end: 16px;
-  bottom: calc(max(12px, var(--safe-bottom)) + 150px);
   width: 64px;
   height: 64px;
   font-size: 2rem;
   touch-action: manipulation;
 }
 
-.umbrella.open {
+.skill.umbrella {
+  bottom: calc(max(12px, var(--safe-bottom)) + 150px);
+}
+
+.skill.friend {
+  bottom: calc(max(12px, var(--safe-bottom)) + 226px);
+}
+
+.skill.open,
+.skill.armed {
   background: var(--sun);
 }
 
-.umbrella:disabled {
+.skill.armed {
+  animation: pulse 0.5s ease-in-out infinite alternate;
+}
+
+.skill:disabled {
   opacity: 0.75;
 }
 
-.umbrella i {
+.skill i {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
@@ -877,7 +889,7 @@ body:has(#pause:not(.hidden)) .popups {
   pointer-events: none;
 }
 
-.umbrella.ready i {
+.skill.ready i {
   display: none;
 }
 

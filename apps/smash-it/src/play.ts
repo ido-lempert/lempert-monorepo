@@ -10,7 +10,7 @@ import type { Level } from './game/levels';
 import { type Aim, aimFromPull, dist2D, field, MAX_YAW, slingAt, type Vec3 } from './game/physics';
 import { type Bug, BUGS, hittable } from './game/bugs';
 import type { Voice } from './audio';
-import { ammoFor, comboWindow, guideLength, type Progress, umbrellaFor } from './game/progress';
+import { ammoFor, comboWindow, friendFor, guideLength, type Progress, umbrellaFor } from './game/progress';
 import { type StringKey, t } from './i18n';
 import type { World } from './world/world';
 
@@ -87,7 +87,7 @@ export class Play {
     /** A longer aiming guide, offered after failing a chapter twice. */
     private readonly assist = false,
   ) {
-    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers, ammo: ammoFor(progress, level.ammo), umbrella: umbrellaFor(progress) });
+    this.arena = new Arena(level, { comboWindow: comboWindow(progress), tiers: progress.tiers, ammo: ammoFor(progress, level.ammo), umbrella: umbrellaFor(progress), ally: friendFor(progress) });
     this.food = progress.owned.includes(progress.food) ? progress.food : 'cookie';
     this.goalsMet = level.goals.map(() => false);
     world.setLevel(level);
@@ -148,6 +148,30 @@ export class Play {
     this.world.setSlingAngle(field.angle);
   }
 
+  /** The friend button was pressed: the next tap on the grass places it (pressed again: changes its mind). */
+  friendArmed = false;
+
+  armFriend(): boolean {
+    if (!this.level.ally || this.paused || this.ending !== null || !this.arena.allyReady) return false;
+    this.friendArmed = !this.friendArmed;
+    return this.friendArmed;
+  }
+
+  /** Places the friend at a spot on the grass; false when that is not possible. */
+  placeFriend(at: Vec3 | null): boolean {
+    if (!at || !this.arena.placeAlly(at.x, at.z, this.food)) return false;
+    this.friendArmed = false;
+    return true;
+  }
+
+  /** The keyboard has no pointer, so the friend goes to a spot between the middle and the slingshot. */
+  private placeFriendDefault(): boolean {
+    if (!this.arena.allyReady) return false;
+    const s = slingAt();
+    const k = 0.5;
+    return this.placeFriend({ x: s.x * k, y: 0, z: s.z * k });
+  }
+
   /** Opens the umbrella against acid. */
   openUmbrella(): boolean {
     if (!this.level.spit || this.paused || this.ending !== null) return false;
@@ -179,6 +203,9 @@ export class Play {
         if (!this.level.rotate) return false;
         this.turn(e.key.toLowerCase() === 'q' ? -0.12 : 0.12);
         return true;
+      case 'f':
+      case 'F':
+        return this.level.ally ? this.placeFriendDefault() : false;
       case 'u':
       case 'U':
         return this.openUmbrella();
@@ -351,8 +378,10 @@ export class Play {
       switch (e.type) {
         case 'impact':
         case 'roll-hit': {
-          this.shotHits.set(e.shot.id, (this.shotHits.get(e.shot.id) ?? 0) + e.hits.length);
-          this.landed.set(e.shot.id, e.point);
+          if (!e.shot.byAlly) {
+            this.shotHits.set(e.shot.id, (this.shotHits.get(e.shot.id) ?? 0) + e.hits.length);
+            this.landed.set(e.shot.id, e.point);
+          }
           for (const h of e.hits) {
             if (h.bug.boss) continue;
             const d = BUGS[h.bug.kind];
@@ -440,6 +469,15 @@ export class Play {
           break;
         case 'umbrella':
           if (e.open) this.sound.play('umbrella');
+          break;
+        case 'ally-in':
+          this.sound.play('friend');
+          break;
+        case 'ally-throw':
+          this.sound.play('swish');
+          break;
+        case 'ally-out':
+          this.sound.play('whoosh');
           break;
       }
     }

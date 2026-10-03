@@ -488,3 +488,62 @@ describe('acid', () => {
     expect(winds).toBe(0);
   });
 });
+
+describe('friend', () => {
+  const helpful: Level = { ...quiet, ally: true, max: 0, ammo: 3, goals: [{ kind: 'hits', n: 99 }] };
+
+  function setup(opts = {}) {
+    setField(7.5);
+    field.angle = 0;
+    const arena = new Arena(helpful, { seed: 4, ammo: 3, ally: { life: 8, every: 1.2, rest: 20 }, ...opts });
+    for (let i = 0; i < 8; i++) {
+      const b = arena.addBug('snail', -4 + i, -3 - (i % 3), 0);
+      b.state = 'walk';
+      b.script = { vx: 0, vz: 0 };
+    }
+    return arena;
+  }
+
+  it('can only be placed on the grass, one at a time, and only in chapters that allow it', () => {
+    const arena = setup();
+    expect(arena.placeAlly(50, 50)).toBe(false);
+    expect(arena.placeAlly(2, 4)).toBe(true);
+    expect(arena.placeAlly(-2, 4)).toBe(false);
+    const plain = new Arena({ ...quiet, max: 0 });
+    expect(plain.placeAlly(2, 4)).toBe(false);
+  });
+
+  it('throws at the nearest bug without using any of the player shots', () => {
+    const arena = setup();
+    arena.placeAlly(3, 5);
+    const left = arena.session.shotsLeft;
+    let throws = 0;
+    for (let i = 0; i < 6 * 60; i++) for (const e of arena.update(1 / 60)) if (e.type === 'ally-throw') throws++;
+    expect(throws).toBeGreaterThanOrEqual(4);
+    expect(arena.session.shotsLeft).toBe(left);
+    expect(arena.session.hits).toBeGreaterThan(0);
+  });
+
+  it('leaves after its time, rests, and can then be called again', () => {
+    const arena = setup();
+    arena.placeAlly(3, 5);
+    let out = 0;
+    for (let i = 0; i < 9 * 60; i++) for (const e of arena.update(1 / 60)) if (e.type === 'ally-out') out++;
+    expect(out).toBe(1);
+    expect(arena.ally).toBeNull();
+    expect(arena.placeAlly(3, 5)).toBe(false);
+    for (let i = 0; i < 20 * 60; i++) arena.update(1 / 60);
+    expect(arena.placeAlly(3, 5)).toBe(true);
+  });
+
+  it('does not end the chapter while its throws are still in the air', () => {
+    const arena = setup();
+    arena.placeAlly(3, 5);
+    arena.fire('cookie', 0, 0.2);
+    arena.fire('cookie', 0, 0.2);
+    arena.fire('cookie', 0, 0.2);
+    expect(arena.session.shotsLeft).toBe(0);
+    for (let i = 0; i < 3 * 60; i++) arena.update(1 / 60);
+    expect(arena.session.over).toBe(arena.shots.length === 0);
+  });
+});
