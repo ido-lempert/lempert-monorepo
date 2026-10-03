@@ -1261,6 +1261,14 @@ body:has(#pause:not(.hidden)) .popups {
   }
 }
 
+/* The pause sign is drawn, not typed: phones turn the ⏸ character into a coloured emoji. */
+.pause-bars {
+  width: 18px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--ink) 0 36%, transparent 36% 64%, var(--ink) 64%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2049,5 +2057,26 @@ body:has(#pause:not(.hidden)) .popups {
   .hud-ammo {
     font-size: 1rem;
     padding: 4px 12px;
+  }
+}
+
+/* Small phones (360 px wide): the clock, shots, stars and pause button must still fit on one row. */
+@media (max-width: 400px) {
+  .hud {
+    gap: 6px;
+  }
+  .hud-time,
+  .hud-ammo,
+  .hud-score {
+    padding: 4px 9px;
+    font-size: 0.95rem;
+  }
+  .hud-time b,
+  .hud-ammo b {
+    font-size: 1.1rem;
+  }
+  .meter {
+    width: 44px;
+    margin-inline-start: 4px;
   }
 }
