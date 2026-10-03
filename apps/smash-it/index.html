@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="he" dir="rtl">
+<html lang="en-US" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#ffb84d" />
-    <meta name="description" content="Smash It! – משחק רוגטקה תלת־ממדי לילדים: זורקים אוכל על חרקים מצחיקים, צוברים קומבו ופותחים אוכל חדש. בדפדפן ובלי התקנה." />
+    <meta name="description" content="Smash It! – a 3D slingshot game for kids: fling food at goofy bugs, stack combos and unlock new snacks. Play in the browser, no install." />
     <link rel="canonical" href="%SITE_URL%/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Smash It!" />
-    <meta property="og:locale" content="he_IL" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="%SITE_URL%/" />
-    <meta property="og:title" content="Smash It! 🍉 רוגטקה, אוכל וחרקים. אש!" />
-    <meta property="og:description" content="זורקים עוגיות, אבטיחים ופאי קצפת על חרקים, מפוצצים קומבו ומנצחים מלכים. בדפדפן, בלי להתקין." />
+    <meta property="og:title" content="Smash It! 🍉 Slingshots, snacks and bugs. Let’s gooo!" />
+    <meta property="og:description" content="Fling cookies, watermelons and cream pies at bugs, blast combos and beat the kings. In your browser, no install." />
     <meta property="og:image" content="%SITE_URL%/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -72,12 +72,47 @@
         }
       }
     </style>
+    <script>
+      // Sets the page language and direction (and the loading text) before the game has loaded.
+      // Same rules as src/i18n/langs.ts (matchLanguage); keep the two in step.
+      (function () {
+        var LOADING = { he: 'שנייה, נטען…', 'en-US': 'One sec, loading…', 'en-GB': 'One sec, loading…', fr: 'Une seconde, ça charge…', ru: 'Секунду, загружаемся…', es: 'Un segundo, cargando…', ar: 'ثانية وبنحمّل…' };
+        var lang = null;
+        try {
+          lang = localStorage.getItem('smashIt.lang');
+        } catch (e) {}
+        if (!LOADING[lang]) {
+          lang = 'en-US';
+          var tags = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+          for (var i = 0; i < tags.length; i++) {
+            var parts = String(tags[i]).toLowerCase().split('-');
+            var p = parts[0];
+            if (p === 'iw') p = 'he';
+            if (p === 'en') {
+              lang = parts[1] && ['us', 'ca', 'ph', 'pr'].indexOf(parts[1]) < 0 ? 'en-GB' : 'en-US';
+              break;
+            }
+            if (LOADING[p]) {
+              lang = p;
+              break;
+            }
+          }
+        }
+        var root = document.documentElement;
+        root.lang = lang;
+        root.dir = lang === 'he' || lang === 'ar' ? 'rtl' : 'ltr';
+        document.addEventListener('DOMContentLoaded', function () {
+          var el = document.querySelector('#splash [data-i18n="loading"]');
+          if (el) el.textContent = LOADING[lang];
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="splash" role="status" aria-live="polite">
       <img src="icon.svg" alt="" width="190" height="190" />
       <div class="splash-title" dir="ltr">Smash It!</div>
-      <div data-i18n="loading" style="font-weight: 700">שנייה, נטען…</div>
+      <div data-i18n="loading" style="font-weight: 700">One sec, loading…</div>
     </div>
 
     <main id="stage" data-i18n-attr="aria-label:sceneLabel"></main>
@@ -317,6 +352,7 @@
           <h2 id="menu-title" data-i18n="menu"></h2>
           <button class="icon" data-close data-i18n-attr="aria-label:close;title:close">✕</button>
         </header>
+        <label class="lang-pick"><span aria-hidden="true">🌐</span> <span data-i18n="language"></span> <select id="m-lang"></select></label>
         <div class="menu-grid">
           <button id="m-music" aria-pressed="true"><span aria-hidden="true">🎵</span> <span data-i18n="music"></span></button>
           <button id="m-sfx" aria-pressed="true"><span aria-hidden="true">🔊</span> <span data-i18n="sfx"></span></button>

@@ -2,6 +2,14 @@ import { execSync } from 'node:child_process';
 import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { handleScores, Scores } from './server/scores.ts';
+import { ar } from './src/i18n/ar';
+import { enGB } from './src/i18n/en-GB';
+import { enUS } from './src/i18n/en-US';
+import { es } from './src/i18n/es';
+import { fr } from './src/i18n/fr';
+import { LANGUAGES } from './src/i18n/langs';
+import { ru } from './src/i18n/ru';
+import { he } from './src/i18n/strings';
 
 /** Serves the leaderboards API inside the Vite dev/preview server (in memory), so one port serves everything. */
 const scoresServer = (): Plugin => {
@@ -39,12 +47,44 @@ const siteUrlInHtml = (): Plugin => ({
   transformIndexHtml: (html) => html.replaceAll('%SITE_URL%', siteUrl),
 });
 
+/**
+ * A plain page with the privacy policy in every language (privacy.html), for the App Store and Google Play,
+ * which need a public address for it. The text comes from the game's own dictionaries, so they never differ.
+ * PRIVACY_CONTACT (an e-mail address) is added as the contact line when it is set at build time.
+ */
+const privacyPage = (): Plugin => ({
+  name: 'privacy-page',
+  generateBundle() {
+    const dicts = { he, 'en-US': enUS, 'en-GB': enGB, fr, ru, es, ar };
+    const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+    const contact = (process.env.PRIVACY_CONTACT ?? '').trim();
+    const sections = LANGUAGES.map(({ code, name, dir }) => {
+      const d = dicts[code];
+      return `<section id="${code}" lang="${code}" dir="${dir}"><h2>${esc(d.privacyTitle)} <small>${esc(name)}</small></h2><p>${esc(d.privacyBody)}</p></section>`;
+    }).join('\n');
+    const nav = LANGUAGES.map(({ code, name }) => `<a href="#${code}" lang="${code}">${esc(name)}</a>`).join(' · ');
+    const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smash It! – Privacy</title>
+<style>:root{color-scheme:light dark;--bg:#fff7e8;--ink:#2a1d3d}@media(prefers-color-scheme:dark){:root{--bg:#1d1330;--ink:#fff3dc}}
+body{margin:0;padding:24px 16px;background:var(--bg);color:var(--ink);font:18px/1.6 system-ui,sans-serif}
+main{max-width:46rem;margin:0 auto}a{color:inherit;display:inline-block;padding:10px 4px;font-weight:700}
+section{margin:2rem 0}h2 small{font-weight:400;font-size:.7em;opacity:.85}</style></head>
+<body><main><h1>Smash It!</h1><nav>${nav}</nav>
+${sections}
+${contact ? `<p>Contact: <a href="mailto:${esc(contact)}">${esc(contact)}</a></p>` : ''}
+</main></body></html>`;
+    this.emitFile({ type: 'asset', fileName: 'privacy.html', source: html });
+  },
+});
+
 export default defineConfig({
   base: './',
   define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
     scoresServer(),
     siteUrlInHtml(),
+    privacyPage(),
     VitePWA({
       // main.ts offers an "Update" button instead of reloading mid-level.
       registerType: 'prompt',
@@ -54,9 +94,8 @@ export default defineConfig({
         id: './',
         name: 'Smash It!',
         short_name: 'Smash It',
-        description: 'משחק רוגטקה תלת־ממדי לילדים: יורים אוכל על חרקים מצחיקים, צוברים קומבו ופותחים אוכל חדש.',
-        lang: 'he',
-        dir: 'rtl',
+        description: 'A 3D slingshot game for kids: fling food at goofy bugs, stack combos and unlock new snacks.',
+        lang: 'en',
         start_url: './',
         scope: './',
         display: 'standalone',
@@ -76,7 +115,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2,glb}'],
         navigateFallback: 'index.html',
         // The leaderboards are live: never answered from the cache.
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /\/privacy\.html$/],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,

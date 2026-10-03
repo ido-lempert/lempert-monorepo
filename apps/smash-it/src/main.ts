@@ -19,7 +19,8 @@ import {
 } from './game/progress';
 import { type Boards, fetchBoards, leave, loadPlayer, randomNick, report as sendReport, savePlayer } from './leaderboard';
 import { bestShots } from './game/replay';
-import { applyDocument, type StringKey, t } from './i18n';
+import { applyDocument, getLang, type Lang, LANGUAGES, setLang, type StringKey, t } from './i18n';
+import { isNative } from './native';
 import { Notice } from './notice';
 import { Play } from './play';
 import { canFullscreen, install, installable, isFullscreen, isIos, onPwaChange, toggleFullscreen } from './pwa';
@@ -493,9 +494,11 @@ function openJoin(then: () => void) {
   afterJoin = then;
   ($('join-name') as HTMLInputElement).value = player.name || randomNick();
   $('join').classList.remove('hidden');
-  ($('join-name') as HTMLInputElement).select();
+  if (!isNative()) ($('join-name') as HTMLInputElement).select();
 }
 
+// Kids' store policies: no free text shown to strangers, so in the store apps the nickname comes from the dice only.
+if (isNative()) ($('join-name') as HTMLInputElement).readOnly = true;
 $('join-dice').addEventListener('click', () => {
   ($('join-name') as HTMLInputElement).value = randomNick();
   sound.play('click');
@@ -740,6 +743,20 @@ function refreshMenu() {
   $('dev-tools').classList.toggle('hidden', !prefs.debug);
 }
 onPwaChange(refreshMenu);
+
+const langPick = $('m-lang') as HTMLSelectElement;
+for (const l of LANGUAGES) {
+  const o = new Option(l.name, l.code);
+  o.lang = l.code;
+  langPick.add(o);
+}
+langPick.value = getLang();
+langPick.addEventListener('change', () => {
+  setLang(langPick.value as Lang);
+  debug.log('ui', `language ${getLang()}`);
+  renderHome();
+  refreshMenu();
+});
 $('m-music').addEventListener('click', () => {
   sound.setMusic(!sound.prefs.music);
   refreshMenu();
@@ -1102,12 +1119,15 @@ function offerUpdate() {
   updateWaiting = false;
   updateNotice.show(12000);
 }
-const updateSW = registerSW({
-  onNeedRefresh() {
-    updateWaiting = true;
-    offerUpdate();
-  },
-});
+// A store app updates through the store, and its files are already on the device: no service worker there.
+const updateSW = isNative()
+  ? async () => {}
+  : registerSW({
+      onNeedRefresh() {
+        updateWaiting = true;
+        offerUpdate();
+      },
+    });
 $('update-now').addEventListener('click', () => void updateSW(true));
 
 // --- Start ---------------------------------------------------------------------------------------------

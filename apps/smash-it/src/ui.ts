@@ -7,11 +7,11 @@ import { areaRank, BOOST, FOOD_ORDER, FOODS, type FoodId, MAX_TIER } from './gam
 import { type Goal, type Level, levelById, LEVELS, WORLDS } from './game/levels';
 import { FOOD_PRIZES, nextPrize, type Progress, shopOpen, SKINS, type SkinId, tierBlocker, tierPrice, totalStars, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice, upgradeVisible } from './game/progress';
 import type { Session } from './game/session';
-import { type StringKey, t } from './i18n';
+import { locale, type StringKey, t } from './i18n';
 
 const $ = (id: string) => document.getElementById(id)!;
 
-export const num = (n: number) => Math.round(n).toLocaleString('he-IL');
+export const num = (n: number) => Math.round(n).toLocaleString(locale());
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);

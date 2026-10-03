@@ -270,12 +270,18 @@ export class World {
       log('gl', `webglcontextlost event ${this.describeState()}`);
     });
     canvas.addEventListener('webglcontextrestored', () => {
-      log('gl', 'webglcontextrestored event: rebuilding in low quality');
+      log('gl', `webglcontextrestored event (page ${document.visibilityState}): rebuilding in low quality`);
       this.quality = 'low';
-      this.makeEnvironment();
       this.applyQuality();
+      // The reflections are drawn by the graphics chip, and a context restored while the screen is off can silently draw
+      // nothing (a real phone came back all black): wait until the page is visible and has drawn a few frames.
+      this.settle = 0;
+      this.envPending = true;
     });
     const gl = this.renderer.getContext();
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && !this.envPending) this.checkIn = 30;
+    });
     let lostFor = 0;
     setInterval(() => {
       lostFor = gl.isContextLost() ? lostFor + 1 : 0;
@@ -285,6 +291,27 @@ export class World {
         this.onLost();
       }
     }, 1000);
+  }
+
+  /**
+   * A phone can bring the 3D view back after it was lost (or while the screen was off) and then draw only black. Read a
+   * few pixels right after drawing: if all are black the view is useless, and reloading is the proven way back.
+   */
+  private checkBlack() {
+    const gl = this.renderer.getContext();
+    if (gl.isContextLost() || this.level.effects?.includes('dark')) return;
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    const px = new Uint8Array(4);
+    let brightest = 0;
+    for (const [fx, fy] of [[0.2, 0.3], [0.5, 0.3], [0.8, 0.3], [0.2, 0.5], [0.5, 0.5], [0.8, 0.5], [0.2, 0.7], [0.5, 0.7], [0.8, 0.7]]) {
+      gl.readPixels(Math.floor(w * fx), Math.floor(h * fy), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      brightest = Math.max(brightest, px[0], px[1], px[2]);
+    }
+    if (brightest < 12) {
+      log('gl', `screen check: BLACK (brightest sample ${brightest}), asking the game to recover`);
+      this.onLost();
+    } else log('gl', `screen check ok (brightest sample ${brightest})`);
   }
 
   private describeState() {
@@ -303,6 +330,10 @@ export class World {
   }
 
   gpuName = '';
+  private envPending = false;
+  private settle = 0;
+  /** Frames left before the screen is checked for black (after a restore or coming back to the page). */
+  private checkIn = 0;
   private cpuMs = 0;
 
   /** For the crash test in the developer menu: the browser really drops the view, as a phone does when it is overloaded. */
@@ -884,6 +915,11 @@ export class World {
   frame(dt: number, gameDt: number) {
     const began = performance.now();
     this.renderer.info.reset();
+    if (this.envPending && !document.hidden && ++this.settle > 10) {
+      this.envPending = false;
+      this.makeEnvironment();
+      this.checkIn = 20;
+    }
     this.time += dt;
     this.syncBugs(gameDt);
     this.syncBodies(gameDt);
@@ -897,6 +933,7 @@ export class World {
     setWindTime(this.time);
     if (this.quality === 'high') this.post.render();
     else this.renderer.render(this.scene, this.camera);
+    if (this.checkIn > 0 && --this.checkIn === 0) this.checkBlack();
     this.cpuMs += (performance.now() - began - this.cpuMs) * 0.1;
     this.watchSpeed();
   }
