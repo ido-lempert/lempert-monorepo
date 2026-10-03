@@ -291,6 +291,11 @@ export const fr: Dict = {
   missing: 'Il manque {n}',
   speed: 'Vitesse',
   area: 'Taille de la touche',
+  ammoCost: 'Munitions utilisées',
+  switchedFood: 'Presque plus de munitions, on passe à {food}',
+  coachCost: 'Les gros aliments consomment plus de tirs, et les améliorations les rendent moins chers. Le nombre sur chaque bouton, c’est ce qu’il te reste de cet aliment.',
+  prizeFriend: 'Lapin aidant',
+  prizeFriendText: 'Un nouveau lapin qui t’aide ! Pose-le sur l’herbe et il lance de la nourriture tout seul, quelques secondes.',
 
   // Foods
   food_cookie: 'Cookie',
@@ -312,7 +317,7 @@ export const fr: Dict = {
 
   // Upgrades
   up_ammo: 'Panier plus grand',
-  upInfo_ammo: 'Quatre tirs de plus à chaque niveau, à chaque amélioration.',
+  upInfo_ammo: 'Plus de tirs à chaque niveau : +3, +4, +5, +6, puis +8. Les gros aliments consomment plus de tirs.',
   up_guide: 'Longue ligne de visée',
   up_combo: 'Combo plus long',
   up_umbrella: 'Parapluie costaud',

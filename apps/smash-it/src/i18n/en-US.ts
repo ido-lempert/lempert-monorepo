@@ -290,6 +290,11 @@ export const enUS: Dict = {
   missing: '{n} short',
   speed: 'Speed',
   area: 'Hit size',
+  ammoCost: 'Ammo use',
+  switchedFood: 'Running low, switching to {food}',
+  coachCost: 'Big foods use up more shots, and upgrades make them cheaper. The number on each button is how many throws you have left of it.',
+  prizeFriend: 'Helper bunny',
+  prizeFriendText: 'A new bunny that helps you! Place it on the grass and it throws food by itself for a few seconds.',
 
   // Foods
   food_cookie: 'Cookie',
@@ -311,7 +316,7 @@ export const enUS: Dict = {
 
   // Upgrades
   up_ammo: 'Bigger basket',
-  upInfo_ammo: 'Four more shots every level, with every upgrade.',
+  upInfo_ammo: 'More shots every level: +3, +4, +5, +6, then +8. Big foods use up more shots.',
   up_guide: 'Long aim line',
   up_combo: 'Longer combo',
   up_umbrella: 'Strong umbrella',

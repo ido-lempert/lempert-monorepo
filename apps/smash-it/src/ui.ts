@@ -3,7 +3,7 @@
  * results card. Each function renders from the current progress and calls back for actions.
  */
 import { BUGS, type BugKind } from './game/bugs';
-import { areaRank, BOOST, FOOD_ORDER, FOODS, type FoodId, MAX_TIER } from './game/foods';
+import { areaRank, BOOST, costRank, FOOD_ORDER, FOODS, type FoodId, MAX_TIER, withTier } from './game/foods';
 import { type Goal, type Level, levelById, LEVELS, WORLDS } from './game/levels';
 import { FOOD_PRIZES, nextPrize, type Progress, shopOpen, SKINS, type SkinId, tierBlocker, tierPrice, totalStars, UPGRADE_ORDER, UPGRADES, type UpgradeId, upgradePrice, upgradeVisible } from './game/progress';
 import type { Session } from './game/session';
@@ -129,7 +129,7 @@ export function renderChapters(p: Progress, onPick: (id: number) => void) {
 /** A food's speed and hit size as little bars (the shop and the prize reveal). */
 export function foodBars(id: FoodId): HTMLElement[] {
   const f = FOODS[id];
-  return [...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f))];
+  return [...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f)), ...bars(t('ammoCost'), costRank(f.cost))];
 }
 
 function bars(label: string, n: number) {
@@ -184,7 +184,7 @@ export function renderShop(p: Progress, tab: ShopTab, a: ShopActions) {
           { class: `item${chosen ? ' selected' : ''}` },
           head,
           el('p', {}, t(`foodInfo_${id}` as StringKey)),
-          el('div', { class: 'bars' }, ...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f))),
+          el('div', { class: 'bars' }, ...bars(t('speed'), f.speed), ...bars(t('area'), areaRank(f)), ...bars(t('ammoCost'), costRank(withTier(f, tier).cost))),
           el('p', { class: 'muted' }, `⬆️ ${t(`boost_${BOOST[id]}` as StringKey)} · ${t('tierOf', { n: tier, max: MAX_TIER })}`),
           ...(blocker ? [el('p', { class: 'muted lock-note' }, `🔒 ${t('tierLocked', { food: foodName(blocker) })}`)] : []),
           el('div', { class: 'item-actions' }, blocker ? lockedButton() : priceButton(tierPrice(p, id), p.coins, () => a.buyTier(id)), choose),
@@ -275,7 +275,7 @@ export function renderTray(p: Progress, selected: FoodId, onPick: (id: FoodId) =
   $('tray').classList.toggle('hidden', p.owned.length < 2);
   $('tray').replaceChildren(
     ...p.owned.map((id, i) => {
-      const b = el('button', { 'aria-pressed': String(id === selected), 'aria-label': foodName(id), title: foodName(id), 'data-food': id }, FOODS[id].emoji, el('kbd', { 'aria-hidden': 'true' }, String(i + 1)));
+      const b = el('button', { 'aria-pressed': String(id === selected), 'aria-label': foodName(id), title: foodName(id), 'data-food': id }, FOODS[id].emoji, el('kbd', { 'aria-hidden': 'true' }, String(i + 1)), el('small', { class: 'left', 'aria-hidden': 'true' }));
       b.addEventListener('pointerdown', (e) => e.stopPropagation());
       b.addEventListener('click', () => onPick(id));
       return b;
@@ -283,10 +283,15 @@ export function renderTray(p: Progress, selected: FoodId, onPick: (id: FoodId) =
   );
 }
 
-export function updateTray(selected: FoodId, reload: number) {
+export function updateTray(selected: FoodId, reload: number, shotsOf: (id: FoodId) => number) {
   for (const b of $('tray').children as HTMLCollectionOf<HTMLElement>) {
-    const on = b.dataset.food === selected;
+    const id = b.dataset.food as FoodId;
+    const on = id === selected;
+    const left = shotsOf(id);
     b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('empty', left <= 0);
+    const count = b.querySelector('.left');
+    if (count && count.textContent !== String(left)) count.textContent = String(left);
     b.style.setProperty('--reload', on ? `${Math.round(reload * 100)}%` : '0%');
   }
 }

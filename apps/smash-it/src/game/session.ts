@@ -5,6 +5,7 @@
  * multiplier (×1, ×2, ×3 …, capped at ×5 = MEGA COMBO). A rare bug keeps the chain alive for longer.
  */
 import { type BugKind, BUGS, isSmall } from './bugs';
+import { AMMO_UNIT } from './foods';
 import type { Goal, Level } from './levels';
 
 export const MEGA = 5;
@@ -36,6 +37,10 @@ export class Session {
   /** Most bugs hit with one shot. */
   maxMulti = 0;
   shots = 0;
+  /** Ammo used so far, in ammo units (each food costs its own amount). */
+  spent = 0;
+  /** The cheapest throw the player has: below this much ammo, nothing more can be thrown. */
+  minCost = AMMO_UNIT;
   /** Shots won back from rare bugs. */
   bonusShots = 0;
   /** Foods still in the air (the chapter waits for them once the shots run out). */
@@ -71,12 +76,24 @@ export class Session {
     return Math.max(1, Math.min(MEGA, this.chain));
   }
 
-  shot() {
+  shot(cost = AMMO_UNIT) {
     this.shots++;
+    this.spent += cost;
   }
 
+  /** Ammo left, in ammo units. */
+  get unitsLeft(): number {
+    return Math.max(0, (this.ammo + this.bonusShots) * AMMO_UNIT - this.spent);
+  }
+
+  /** How many throws of a food that costs `cost` are left. */
+  shotsWith(cost: number): number {
+    return Math.floor(this.unitsLeft / cost);
+  }
+
+  /** Throws left of a basic shot. */
   get shotsLeft(): number {
-    return Math.max(0, this.ammo + this.bonusShots - this.shots);
+    return this.shotsWith(AMMO_UNIT);
   }
 
   hit(kind: BugKind, shotId: number): HitResult {
@@ -154,7 +171,7 @@ export class Session {
 
   /** Out of shots, with nothing left in the air. */
   get outOfAmmo(): boolean {
-    return this.shotsLeft <= 0 && this.inFlight === 0;
+    return this.unitsLeft < this.minCost && this.inFlight === 0;
   }
 
   /** The chapter ends when every goal is met (no waiting around), the clock runs out or the shots do. */

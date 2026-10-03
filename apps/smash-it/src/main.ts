@@ -284,6 +284,7 @@ function startLevel(withMission = false, assist = false) {
   sound.setTheme(level.boss ? 'boss' : 'play');
   $('rotate').classList.toggle('hidden', !level.rotate);
   tip('ammo', '🧺', t('coachAmmo'));
+  if (progress.owned.length > 1) tip('costTip', '🍉', t('coachCost'));
   if (level.rotate) tip('rotate', '🔄', t('coachRotate'));
   if (level.ally) tip('friendTip', '🐰', t('coachFriend'));
   if (level.spit) tip('umbrellaTip', '🌂', t('coachUmbrella'));
@@ -329,7 +330,7 @@ function endLevel() {
   } else {
     const won = finishLevel(progress, { levelId: level.id, success: s.success, score: s.score, stars, coins, hits: s.byKind });
     unlocked = won.opened ? progress.unlocked : null;
-    prizes = [...won.foods.map((id) => ({ kind: 'food' as const, id })), ...won.skins.map((id) => ({ kind: 'skin' as const, id }))];
+    prizes = [...won.foods.map((id) => ({ kind: 'food' as const, id })), ...won.skins.map((id) => ({ kind: 'skin' as const, id })), ...(won.friend ? [{ kind: 'friend' as const }] : [])];
   }
   // Leaderboards (only for players who joined): stars and chapter, and today's challenge score.
   if (daily) void report(player, totalStars(progress), progress.unlocked, { date: daily, score: progress.daily.best });
@@ -402,6 +403,13 @@ function showPrize(prize: Prize) {
     $('reveal-bars').classList.remove('hidden');
     $('reveal-ok').textContent = t('prizeTake');
     $('reveal-later').classList.add('hidden');
+  } else if (prize.kind === 'friend') {
+    $('reveal-kicker').textContent = `🎁 ${t('prizeTitle')}`;
+    $('reveal-title').textContent = `🐰 ${t('prizeFriend')}`;
+    $('reveal-text').textContent = t('prizeFriendText');
+    $('reveal-bars').classList.add('hidden');
+    $('reveal-ok').textContent = t('prizeTake');
+    $('reveal-later').classList.add('hidden');
   } else {
     const s = SKINS.find((k) => k.id === prize.id)!;
     $('reveal-kicker').textContent = `${s.emoji} ${t('prizeSkin')}`;
@@ -440,7 +448,7 @@ function closePrize(use: boolean) {
   shownPrize = null;
   if (p && use) {
     if (p.kind === 'food') progress.food = p.id;
-    else if (chooseSkin(progress, p.id)) world.setSkin(p.id);
+    else if (p.kind === 'skin' && chooseSkin(progress, p.id)) world.setSkin(p.id);
     save();
     world.loadPouch(progress.food);
   }
@@ -972,11 +980,12 @@ function updateHud() {
   const s = play.arena.session;
   $('time-text').textContent = clock(s.timeLeft);
   const ammo = $('ammo-text');
-  const left = String(s.shotsLeft);
+  const shotsNow = play.shotsOf(play.food);
+  const left = String(shotsNow);
   if (ammo.textContent !== left) {
-    const more = Number(ammo.textContent) < s.shotsLeft && ammo.textContent !== '';
+    const more = Number(ammo.textContent) < shotsNow && ammo.textContent !== '';
     ammo.textContent = left;
-    $('hud-ammo').classList.toggle('low', s.shotsLeft <= 5);
+    $('hud-ammo').classList.toggle('low', shotsNow <= 5);
     if (more) {
       $('hud-ammo').classList.remove('pop');
       void $('hud-ammo').offsetWidth;
@@ -1040,7 +1049,7 @@ function updateHud() {
     }
     $('combo-bar').style.setProperty('--p', `${Math.round((s.comboLeft / s.comboWindow) * 100)}%`);
   } else combo.classList.add('hidden');
-  updateTray(play.food, play.reloadLeft);
+  updateTray(play.food, play.reloadLeft, (id) => play!.shotsOf(id));
 }
 
 // --- Loop ----------------------------------------------------------------------------------------------

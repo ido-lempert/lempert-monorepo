@@ -9,7 +9,7 @@ import { share } from './optimize';
 const ball = share(new THREE.SphereGeometry(1, 18, 14));
 const ringGeo = share(new THREE.RingGeometry(0.84, 1, 40).rotateX(-Math.PI / 2));
 
-function bunny() {
+export function bunny() {
   const root = new THREE.Group();
   const fur = mat('#fff4f8', { rough: 0.7, sheen: 1 });
   const pink = mat('#ff9ec4', { rough: 0.6 });

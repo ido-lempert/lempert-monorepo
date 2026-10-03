@@ -39,8 +39,8 @@ export const UPGRADE_ORDER: UpgradeId[] = ['ammo', 'guide', 'combo', 'friend', '
 export function upgradeVisible(p: Progress, id: UpgradeId): boolean {
   return id === 'umbrella' ? p.unlocked >= ROTATE_FROM : id !== 'friend' || p.unlocked >= ALLY_FROM;
 }
-/** Extra shots for each ammo tier. */
-export const AMMO_PER_TIER = 4;
+/** Extra basic shots each ammo tier adds: the first ones are small, the last ones are big. */
+export const AMMO_STEPS = [3, 4, 5, 6, 8];
 /** The old "fast reload" upgrade, refunded now that the slingshot reloads at once. */
 const OLD_RELOAD_PRICES = [180, 400, 800];
 
@@ -253,9 +253,9 @@ export function guideLength(p: Progress, levelGuide: number): number {
   return Math.max(levelGuide, [0, 0.3, 0.55, 0.8][p.upgrades.guide] ?? 0);
 }
 
-/** How many shots a chapter gives: its own, plus the ammo upgrade. */
+/** How many basic shots (cookies) a chapter gives: its own, plus the ammo upgrade (heavier foods use more of them). */
 export function ammoFor(p: Progress, levelAmmo: number): number {
-  return levelAmmo + p.upgrades.ammo * AMMO_PER_TIER;
+  return levelAmmo + AMMO_STEPS.slice(0, p.upgrades.ammo).reduce((a, b) => a + b, 0);
 }
 
 /** How long the friend stays, how often it throws and how long before it can be called again. */
@@ -290,11 +290,13 @@ export interface Prizes {
   opened: boolean;
   foods: FoodId[];
   skins: SkinId[];
+  /** The friend bunny was just won. */
+  friend: boolean;
 }
 
 /** Banks a finished chapter: coins, the album, stars, and any prizes it won. */
 export function finishLevel(p: Progress, f: Finish): Prizes {
-  const prizes: Prizes = { opened: false, foods: [], skins: [] };
+  const prizes: Prizes = { opened: false, foods: [], skins: [], friend: false };
   p.coins += f.coins;
   for (const [k, n] of Object.entries(f.hits ?? {})) p.album[k as BugKind] = (p.album[k as BugKind] ?? 0) + (n ?? 0);
   p.best[f.levelId] = Math.max(p.best[f.levelId] ?? 0, f.score);
@@ -313,6 +315,7 @@ export function finishLevel(p: Progress, f: Finish): Prizes {
     prizes.foods.push(food);
   }
   const next = Math.min(LEVELS.length, f.levelId + 1);
+  prizes.friend = next === ALLY_FROM && p.unlocked < ALLY_FROM;
   prizes.opened = next > p.unlocked;
   p.unlocked = Math.max(p.unlocked, next);
   return prizes;
