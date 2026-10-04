@@ -16,6 +16,7 @@ import { World } from './world/world';
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const SAVE_KEY = 'archipelago.progress';
 const SOUND_KEY = 'archipelago.sound';
+const MUSIC_KEY = 'archipelago.music';
 
 // --- State ------------------------------------------------------------------------------------------
 
@@ -75,6 +76,7 @@ $('remove-btn').textContent = `↩ ${t.removePiece}`;
 $('m-levels-label').textContent = t.levels;
 $('m-book-label').textContent = t.book;
 $('m-sound-label').textContent = t.sound;
+$('m-music-label').textContent = t.music;
 $('m-fullscreen-label').textContent = t.fullscreen;
 $('m-install-label').textContent = t.install;
 $('m-reset-label').textContent = t.reset;
@@ -160,6 +162,7 @@ function refresh() {
   $('m-book').classList.toggle('hidden', !hasCards);
   $('m-levels').classList.toggle('hidden', Object.keys(progress.stars).length === 0);
   $('m-sound').ariaPressed = String(sfx.on);
+  $('m-music').ariaPressed = String(sfx.music);
   $('m-fullscreen').classList.toggle('hidden', !canFullscreen());
   $('m-fullscreen-label').textContent = isFullscreen() ? '⤡' : t.fullscreen;
   $('m-install').classList.toggle('hidden', !canInstall());
@@ -181,11 +184,25 @@ function startLevel(id: string) {
   $('level-num').textContent = fill(t.level, { n });
   $('level-title').textContent = t.levelTitles[level.id];
   $('level-goal').textContent = t.levelGoals[level.id];
+  const chips: string[] = [];
+  if (level.timeLimit !== undefined) chips.push(`⏱ ${fill(t.timeChip, { n: level.timeLimit })}`);
+  if (level.capacity !== undefined) chips.push(`🖥️ ${fill(t.capacityChip, { n: level.capacity })}`);
+  $('goal-chips').replaceChildren(
+    ...chips.map((c) => {
+      const el = document.createElement('span');
+      el.className = 'chip';
+      el.textContent = c;
+      return el;
+    }),
+  );
+  $('clock').classList.add('hidden');
   refresh();
   if (!playing) return;
   // One-time tips, at the start of the level where they first matter.
   if (level.id === 'l2' && firstTime(progress, 'arrows')) flash(t.coach.arrows, false, 7);
   else if (level.id === 'l3' && firstTime(progress, 'drag')) flash(t.coach.drag, false, 6);
+  else if (level.id === 'l4' && firstTime(progress, 'loose')) flash(t.coach.loose, false, 6);
+  else if (level.id === 'l5' && firstTime(progress, 'timer')) flash(t.coach.timer, false, 7);
   save();
 }
 
@@ -255,7 +272,21 @@ function removeSelected() {
 /** The message for a failed run: rule breaks first, then the first request that didn't make it. */
 function failText(r: RunResult): string {
   const reason = r.problems[0]?.reason ?? r.trips.find((x) => !x.ok)?.fail ?? 'noPath';
-  return t.fails[reason];
+  return fill(t.fails[reason], { n: level.capacity ?? 0 });
+}
+
+/** The clock bar for levels with a time limit: fills as each request is answered. */
+function setClock(used: number) {
+  const limit = level.timeLimit;
+  if (limit === undefined) return;
+  const el = $('clock');
+  el.classList.remove('hidden');
+  el.classList.toggle('over', used > limit);
+  el.ariaLabel = t.clock;
+  el.setAttribute('aria-valuemax', String(limit));
+  el.setAttribute('aria-valuenow', String(used));
+  $('clock-fill').style.width = `${Math.min(1, used / limit) * 100}%`;
+  $('clock-text').textContent = `⏱ ${fill(t.clockOf, { n: used, total: limit })}`;
 }
 
 async function runBuild() {
@@ -268,8 +299,14 @@ async function runBuild() {
   runs++;
   refresh();
   const result = run(level, build);
-  await board.play(result);
+  const playedOn = board;
+  setClock(0);
+  await board.play(result, (trip) => {
+    if (trip.doneAt !== undefined) setClock(trip.doneAt);
+  });
   busy = false;
+  // The player went to another level while this one was running.
+  if (board !== playedOn) return;
   if (result.ok) {
     const isNew = !progress.cards.includes(level.concept);
     progress = recordWin(progress, level.id, runs);
@@ -403,6 +440,16 @@ $('m-sound').onclick = () => {
   }
   refresh();
 };
+$('m-music').onclick = () => {
+  sfx.unlock();
+  sfx.setMusic(!sfx.music);
+  try {
+    localStorage.setItem(MUSIC_KEY, sfx.music ? '1' : '0');
+  } catch {
+    // ignore
+  }
+  refresh();
+};
 $('m-fullscreen').onclick = () => void toggleFullscreen();
 $('m-install').onclick = () => void install();
 $('m-reset').onclick = () => {
@@ -415,6 +462,7 @@ $('m-reset').onclick = () => {
 onPwaChange(() => playing && refresh());
 try {
   sfx.on = localStorage.getItem(SOUND_KEY) !== '0';
+  sfx.setMusic(localStorage.getItem(MUSIC_KEY) !== '0');
 } catch {
   // ignore
 }

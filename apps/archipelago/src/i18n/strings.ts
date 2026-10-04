@@ -16,6 +16,7 @@ export const he = {
   book: 'ספר השרטוטים',
   menu: 'תפריט',
   sound: 'צלילים',
+  music: 'מוזיקה',
   install: 'להתקין כאפליקציה',
   fullscreen: 'מסך מלא',
   reset: 'למחוק את ההתקדמות',
@@ -36,6 +37,10 @@ export const he = {
   bookEmpty: 'כאן ייאספו כרטיסי השרטוט שתרוויחו.',
   bookCount: '{n} מתוך {total}',
   comingSoon: 'האי הבא בדרך: אי האירועים',
+  timeChip: 'זמן: {n}',
+  capacityChip: 'שרת מחזיק: {n}',
+  clock: 'שעון',
+  clockOf: '{n} מתוך {total}',
   allDone: 'סיימתם את כל מה שיש כרגע! בקרוב: אי האירועים 🦋',
 
   names: {
@@ -45,6 +50,13 @@ export const he = {
     db: 'מסד נתונים',
     adapter: 'מתאם',
     bank: 'הבנק הוותיק',
+    crowd: 'המון משתמשים',
+    facade: 'דלפק הזמנות',
+    pay: 'תשלומים',
+    stock: 'מלאי',
+    ship: 'משלוחים',
+    cache: 'מטמון',
+    lb: 'מאזן עומסים',
   } satisfies Record<Kind, string>,
   terms: {
     phone: 'Client',
@@ -53,17 +65,30 @@ export const he = {
     db: 'Database',
     adapter: 'Adapter',
     bank: 'Legacy system',
+    crowd: 'Users',
+    facade: 'Facade',
+    pay: 'Payments',
+    stock: 'Inventory',
+    ship: 'Shipping',
+    cache: 'Cache',
+    lb: 'Load balancer',
   } satisfies Record<Kind, string>,
 
   levelTitles: {
     l1: 'שלוש קומות',
     l2: 'בלי קיצורי דרך',
     l3: 'הבנק הוותיק',
+    l4: 'דלפק אחד',
+    l5: 'מסד איטי',
+    l6: 'שעת עומס',
   } as Record<string, string>,
   levelGoals: {
     l1: 'הטלפון צריך מידע שנמצא במסד הנתונים',
     l2: 'שני לקוחות ושרת אחד. רגע, מישהו כבר חיבר פה משהו…',
     l3: 'הטלפון רוצה מוצרים ממסד הנתונים ולשלם בבנק. לבנק יש שקע מרובע',
+    l4: 'האפליקציה מחוברת לבד לשלוש מערכות. ככה זה לא יכול להמשיך',
+    l5: 'ארבע בקשות לאותו מידע, והמסד לוקח את הזמן. צריך לעמוד בשעון',
+    l6: 'שש בקשות בבת אחת, ושרת אחד מחזיק רק שלוש',
   } as Record<string, string>,
 
   coach: {
@@ -76,6 +101,8 @@ export const he = {
     arrows: 'החץ מראה מי פונה למי. נגיעה בצינור מוחקת אותו',
     placedPiece: 'נגיעה ברכיב שהצבתם בוחרת אותו, ואפשר להחזיר אותו למגש',
     drag: 'גוררים כדי לסובב את האי, וצובטים כדי להתקרב',
+    timer: 'ביקור במסד הנתונים לוקח ⏱4, ותשובה מוכנה לוקחת רק ⏱1',
+    loose: 'אפשר להסיר גם צינורות שהיו כאן מההתחלה',
   },
 
   fails: {
@@ -83,6 +110,9 @@ export const he = {
     reversed: 'החץ הפוך! בקשה הולכת בכיוון החץ: ממי ששואל אל מי שעונה',
     shape: 'התקע לא נכנס: עגול לתוך מרובע. מי יכול לתרגם בין השניים?',
     exposedDb: 'אזעקה! לקוח שמדבר ישר עם מסד הנתונים יכול לקרוא (ולמחוק) הכול. רק השרת ניגש לנתונים',
+    twoAddresses: 'לקוח מכיר רק כתובת אחת. צריך מישהו אחד שיקבל ממנו את כל הבקשות',
+    overload: 'השרת קרס מעומס! שרת אחד מחזיק רק {n} בקשות בבת אחת',
+    tooSlow: 'איטי מדי! כל הבקשות שואלות את המסד את אותה שאלה, ושוב מחכות',
   } satisfies Record<FailReason, string>,
 
   concepts: {
@@ -112,6 +142,33 @@ export const he = {
         'בדיוק כמו המתאם לשקע שלוקחים לחו״ל.',
       ],
       chain: ['server', 'adapter', 'bank'],
+    },
+    facade: {
+      title: 'חזית',
+      term: 'Facade Pattern',
+      body: [
+        'במקום שהאפליקציה תכיר את התשלומים, המלאי והמשלוחים, היא מדברת עם דלפק אחד שמסתדר מול כולם.',
+        'פחות חוטים, ואפשר לשנות את המערכות מאחור בלי לשבור את האפליקציה.',
+      ],
+      chain: ['phone', 'facade', 'stock'],
+    },
+    cache: {
+      title: 'מטמון',
+      term: 'Cache',
+      body: [
+        'עותק של תשובות נפוצות שנשמר קרוב. הבקשה הראשונה הולכת עד מסד הנתונים, וכל השאר מקבלות תשובה מיד.',
+        'המחיר: צריך לדאוג שהעותק לא יתיישן כשהמידע משתנה.',
+      ],
+      chain: ['server', 'cache', 'db'],
+    },
+    loadBalancer: {
+      title: 'מאזן עומסים',
+      term: 'Load Balancer',
+      body: [
+        'כתובת אחת מקבלת את כל הבקשות ומחלקת אותן בין כמה שרתים זהים.',
+        'צריך עוד כוח? מוסיפים שרת. שרת נפל? השאר ממשיכים לעבוד.',
+      ],
+      chain: ['crowd', 'lb', 'server'],
     },
   } satisfies Record<ConceptId, { title: string; term: string; body: string[]; chain: Kind[] }>,
 };

@@ -6,6 +6,9 @@ import { run, toggleEdge } from './sim';
 const l1 = levelById('l1')!;
 const l2 = levelById('l2')!;
 const l3 = levelById('l3')!;
+const l4 = levelById('l4')!;
+const l5 = levelById('l5')!;
+const l6 = levelById('l6')!;
 
 describe('levels', () => {
   it.each(LEVELS.map((l) => [l.id, l] as const))('%s is solved by its solution', (_, level) => {
@@ -83,6 +86,63 @@ describe('run', () => {
       ],
     });
     expect(r.trips[0].ok).toBe(false);
+  });
+});
+
+describe('facade', () => {
+  it('a client with three addresses breaks the rule', () => {
+    const r = run(l4, { placed: {}, edges: l4.edges });
+    expect(r.problems.map((p) => p.reason)).toEqual(['twoAddresses', 'twoAddresses', 'twoAddresses']);
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe('cache', () => {
+  it('without a cache every request goes to the slow database and runs out of time', () => {
+    const r = run(l5, { placed: {}, edges: l5.edges });
+    expect(r.trips.map((t) => t.doneAt)).toEqual([4, 8, 12, 16]);
+    expect(r.trips.map((t) => t.ok)).toEqual([true, true, false, false]);
+    expect(r.trips[2].fail).toBe('tooSlow');
+  });
+
+  it('the first request fills the cache, the rest are answered by it', () => {
+    const r = run(l5, l5.solution);
+    expect(r.trips.map((t) => t.hit)).toEqual([false, true, true, true]);
+    expect(r.trips[1].path).toEqual(['phone', 's', 'p1']);
+    expect(r.trips[3].doneAt).toBe(7);
+  });
+
+  it('a cache beside a direct line is skipped', () => {
+    const r = run(l5, { placed: { p1: 'cache' }, edges: [...l5.edges, { from: 's', to: 'p1' }, { from: 'p1', to: 'db' }] });
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe('load balancer', () => {
+  it('one server takes three requests and drops the rest', () => {
+    const r = run(l6, { placed: {}, edges: l6.edges });
+    expect(r.trips.filter((t) => t.ok)).toHaveLength(3);
+    expect(r.trips[3]).toMatchObject({ fail: 'overload', path: ['crowd', 's0'] });
+  });
+
+  it('the balancer shares the requests between both servers', () => {
+    const r = run(l6, l6.solution);
+    const via = r.trips.map((t) => t.path[2]);
+    expect(via.filter((v) => v === 's0')).toHaveLength(3);
+    expect(via.filter((v) => v === 'p2')).toHaveLength(3);
+  });
+
+  it('a second server that cannot reach the data does not help', () => {
+    const edges = l6.solution.edges.filter((e) => e.from !== 'p2');
+    expect(run(l6, { ...l6.solution, edges }).ok).toBe(false);
+  });
+
+  it('wiring the crowd to both servers breaks the one-address rule', () => {
+    const r = run(l6, {
+      placed: { p2: 'server' },
+      edges: [...l6.edges, { from: 'crowd', to: 'p2' }, { from: 'p2', to: 'db' }],
+    });
+    expect(r.problems.some((p) => p.reason === 'twoAddresses')).toBe(true);
   });
 });
 

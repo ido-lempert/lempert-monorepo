@@ -1,10 +1,17 @@
 import type { Kind, Shape } from './types';
 
 /** Clients only start requests; they never pass one on. */
-export const CLIENTS: readonly Kind[] = ['phone', 'laptop'];
+export const CLIENTS: readonly Kind[] = ['phone', 'laptop', 'crowd'];
 
 /** Kinds a request can travel through on its way to somewhere else. */
-export const FORWARDS: readonly Kind[] = ['server', 'adapter'];
+export const FORWARDS: readonly Kind[] = ['server', 'adapter', 'facade', 'cache', 'lb'];
+
+/** Kinds that do the work and so get tired: their load counts against a level's capacity. */
+export const WORKERS: readonly Kind[] = ['server'];
+
+/** Time units for a visit to the (slow) database, and for an answer straight from a cache. */
+export const DB_TIME = 4;
+export const HIT_TIME = 1;
 
 export const isClient = (k: Kind) => CLIENTS.includes(k);
 

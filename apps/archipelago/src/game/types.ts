@@ -3,7 +3,7 @@
  * between pieces. An edge A→B means "A calls B", so its arrow is also the direction of the dependency.
  */
 
-export type Kind = 'phone' | 'laptop' | 'server' | 'db' | 'adapter' | 'bank';
+export type Kind = 'phone' | 'laptop' | 'crowd' | 'server' | 'db' | 'adapter' | 'bank' | 'facade' | 'pay' | 'stock' | 'ship' | 'cache' | 'lb';
 
 /** The plug on a piece. An edge only works when the caller's plug fits the callee's socket. */
 export type Shape = 'round' | 'square';
@@ -30,11 +30,14 @@ export interface Edge {
 export interface Flow {
   from: string;
   to: string;
+  /** How many requests of this kind are sent (default 1). */
+  count?: number;
 }
 
-export type Rule = 'noDirectDb';
+/** noDirectDb: clients never touch the database. singleAddress: a client knows one address only. */
+export type Rule = 'noDirectDb' | 'singleAddress';
 
-export type ConceptId = 'threeTier' | 'noShortcuts' | 'adapter';
+export type ConceptId = 'threeTier' | 'noShortcuts' | 'adapter' | 'facade' | 'cache' | 'loadBalancer';
 
 export interface LevelDef {
   id: string;
@@ -49,6 +52,10 @@ export interface LevelDef {
   flows: Flow[];
   rules: Rule[];
   concept: ConceptId;
+  /** Requests one server can handle in a run (unlimited when missing). */
+  capacity?: number;
+  /** Time units every request together may take (unlimited when missing); see DB_TIME and HIT_TIME. */
+  timeLimit?: number;
   /** A known solution, checked by the tests. */
   solution: Build;
 }
@@ -59,7 +66,7 @@ export interface Build {
   edges: Edge[];
 }
 
-export type FailReason = 'noPath' | 'reversed' | 'shape' | 'exposedDb';
+export type FailReason = 'noPath' | 'reversed' | 'shape' | 'exposedDb' | 'twoAddresses' | 'overload' | 'tooSlow';
 
 export interface Trip {
   flow: Flow;
@@ -69,6 +76,11 @@ export interface Trip {
   fail?: FailReason;
   /** For 'shape': the edge whose plug doesn't fit. */
   edge?: Edge;
+  /** Answered by a cache on the way, without going all the way. */
+  hit?: boolean;
+  /** Time units this request took, and the clock when it was answered (levels with a time limit). */
+  cost?: number;
+  doneAt?: number;
 }
 
 export interface Problem {
