@@ -39,6 +39,15 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - on touch screens the camera pad is hidden (two fingers turn and zoom); the accessibility menu can switch it back on
   - pop-up notices (toasts, hint, side-quest pill, install and update banners) go through `Notice` (`src/notice.ts`): they leave on their own after a few seconds and can be swiped away; never add one that stays on screen
   - `World.photoSukkah` renders the player's sukkah off-screen for the shareable greeting card (`sukkahCard` in `main.ts`)
+- `archipelago` (3D puzzle game that teaches software architecture to teens and adults, Vite + three.js PWA, offline):
+  - dev server: `npx nx run archipelago:dev` (http://localhost:5176, also on the LAN)
+  - tests: `npx nx run archipelago:test`; typecheck + build: `npx nx run archipelago:build`
+  - the concept and the slice plan live in `_bmad-output/planning-artifacts/archipelago/`; developed in vertical slices
+  - the mechanic: place pieces from the tray on pads, tap a piece then another to draw a pipe (an edge A→B = A calls B, the dependency direction), press run and critters carry each request along the pipes; a solved level wins a concept card (term in Hebrew and English) for the blueprint book
+  - `src/game/` is pure and tested: levels (`levels.ts`, each with a `solution` the tests run), the simulation (`sim.ts`: paths, rules, fail reasons `noPath` / `reversed` / `shape` / `exposedDb`), plugs (`pieces.ts`), saves (`progress.ts`, migrations in `parseProgress`); `src/world/` renders (`board.ts` = a level and the run animation, `models.ts` = every model, procedural, `look.ts` = materials, `world.ts` = renderer, camera, picking); `src/main.ts` wires the UI
+  - UI text is Hebrew only for now, in `src/i18n/strings.ts`; plural address, infinitives on buttons, failures in one short line; teach while playing (the first level's walkthrough is `tutorialStep` in `main.ts`, one-time tips via `firstTime`)
+  - deployed as a Render static site (`archipelago` in `render.yaml`), from `main`: work on the `archipelago` branch, merge to `main` to release
+  - in dev, `window.__game` (start, place, connect, run, solve, screenOf) lets Playwright drive the game
 - `smash-it` (3D slingshot game for kids: throw food at cartoon bugs, Vite + three.js PWA, single-player):
   - dev server: `npx nx run smash-it:dev` (http://localhost:5175, also on the LAN)
   - tests: `npx nx run smash-it:test`; typecheck + build: `npx nx run smash-it:build`

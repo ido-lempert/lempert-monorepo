@@ -78,3 +78,26 @@ services:
         sync: false
       - key: TURSO_AUTH_TOKEN
         sync: false
+
+  # Archipelago: a static PWA (no server), like Sukkah World.
+  - type: web
+    name: archipelago
+    runtime: static
+    buildCommand: npm install --include=dev --no-audit --no-fund && npm run build -w archipelago
+    staticPublishPath: apps/archipelago/dist
+    headers:
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+    buildFilter:
+      paths:
+        - apps/archipelago/**
+        - package.json
+        - package-lock.json
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
