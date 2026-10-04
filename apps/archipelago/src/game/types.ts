@@ -3,7 +3,7 @@
  * between pieces. An edge A→B means "A calls B", so its arrow is also the direction of the dependency.
  */
 
-export type Kind = 'phone' | 'laptop' | 'crowd' | 'server' | 'db' | 'adapter' | 'bank' | 'facade' | 'pay' | 'stock' | 'ship' | 'cache' | 'lb' | 'shop' | 'broker' | 'queue' | 'email' | 'analytics' | 'guard' | 'lock' | 'zip' | 'logbook';
+export type Kind = 'phone' | 'laptop' | 'crowd' | 'server' | 'db' | 'adapter' | 'bank' | 'facade' | 'pay' | 'stock' | 'ship' | 'cache' | 'lb' | 'shop' | 'broker' | 'queue' | 'email' | 'analytics' | 'guard' | 'lock' | 'zip' | 'logbook' | 'controller' | 'usecase' | 'entity' | 'port';
 
 /** The plug on a piece. An edge only works when the caller's plug fits the callee's socket. */
 export type Shape = 'round' | 'square';
@@ -19,6 +19,8 @@ export interface PieceDef {
 export interface Pad {
   id: string;
   at: Vec2;
+  /** The onion ring this pad lies in (0 = centre); only a piece that belongs to that ring may stand on it. */
+  ring?: number;
 }
 
 export interface Edge {
@@ -46,8 +48,9 @@ export interface EventFlow {
   count?: number;
 }
 
-/** noDirectDb: clients never touch the database. singleAddress: a client knows one address only. */
-export type Rule = 'noDirectDb' | 'singleAddress';
+/** noDirectDb: clients never touch the database. singleAddress: a client knows one address only. inward: a dependency may only
+ * point from an outer onion ring to an inner one (or stay in its ring). */
+export type Rule = 'noDirectDb' | 'singleAddress' | 'inward';
 
 export type ConceptId =
   | 'threeTier'
@@ -62,12 +65,18 @@ export type ConceptId =
   | 'proxy'
   | 'decorator'
   | 'singleton'
-  | 'middleware';
+  | 'middleware'
+  | 'dependencyRule'
+  | 'interfaceAdapters'
+  | 'portsAdapters'
+  | 'cleanArchitecture';
 
-/** Every edge into a piece of kind `target` must come from a piece of kind `via` (a guard at the door). */
+/** Every edge into a piece of kind `target` must come from a piece of kind `via` (a guard at the door). An implementation edge into a port is exempt. */
 export interface Gate {
   target: Kind;
   via: Kind;
+  /** What a break is called (default 'unguarded'). */
+  fail?: FailReason;
 }
 
 export interface LevelDef {
@@ -102,7 +111,7 @@ export interface Build {
   edges: Edge[];
 }
 
-export type FailReason = 'noPath' | 'reversed' | 'shape' | 'exposedDb' | 'twoAddresses' | 'overload' | 'tooSlow' | 'unguarded' | 'duplicate' | 'unwrapped';
+export type FailReason = 'noPath' | 'reversed' | 'shape' | 'exposedDb' | 'twoAddresses' | 'overload' | 'tooSlow' | 'unguarded' | 'duplicate' | 'unwrapped' | 'outward' | 'skipsLayer' | 'wrongRing';
 
 export interface Trip {
   flow: Flow;

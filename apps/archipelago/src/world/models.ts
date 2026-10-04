@@ -28,12 +28,22 @@ export const TERRACES = [
   { z0: -5.4, z1: -1.7, y: 0.9 },
 ];
 
+/** The onion island: concentric rings, from the outside in (radius, colour, name); every disc is a hair higher than the last, so they read as one flat target. */
+export const RINGS = [
+  { r: 5.3, color: '#b9d3f2', name: ['העולם בחוץ', 'Frameworks'] },
+  { r: 4.0, color: '#b6e5b0', name: ['בקרים', 'Adapters'] },
+  { r: 2.7, color: '#ffe7a0', name: ['מקרי שימוש', 'Use cases'] },
+  { r: 1.4, color: '#ffc3d4', name: ['ישויות', 'Entities'] },
+];
+const RINGS_Y = 0.07;
+
 /** Height of the wooden deck on the workshop island. */
 const DECK = 0.12;
 
 /** Ground height on an island: the layers island has terraces, the workshop a deck, the others are flat. */
 export function groundAt(z: number, island = 1): number {
   if (island === 3) return DECK;
+  if (island === 4) return RINGS_Y;
   if (island !== 1) return 0;
   return (TERRACES.find((t) => z >= t.z0 && z <= t.z1) ?? TERRACES[0]).y;
 }
@@ -47,6 +57,8 @@ function signTexture(title: string, sub: string): THREE.CanvasTexture {
     g.fillStyle = '#4a3420';
     g.textAlign = 'center';
     g.font = '900 54px "Rubik Variable", system-ui, sans-serif';
+    const fit = Math.min(1, (s - 44) / g.measureText(title).width);
+    g.font = `900 ${Math.floor(54 * fit)}px "Rubik Variable", system-ui, sans-serif`;
     g.fillText(title, s / 2, 128);
     g.font = '700 34px "Rubik Variable", system-ui, sans-serif';
     g.fillStyle = '#8a6a48';
@@ -144,6 +156,7 @@ export function island(which: number): THREE.Group {
   spots.forEach(([x, z, kind], i) => {
     const m = kind === 'tree' ? tree(i) : bush(i);
     m.position.set(x, which === 3 ? 0 : groundAt(z, which), z);
+    if (which === 4 && Math.hypot(x, z) < 5.9) return;
     g.add(m);
   });
   if (which === 2) {
@@ -202,6 +215,25 @@ export function island(which: number): THREE.Group {
     handle.position.set(-5.0, 0.4, -1.2);
     handle.rotation.y = 0.4;
     g.add(toolbox, handle);
+  }
+  if (which === 4) {
+    // The onion island: flat coloured rings with their names on the ground, from the outside in.
+    RINGS.forEach((ring, i) => {
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(ring.r, ring.r, 0.06 + i * 0.01, 64), mat(ring.color, { rough: 0.8 }));
+      disc.position.y = (0.06 + i * 0.01) / 2;
+      const edge = new THREE.Mesh(new THREE.TorusGeometry(ring.r, 0.035, 6, 96), mat('#ffffff', { rough: 0.6 }));
+      edge.rotation.x = Math.PI / 2;
+      edge.position.y = 0.065 + i * 0.01;
+      g.add(disc, edge);
+      const label = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.25, 1.25),
+        new THREE.MeshBasicMaterial({ map: signTexture(ring.name[0], ring.name[1]), transparent: true }),
+      );
+      label.rotation.x = -Math.PI / 2;
+      const mid = i === 3 ? 0 : (ring.r + RINGS[i + 1].r) / 2;
+      label.position.set(i === 3 ? 0 : -mid, 0.1, i === 3 ? -0.9 : 0.35);
+      g.add(label);
+    });
   }
   shadows(g, false);
   return g;
@@ -837,6 +869,82 @@ export function plane(color: string): THREE.Group {
   return g;
 }
 
+/** A controller: a green reception kiosk with an antenna, standing in the doorway between outside and inside. */
+function controller(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(box(1.0, 0.85, 0.7, 0.22), mat('#4fd08a', { clearcoat: 1, rough: 0.35 }));
+  body.position.y = 0.43;
+  const counter = new THREE.Mesh(box(1.15, 0.12, 0.85, 0.05), mat('#2f9d68', { clearcoat: 0.8 }));
+  counter.position.y = 0.9;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 8), mat('#d9dde8', { metal: 0.5 }));
+  mast.position.set(-0.35, 1.15, 0);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 8), mat('#ffd24a', { emissive: 1.5 }));
+  bulb.position.set(-0.35, 1.38, 0);
+  const slot = new THREE.Mesh(box(0.5, 0.07, 0.04, 0.02), mat('#1d6b47'));
+  slot.position.set(0.15, 0.78, 0.36);
+  const f = face(1);
+  f.position.set(-0.05, 0.5, 0.365);
+  g.add(body, counter, mast, bulb, slot, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** A use case: a tall yellow clipboard with a checklist. */
+function usecase(): THREE.Group {
+  const g = new THREE.Group();
+  const board = new THREE.Mesh(box(1.0, 1.35, 0.2, 0.1), mat('#ffcf3a', { clearcoat: 1, rough: 0.35 }));
+  board.position.y = 0.7;
+  const paper = new THREE.Mesh(box(0.8, 1.1, 0.04, 0.03), mat('#fffaf0', { rough: 0.7 }));
+  paper.position.set(0, 0.68, 0.12);
+  const clip = new THREE.Mesh(box(0.38, 0.16, 0.08, 0.04), mat('#8a93a8', { metal: 0.6, rough: 0.3 }));
+  clip.position.set(0, 1.4, 0.1);
+  for (let i = 0; i < 3; i++) {
+    const tick = new THREE.Mesh(box(0.12, 0.12, 0.03, 0.03), mat('#4fd08a', { emissive: 0.2 }));
+    tick.position.set(-0.25, 0.95 - i * 0.2, 0.15);
+    const line = new THREE.Mesh(box(0.34, 0.06, 0.03, 0.02), mat('#c7ccd9'));
+    line.position.set(0.1, 0.95 - i * 0.2, 0.15);
+    g.add(tick, line);
+  }
+  const f = face(0.9);
+  f.position.set(0, 0.36, 0.15);
+  g.add(board, paper, clip, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** An entity: a ruby in the core, on a gold ring. */
+function entity(): THREE.Group {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.7, 0.18, 32), mat('#ffcf3a', { metal: 0.5, rough: 0.3, clearcoat: 1 }));
+  base.position.y = 0.09;
+  const gem = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 0), mat('#ff4f7b', { clearcoat: 1, rough: 0.15, emissive: 0.25 }));
+  gem.position.y = 0.88;
+  gem.scale.y = 1.2;
+  const f = face(1.1);
+  f.position.set(0, 0.88, 0.5);
+  g.add(base, gem, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** A port: an upright round socket in a frame, the plug-hole an outside part connects to. */
+function port(): THREE.Group {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(box(1.0, 0.25, 0.6, 0.1), mat('#ffb52e', { clearcoat: 1, rough: 0.35 }));
+  base.position.y = 0.13;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.11, 12, 32), mat('#ffcf3a', { clearcoat: 1, rough: 0.25, metal: 0.3 }));
+  ring.position.y = 0.88;
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.33, 28), mat('#5b3a12', { rough: 0.9 }));
+  hole.position.set(0, 0.88, -0.01);
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.35, 10), mat('#d98a1f'));
+  stand.position.y = 0.4;
+  const f = face(0.8);
+  f.position.set(0, 0.14, 0.305);
+  g.add(base, stand, ring, hole, f);
+  g.userData.face = f;
+  return g;
+}
+
 /** A butterfly for the events island; userData.wings flap. */
 export function butterfly(color: string): THREE.Group {
   const g = new THREE.Group();
@@ -879,6 +987,10 @@ const BUILDERS: Record<Kind, () => THREE.Group> = {
   lock,
   zip,
   logbook,
+  controller,
+  usecase,
+  entity,
+  port,
 };
 
 /** Where requests leave and arrive on each kind, above its base. */
@@ -905,6 +1017,10 @@ export const PORT_HEIGHT: Record<Kind, number> = {
   lock: 0.5,
   zip: 0.5,
   logbook: 0.8,
+  controller: 0.6,
+  usecase: 0.8,
+  entity: 0.85,
+  port: 0.88,
 };
 
 export function piece(kind: Kind): THREE.Group {
