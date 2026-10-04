@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { sfx } from '../audio';
+import { glyph } from '../glyphs';
 import { WRAPPERS, fits, shapeOf } from '../game/pieces';
 import { kindsOf, sameEdge } from '../game/sim';
 import type { Build, Edge, Kind, LevelDef, RunResult, Trip } from '../game/types';
@@ -172,8 +173,8 @@ export class Board {
 
     const tag = document.createElement('div');
     tag.className = 'tag';
-    tag.innerHTML = `<b></b><small dir="auto"></small>`;
-    tag.querySelector('b')!.textContent = this.names.name(kind);
+    tag.innerHTML = `<b>${glyph(kind)}<span></span></b><small dir="auto"></small>`;
+    tag.querySelector('b span')!.textContent = this.names.name(kind);
     tag.querySelector('small')!.textContent = this.names.term(kind);
     const label = new CSS2DObject(tag);
     label.position.y = TAG_HEIGHT[kind];

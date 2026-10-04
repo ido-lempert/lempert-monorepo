@@ -107,8 +107,25 @@ button:focus-visible {
   direction: rtl;
 }
 .tag b {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  direction: ltr;
   font-size: 14px;
   font-weight: 800;
+}
+.glyph {
+  flex: none;
+  color: var(--ink);
+}
+.tray-item span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  direction: ltr;
+}
+.tray-item em {
+  font-style: normal;
 }
 .tag small {
   white-space: nowrap;
