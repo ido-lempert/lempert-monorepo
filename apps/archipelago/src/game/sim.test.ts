@@ -12,6 +12,10 @@ const l6 = levelById('l6')!;
 const e1 = levelById('e1')!;
 const e2 = levelById('e2')!;
 const e3 = levelById('e3')!;
+const w1 = levelById('w1')!;
+const w2 = levelById('w2')!;
+const w3 = levelById('w3')!;
+const w4 = levelById('w4')!;
 
 describe('levels', () => {
   it.each(LEVELS.map((l) => [l.id, l] as const))('%s is solved by its solution', (_, level) => {
@@ -25,7 +29,10 @@ describe('levels', () => {
   it('solutions only use pieces from the tray and pads that exist', () => {
     for (const l of LEVELS) {
       const used = Object.values(l.solution.placed).sort();
-      expect(used).toEqual([...l.tray].sort());
+      // A level with a single-instance rule may offer more of that kind than the solution uses.
+      const spare = (k: string) => l.single?.includes(k as never) === true;
+      expect(used.every((k) => l.tray.includes(k))).toBe(true);
+      expect(l.tray.filter((k) => !spare(k)).sort()).toEqual(used.filter((k) => !spare(k)));
       for (const pad of Object.keys(l.solution.placed)) expect(l.pads.some((p) => p.id === pad)).toBe(true);
     }
   });
@@ -214,5 +221,61 @@ describe('progress', () => {
   it('survives broken saves', () => {
     expect(parseProgress('{oops').stars).toEqual({});
     expect(parseProgress('{"stars":{"l1":9},"cards":["adapter",3]}')).toMatchObject({ stars: { l1: 3 }, cards: ['adapter'] });
+  });
+});
+
+describe('patterns workshop', () => {
+  it('the guard is the only way into payments', () => {
+    const open = run(w1, { placed: { p1: 'guard' }, edges: [...w1.solution.edges, { from: 'phone', to: 'pay' }] });
+    expect(open.ok).toBe(false);
+    expect(open.problems[0].reason).toBe('unguarded');
+    expect(run(w1, { placed: {}, edges: w1.edges }).trips.every((t) => t.fail === 'unguarded')).toBe(true);
+  });
+
+  it('a request that skipped a wrapper arrives unwrapped', () => {
+    const r = run(w2, { placed: { p1: 'lock', p3: 'adapter' }, edges: [{ from: 'phone', to: 'p1' }, { from: 'p1', to: 'p3' }, { from: 'p3', to: 'bank' }] });
+    expect(r.ok).toBe(false);
+    expect(r.trips[0].fail).toBe('unwrapped');
+  });
+
+  it('wrappers go in any order, but only the adapter fits the bank', () => {
+    const swapped = run(w2, {
+      placed: { p1: 'zip', p2: 'lock', p3: 'adapter' },
+      edges: w2.solution.edges,
+    });
+    expect(swapped.ok).toBe(true);
+    const noAdapter = run(w2, {
+      placed: { p1: 'lock', p2: 'adapter', p3: 'zip' },
+      edges: [{ from: 'phone', to: 'p1' }, { from: 'p1', to: 'p2' }, { from: 'p2', to: 'p3' }, { from: 'p3', to: 'bank' }],
+    });
+    expect(noAdapter.trips[0].fail).toBe('shape');
+  });
+
+  it('a logbook per service breaks the single-instance rule', () => {
+    const r = run(w3, {
+      placed: { p1: 'logbook', p2: 'logbook', p3: 'logbook' },
+      edges: [{ from: 'stock', to: 'p1' }, { from: 'pay', to: 'p2' }, { from: 'ship', to: 'p3' }],
+    });
+    expect(r.trips.every((t) => t.ok)).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.problems.map((p) => p.reason)).toEqual(['duplicate', 'duplicate']);
+  });
+
+  it('flows aimed at a kind are pinned to the piece they reached', () => {
+    const r = run(w3, w3.solution);
+    expect(r.trips.map((t) => t.flow.to)).toEqual(['p2', 'p2', 'p2']);
+  });
+
+  it('the guard has to stand right at the door of payments', () => {
+    const swapped = run(w4, {
+      placed: { p1: 'guard', p2: 'zip', p3: 'lock' },
+      edges: [{ from: 'phone', to: 'p3' }, { from: 'laptop', to: 'p3' }, { from: 'p3', to: 'p2' }, { from: 'p2', to: 'p1' }, { from: 'p1', to: 'pay' }],
+    });
+    expect(swapped.ok).toBe(true);
+    const lockLast = run(w4, {
+      placed: { p1: 'lock', p2: 'zip', p3: 'guard' },
+      edges: [{ from: 'phone', to: 'p3' }, { from: 'laptop', to: 'p3' }, { from: 'p3', to: 'p2' }, { from: 'p2', to: 'p1' }, { from: 'p1', to: 'pay' }],
+    });
+    expect(lockLast.problems[0].reason).toBe('unguarded');
   });
 });

@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { sfx } from '../audio';
-import { fits, shapeOf } from '../game/pieces';
+import { WRAPPERS, fits, shapeOf } from '../game/pieces';
 import { kindsOf, sameEdge } from '../game/sim';
 import type { Build, Edge, Kind, LevelDef, RunResult, Trip } from '../game/types';
 import { mat, sparkleTexture } from './look';
@@ -32,6 +32,10 @@ const TAG_HEIGHT: Record<Kind, number> = {
   queue: 1.2,
   email: 1.55,
   analytics: 1.6,
+  guard: 1.5,
+  lock: 1.2,
+  zip: 1.15,
+  logbook: 1.65,
 };
 
 export interface Names {
@@ -473,7 +477,10 @@ export class Board {
       await this.tween(1.4, (k) => (c.position.y = y + Math.abs(Math.sin(k * Math.PI * 4)) * 0.3));
       this.dropBubble(b);
     } else {
-      for (let i = 1; i < path.length; i++) await this.walk(c, path[i - 1], path[i]);
+      for (let i = 1; i < path.length; i++) {
+        await this.walk(c, path[i - 1], path[i]);
+        if (WRAPPERS.includes(kinds.get(path[i])!)) await this.wrap(c, kinds.get(path[i])!);
+      }
       if (trip.fail === 'shape' && trip.edge) {
         await this.walk(c, trip.edge.from, trip.edge.to, 0.85);
         sfx.play('zap');
@@ -482,11 +489,18 @@ export class Board {
         const x = c.position.x;
         await this.tween(1.2, (k) => (c.position.x = x + Math.sin(k * 50) * 0.06));
         this.dropBubble(b);
-      } else if (trip.fail === 'exposedDb') {
+      } else if (trip.fail === 'exposedDb' || trip.fail === 'unguarded' || trip.fail === 'twoAddresses') {
         sfx.play('alarm');
         this.alarm(trip.flow.to);
         const b = this.bubble(c, '🚨', 0.9);
         await this.wait(1.4);
+        this.dropBubble(b);
+      } else if (trip.fail === 'unwrapped') {
+        // It arrives without every layer it should wear: the door stays shut.
+        sfx.play('fail');
+        this.react(last, false);
+        const b = this.bubble(c, '🔓', 0.9);
+        await this.wait(1.3);
         this.dropBubble(b);
       } else if (trip.fail === 'overload') {
         // The worker is full: it puffs smoke and the request gives up.
@@ -531,6 +545,24 @@ export class Board {
     this.root.remove(c);
   }
 
+  /** A request passing through a decorator comes out wearing a layer of it: a gold belt or a purple shell. */
+  private async wrap(c: THREE.Group, kind: Kind) {
+    const n = (c.userData.layers as number | undefined) ?? 0;
+    c.userData.layers = n + 1;
+    sfx.play('tap');
+    const lock = kind === 'lock';
+    const layer = lock
+      ? new THREE.Mesh(new THREE.TorusGeometry(0.26 + n * 0.04, 0.05, 8, 24), mat('#ffcf3a', { emissive: 0.5, clearcoat: 1 }))
+      : new THREE.Mesh(new THREE.SphereGeometry(0.31 + n * 0.04, 18, 12), mat('#b18cff', { transparent: 0.45, sheen: 0.5 }));
+    if (lock) layer.rotation.x = Math.PI / 2;
+    layer.position.y = 0.22;
+    c.add(layer);
+    this.burst(c.position.clone().setY(c.position.y + 0.4), lock ? '#ffcf3a' : '#b18cff', 8, 1.4);
+    const b = this.bubble(c, lock ? '🔒' : '📦', 0.9);
+    await this.wait(0.45);
+    this.dropBubble(b);
+  }
+
   /** A spinning red light and a shake on a piece that someone reached the wrong way. */
   private alarm(id: string) {
     const v = this.views.get(id);
@@ -551,8 +583,13 @@ export class Board {
     sfx.play('run');
     // Glow the edges that break a rule, before anyone walks.
     for (const p of result.problems) {
-      const pipe = this.pipes.find((x) => sameEdge(x.edge, p.edge));
+      const pipe = p.edge && this.pipes.find((x) => sameEdge(x.edge, p.edge!));
       if (pipe) this.burst(pipe.curve.getPointAt(0.5), '#ff5a6e', 10, 1.5);
+      if (p.piece) {
+        // A second copy of something that may only exist once.
+        sfx.play('alarm');
+        this.alarm(p.piece);
+      }
     }
     const kinds = kindsOf(this.level, this.build);
     this.running = true;
