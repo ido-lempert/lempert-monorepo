@@ -180,6 +180,92 @@ export const LEVELS: LevelDef[] = [
       ],
     },
   },
+  // --- The events island: one-way messages (paper planes), brokers and queues. -------------------------
+  {
+    // The shop has a single way out, and three services need to hear about every order.
+    id: 'e1',
+    island: 2,
+    pieces: [
+      { id: 'shop', kind: 'shop', at: [0, 3.4] },
+      { id: 'email', kind: 'email', at: [-3.2, -3.2] },
+      { id: 'stock', kind: 'stock', at: [0, -3.5] },
+      { id: 'stats', kind: 'analytics', at: [3.2, -3.2] },
+    ],
+    pads: [{ id: 'p1', at: [0, 0] }],
+    tray: ['broker'],
+    edges: [],
+    flows: [],
+    events: [{ from: 'shop', to: ['email', 'stock', 'stats'] }],
+    rules: ['singleAddress'],
+    concept: 'pubSub',
+    solution: {
+      placed: { p1: 'broker' },
+      edges: [
+        { from: 'shop', to: 'p1' },
+        { from: 'p1', to: 'email' },
+        { from: 'p1', to: 'stock' },
+        { from: 'p1', to: 'stats' },
+      ],
+    },
+  },
+  {
+    // A burst of six orders and a warehouse that handles two at a time: a queue lets it catch up.
+    id: 'e2',
+    island: 2,
+    pieces: [
+      { id: 'shop', kind: 'shop', at: [0, 3.4] },
+      { id: 'stock', kind: 'stock', at: [0, -3.4] },
+    ],
+    pads: [{ id: 'p1', at: [0, 0] }],
+    tray: ['queue'],
+    edges: [{ from: 'shop', to: 'stock' }],
+    flows: [],
+    events: [{ from: 'shop', to: ['stock'], count: 6 }],
+    rules: ['singleAddress'],
+    capacity: 2,
+    concept: 'queue',
+    solution: {
+      placed: { p1: 'queue' },
+      edges: [
+        { from: 'shop', to: 'p1' },
+        { from: 'p1', to: 'stock' },
+      ],
+    },
+  },
+  {
+    // Both together: e-mails go out at once, the slow warehouse gets its own queue.
+    id: 'e3',
+    island: 2,
+    pieces: [
+      { id: 'shop', kind: 'shop', at: [0, 3.6] },
+      { id: 'email', kind: 'email', at: [-2.8, -3.3] },
+      { id: 'stock', kind: 'stock', at: [2.8, -3.3] },
+    ],
+    pads: [
+      { id: 'p1', at: [0, 1.0] },
+      { id: 'p2', at: [2.6, -0.9] },
+    ],
+    tray: ['broker', 'queue'],
+    edges: [],
+    flows: [],
+    events: [{ from: 'shop', to: ['email', 'stock'], count: 6 }],
+    rules: ['singleAddress'],
+    capacity: 2,
+    concept: 'eventDriven',
+    solution: {
+      placed: { p1: 'broker', p2: 'queue' },
+      edges: [
+        { from: 'shop', to: 'p1' },
+        { from: 'p1', to: 'email' },
+        { from: 'p1', to: 'p2' },
+        { from: 'p2', to: 'stock' },
+      ],
+    },
+  },
 ];
 
 export const levelById = (id: string) => LEVELS.find((l) => l.id === id);
+
+export const ISLANDS = [1, 2] as const;
+
+export const levelsOf = (island: number) => LEVELS.filter((l) => l.island === island);

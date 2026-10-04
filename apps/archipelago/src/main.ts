@@ -2,9 +2,9 @@
 import '@fontsource-variable/rubik';
 import { registerSW } from 'virtual:pwa-register';
 import { sfx } from './audio';
-import { LEVELS, levelById } from './game/levels';
+import { ISLANDS, LEVELS, levelById, levelsOf } from './game/levels';
 import { emptyProgress, firstTime, nextLevel, parseProgress, recordWin, starsFor, type Progress } from './game/progress';
-import { run, sameEdge, toggleEdge } from './game/sim';
+import { kindsOf, run, sameEdge, toggleEdge } from './game/sim';
 import type { Build, ConceptId, Kind, LevelDef, RunResult } from './game/types';
 import { fill, t } from './i18n/strings';
 import { canFullscreen, canInstall, install, isFullscreen, onPwaChange, toggleFullscreen } from './pwa';
@@ -180,13 +180,16 @@ function startLevel(id: string) {
   tip = null;
   board?.dispose();
   board = new Board(world, level, names);
-  const n = LEVELS.indexOf(level) + 1;
-  $('level-num').textContent = fill(t.level, { n });
+  const n = levelsOf(level.island).indexOf(level) + 1;
+  $('level-num').textContent = `${t.islands[level.island]} · ${fill(t.level, { n })}`;
   $('level-title').textContent = t.levelTitles[level.id];
   $('level-goal').textContent = t.levelGoals[level.id];
   const chips: string[] = [];
   if (level.timeLimit !== undefined) chips.push(`⏱ ${fill(t.timeChip, { n: level.timeLimit })}`);
-  if (level.capacity !== undefined) chips.push(`🖥️ ${fill(t.capacityChip, { n: level.capacity })}`);
+  if (level.capacity !== undefined) {
+    const worker = level.island === 2 ? 'stock' : 'server';
+    chips.push(`${worker === 'stock' ? '📦' : '🖥️'} ${fill(t.capacityChip, { n: level.capacity, who: t.names[worker] })}`);
+  }
   $('goal-chips').replaceChildren(
     ...chips.map((c) => {
       const el = document.createElement('span');
@@ -203,6 +206,7 @@ function startLevel(id: string) {
   else if (level.id === 'l3' && firstTime(progress, 'drag')) flash(t.coach.drag, false, 6);
   else if (level.id === 'l4' && firstTime(progress, 'loose')) flash(t.coach.loose, false, 6);
   else if (level.id === 'l5' && firstTime(progress, 'timer')) flash(t.coach.timer, false, 7);
+  else if (level.id === 'e1' && firstTime(progress, 'events')) flash(t.coach.events, false, 7);
   save();
 }
 
@@ -272,7 +276,9 @@ function removeSelected() {
 /** The message for a failed run: rule breaks first, then the first request that didn't make it. */
 function failText(r: RunResult): string {
   const reason = r.problems[0]?.reason ?? r.trips.find((x) => !x.ok)?.fail ?? 'noPath';
-  return fill(t.fails[reason], { n: level.capacity ?? 0 });
+  const full = r.trips.find((x) => x.fail === 'overload');
+  const who = full ? t.names[kindsOf(level, build).get(full.path[full.path.length - 1])!] : '';
+  return fill(t.fails[reason], { n: level.capacity ?? 0, who });
 }
 
 /** The clock bar for levels with a time limit: fills as each request is answered. */
@@ -354,7 +360,15 @@ function showWin(isNew: boolean) {
   $('win-stars').innerHTML = starsHtml(stars);
   $('win-title').textContent = t.winTitle;
   const last = LEVELS.indexOf(level) === LEVELS.length - 1;
-  $('win-sub').textContent = last ? t.allDone : runs === 1 ? t.winFirstTry : '';
+  const after = LEVELS[LEVELS.indexOf(level) + 1];
+  const islandDone = after && after.island !== level.island;
+  $('win-sub').textContent = last
+    ? t.allDone
+    : islandDone
+      ? fill(t.islandDone, { name: t.islands[level.island], next: t.islands[after.island] })
+      : runs === 1
+        ? t.winFirstTry
+        : '';
   $('win-card').replaceChildren(conceptCard(level.concept, isNew));
   $('win-next').textContent = t.next;
   $('win-next').classList.toggle('hidden', last);
@@ -393,28 +407,45 @@ function showBook() {
   openSheet(`📘 ${t.book}`, [count, ...cards]);
 }
 
+/** The island map: each island with its levels; a level opens once the one before it is solved. */
 function showLevels() {
-  const head = document.createElement('p');
-  head.className = 'muted';
-  head.textContent = `🏝️ ${t.island1}`;
-  const buttons = LEVELS.map((l, i) => {
-    const b = document.createElement('button');
-    b.className = 'level-btn';
-    const open = i === 0 || LEVELS[i - 1].id in progress.stars;
-    b.disabled = !open;
-    b.innerHTML = `<span></span><span class="lstars"></span>`;
-    b.firstElementChild!.textContent = `${i + 1}. ${t.levelTitles[l.id]}`;
-    b.lastElementChild!.innerHTML = open ? starsHtml(progress.stars[l.id] ?? 0) : '🔒';
-    b.onclick = () => {
-      closeSheet();
-      startLevel(l.id);
-    };
-    return b;
-  });
+  const body: HTMLElement[] = [];
+  for (const island of ISLANDS) {
+    const head = document.createElement('h3');
+    head.className = 'island-head';
+    head.textContent = `${island === 1 ? '🏝️' : '🦋'} ${t.islands[island]}`;
+    body.push(head);
+    const first = levelsOf(island)[0];
+    const prev = LEVELS[LEVELS.indexOf(first) - 1];
+    if (prev && !(prev.id in progress.stars)) {
+      const locked = document.createElement('p');
+      locked.className = 'muted';
+      locked.textContent = `🔒 ${fill(t.islandLocked, { name: t.islands[prev.island] })}`;
+      body.push(locked);
+      continue;
+    }
+    levelsOf(island).forEach((l, i) => {
+      const b = document.createElement('button');
+      b.className = 'level-btn';
+      const at = LEVELS.indexOf(l);
+      const open = at === 0 || LEVELS[at - 1].id in progress.stars;
+      b.disabled = !open;
+      b.innerHTML = `<span></span><span class="lstars"></span>`;
+      b.firstElementChild!.textContent = `${i + 1}. ${t.levelTitles[l.id]}`;
+      b.lastElementChild!.innerHTML = open ? starsHtml(progress.stars[l.id] ?? 0) : '🔒';
+      b.onclick = () => {
+        if (busy) return;
+        closeSheet();
+        startLevel(l.id);
+      };
+      body.push(b);
+    });
+  }
   const soon = document.createElement('p');
   soon.className = 'muted';
-  soon.textContent = `🦋 ${t.comingSoon}`;
-  openSheet(`🗺️ ${t.levels}`, [head, ...buttons, soon]);
+  soon.textContent = t.comingNext;
+  body.push(soon);
+  openSheet(`🗺️ ${t.map}`, body);
 }
 
 // --- Menu -------------------------------------------------------------------------------------------

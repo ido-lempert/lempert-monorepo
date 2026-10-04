@@ -28,7 +28,9 @@ export const TERRACES = [
   { z0: -5.4, z1: -1.7, y: 0.9 },
 ];
 
-export function groundAt(z: number): number {
+/** Ground height on an island: the layers island has terraces, the others are flat. */
+export function groundAt(z: number, island = 1): number {
+  if (island !== 1) return 0;
   return (TERRACES.find((t) => z >= t.z0 && z <= t.z1) ?? TERRACES[0]).y;
 }
 
@@ -91,8 +93,9 @@ function bush(seed: number): THREE.Group {
   return shadows(g);
 }
 
-/** The island: sand, grass, the three terraces, signs and plants, and the sea around it. */
-export function island(signs: boolean): THREE.Group {
+/** An island: sand and grass; the layers island (1) adds its three terraces and their signs. */
+export function island(which: number): THREE.Group {
+  const signs = which === 1;
   const g = new THREE.Group();
   const grass = mat('#ffffff', { map: grassTexture, rough: 0.85, rim: 0.12 });
   const sand = new THREE.Mesh(box(14.2, 1.2, 12.2, 0.6), mat('#f1d49a', { rough: 0.9 }));
@@ -100,13 +103,13 @@ export function island(signs: boolean): THREE.Group {
   const base = new THREE.Mesh(box(13, 0.6, 11, 0.3), grass);
   base.position.y = -0.3;
   g.add(sand, base);
-  for (const t of TERRACES.slice(1)) {
+  for (const t of signs ? TERRACES.slice(1) : []) {
     const step = new THREE.Mesh(box(12, t.y + 0.3, t.z1 - t.z0, 0.18), grass);
     step.position.set(0, (t.y + 0.3) / 2 - 0.3, (t.z0 + t.z1) / 2);
     g.add(step);
   }
   // A strip of soil on each step's face, so the terraces read as steps.
-  for (const t of TERRACES.slice(1)) {
+  for (const t of signs ? TERRACES.slice(1) : []) {
     const lip = new THREE.Mesh(box(12.02, 0.16, 0.12, 0.05), mat('#c9a06a', { rough: 0.9 }));
     lip.position.set(0, t.y - 0.1, t.z1 + 0.01);
     g.add(lip);
@@ -136,9 +139,28 @@ export function island(signs: boolean): THREE.Group {
   ];
   spots.forEach(([x, z, kind], i) => {
     const m = kind === 'tree' ? tree(i) : bush(i);
-    m.position.set(x, groundAt(z), z);
+    m.position.set(x, groundAt(z, which), z);
     g.add(m);
   });
+  if (which === 2) {
+    // The events island: flower beds instead of terraces.
+    const colors = ['#ff7aa8', '#ffd24a', '#b18cff', '#ffffff', '#ff9a3c'];
+    for (let i = 0; i < 40; i++) {
+      const a = i * 2.39996;
+      const r = 4.2 + (i % 5) * 0.35;
+      const x = Math.cos(a) * r * 1.2;
+      const z = Math.sin(a) * r;
+      if (Math.abs(x) > 6.2 || Math.abs(z) > 5.2) continue;
+      const f = new THREE.Group();
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.25, 4), mat('#4fb35d'));
+      stem.position.y = 0.12;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), mat(colors[i % colors.length], { sheen: 0.5, emissive: 0.1 }));
+      head.position.y = 0.27;
+      f.add(stem, head);
+      f.position.set(x, 0, z);
+      g.add(f);
+    }
+  }
   shadows(g, false);
   return g;
 }
@@ -526,7 +548,165 @@ function lb(): THREE.Group {
   return g;
 }
 
-const BUILDERS: Record<Kind, () => THREE.Group> = { phone, laptop, crowd, server, db, adapter, bank, facade, pay, stock, ship, cache, lb };
+/** The publisher: a little shop with a striped awning. */
+function shop(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(box(1.3, 1.0, 0.9, 0.1), mat('#fff4e6', { clearcoat: 0.6, rough: 0.5 }));
+  body.position.y = 0.5;
+  g.add(body);
+  for (let i = 0; i < 6; i++) {
+    const stripe = new THREE.Mesh(box(0.23, 0.08, 0.5, 0.03), mat(i % 2 ? '#ffffff' : '#ff6f91', { clearcoat: 0.6 }));
+    stripe.position.set(-0.57 + i * 0.228, 1.12, 0.35);
+    stripe.rotation.x = 0.45;
+    g.add(stripe);
+  }
+  const roof = new THREE.Mesh(box(1.4, 0.12, 1.0, 0.04), mat('#ff6f91', { clearcoat: 0.8 }));
+  roof.position.y = 1.06;
+  const door = new THREE.Mesh(box(0.3, 0.5, 0.04, 0.04), mat('#8a5a3c'));
+  door.position.set(0.4, 0.26, 0.46);
+  const f = face(1.05);
+  f.position.set(-0.18, 0.6, 0.46);
+  g.add(roof, door, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** The message broker: a round tower with a megaphone that copies every message to all listeners. */
+function broker(): THREE.Group {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 1.0, 32), mat('#ff9a3c', { clearcoat: 1, rough: 0.3 }));
+  base.position.y = 0.5;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.57, 0.04, 8, 40), mat('#ffffff', { clearcoat: 1 }));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.8;
+  const horn = new THREE.Group();
+  horn.position.y = 1.22;
+  const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.08, 0.5, 24, 1, true), mat('#ffd24a', { clearcoat: 1, double: true }));
+  cone.rotation.x = Math.PI / 2;
+  cone.position.z = 0.15;
+  const neck = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), mat('#ffd24a', { clearcoat: 1 }));
+  horn.add(cone, neck);
+  const f = face(1.05);
+  f.position.set(0, 0.45, 0.62);
+  g.add(base, ring, horn, f);
+  g.userData.face = f;
+  g.userData.spinner = horn;
+  return g;
+}
+
+/** A queue: a waiting line of little slots, with lights that show it filling up. */
+function queue(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(box(1.5, 0.6, 0.7, 0.2), mat('#7ee08a', { clearcoat: 1, rough: 0.35 }));
+  body.position.y = 0.32;
+  g.add(body);
+  for (let i = 0; i < 4; i++) {
+    const slot = new THREE.Mesh(box(0.22, 0.26, 0.05, 0.04), mat('#ffffff', { clearcoat: 0.6 }));
+    slot.position.set(-0.5 + i * 0.3, 0.75, 0);
+    const env = new THREE.Mesh(box(0.18, 0.12, 0.03, 0.02), mat(['#ff7aa8', '#ffd24a', '#7ec8ff', '#b18cff'][i], { emissive: 0.2 }));
+    env.position.z = 0.03;
+    slot.add(env);
+    g.add(slot);
+  }
+  const f = face(1);
+  f.position.set(0, 0.34, 0.36);
+  g.add(f);
+  g.userData.face = f;
+  return g;
+}
+
+/** E-mails: a classic mailbox with a red flag. */
+function email(): THREE.Group {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.7, 10), mat('#a5774b', { rough: 0.8 }));
+  post.position.y = 0.35;
+  const boxBody = new THREE.Mesh(box(0.6, 0.5, 0.95, 0.2), mat('#5b8cff', { clearcoat: 1, rough: 0.3 }));
+  boxBody.position.y = 0.95;
+  const flag = new THREE.Mesh(box(0.04, 0.3, 0.16, 0.02), mat('#ff5a6e', { clearcoat: 1 }));
+  flag.position.set(0.33, 1.15, -0.2);
+  const f = face(1);
+  f.position.set(0, 0.95, 0.48);
+  g.add(post, boxBody, flag, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** Statistics: a board with a little bar chart. */
+function analytics(): THREE.Group {
+  const g = new THREE.Group();
+  const boardMesh = new THREE.Mesh(box(1.1, 0.9, 0.12, 0.08), mat('#ffffff', { clearcoat: 0.8 }));
+  boardMesh.position.y = 0.95;
+  const legs = new THREE.Mesh(box(0.08, 0.6, 0.08, 0.03), mat('#d9dde8'));
+  legs.position.y = 0.3;
+  g.add(boardMesh, legs);
+  [0.25, 0.45, 0.35, 0.6].forEach((h, i) => {
+    const bar = new THREE.Mesh(box(0.14, h, 0.05, 0.02), mat(['#ff7aa8', '#ffd24a', '#7ee08a', '#5b8cff'][i], { emissive: 0.15 }));
+    bar.position.set(-0.33 + i * 0.22, 0.6 + h / 2, 0.08);
+    g.add(bar);
+  });
+  const f = face(0.8);
+  f.position.set(0, 1.22, 0.07);
+  g.add(f);
+  g.userData.face = f;
+  return g;
+}
+
+/** An event in flight: a paper plane. */
+export function plane(color: string): THREE.Group {
+  const g = new THREE.Group();
+  const geo = new THREE.BufferGeometry();
+  // Nose at +z; two wings folded up a little, and a keel underneath.
+  const v = [0, 0, 0.35, -0.25, 0.06, -0.2, 0, 0, -0.15, 0, 0, 0.35, 0, 0, -0.15, 0.25, 0.06, -0.2, 0, 0, 0.35, 0, -0.1, -0.15, 0, 0, -0.15];
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, mat('#ffffff', { double: true, rough: 0.6 }));
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.3), mat(color, { emissive: 0.4 }));
+  stripe.position.set(0, 0.01, 0.05);
+  m.castShadow = true;
+  g.add(m, stripe);
+  g.scale.setScalar(1.4);
+  return g;
+}
+
+/** A butterfly for the events island; userData.wings flap. */
+export function butterfly(color: string): THREE.Group {
+  const g = new THREE.Group();
+  const wings: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    const w = new THREE.Mesh(new THREE.CircleGeometry(0.12, 12), mat(color, { double: true, emissive: 0.2 }));
+    w.geometry.translate(side * 0.12, 0, 0);
+    w.rotation.order = 'ZYX';
+    w.rotation.x = -Math.PI / 2;
+    wings.push(w);
+    g.add(w);
+  }
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.12, 4, 6), mat('#3a3550'));
+  body.rotation.x = Math.PI / 2;
+  g.add(body);
+  g.userData.wings = wings;
+  return g;
+}
+
+const BUILDERS: Record<Kind, () => THREE.Group> = {
+  phone,
+  laptop,
+  crowd,
+  server,
+  db,
+  adapter,
+  bank,
+  facade,
+  pay,
+  stock,
+  ship,
+  cache,
+  lb,
+  shop,
+  broker,
+  queue,
+  email,
+  analytics,
+};
 
 /** Where requests leave and arrive on each kind, above its base. */
 export const PORT_HEIGHT: Record<Kind, number> = {
@@ -543,6 +723,11 @@ export const PORT_HEIGHT: Record<Kind, number> = {
   ship: 0.7,
   cache: 0.55,
   lb: 0.5,
+  shop: 0.8,
+  broker: 0.9,
+  queue: 0.5,
+  email: 1.0,
+  analytics: 0.9,
 };
 
 export function piece(kind: Kind): THREE.Group {

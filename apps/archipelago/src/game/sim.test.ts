@@ -9,6 +9,9 @@ const l3 = levelById('l3')!;
 const l4 = levelById('l4')!;
 const l5 = levelById('l5')!;
 const l6 = levelById('l6')!;
+const e1 = levelById('e1')!;
+const e2 = levelById('e2')!;
+const e3 = levelById('e3')!;
 
 describe('levels', () => {
   it.each(LEVELS.map((l) => [l.id, l] as const))('%s is solved by its solution', (_, level) => {
@@ -143,6 +146,41 @@ describe('load balancer', () => {
       edges: [...l6.edges, { from: 'crowd', to: 'p2' }, { from: 'p2', to: 'db' }],
     });
     expect(r.problems.some((p) => p.reason === 'twoAddresses')).toBe(true);
+  });
+});
+
+describe('events', () => {
+  it('a broker copies one event to every subscriber', () => {
+    const r = run(e1, e1.solution);
+    expect(r.trips.map((t) => t.flow.to)).toEqual(['email', 'stock', 'stats']);
+    expect(r.trips.every((t) => t.event && t.group === 0 && t.path[1] === 'p1')).toBe(true);
+  });
+
+  it('a publisher wired to every subscriber breaks the one-address rule', () => {
+    const r = run(e1, { placed: {}, edges: [{ from: 'shop', to: 'email' }, { from: 'shop', to: 'stock' }, { from: 'shop', to: 'stats' }] });
+    expect(r.ok).toBe(false);
+    expect(r.problems[0].reason).toBe('twoAddresses');
+  });
+
+  it('a burst overloads the warehouse, and a queue lines the orders up instead', () => {
+    const without = run(e2, { placed: {}, edges: e2.edges });
+    expect(without.trips.filter((t) => t.fail === 'overload')).toHaveLength(4);
+    const withQueue = run(e2, e2.solution);
+    expect(withQueue.ok).toBe(true);
+    expect(withQueue.trips.map((t) => t.queued)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('the finale needs the queue in front of the slow warehouse only', () => {
+    expect(run(e3, e3.solution).trips.filter((t) => t.flow.to === 'email').every((t) => t.queued === undefined)).toBe(true);
+    const noQueue = run(e3, {
+      placed: { p1: 'broker' },
+      edges: [
+        { from: 'shop', to: 'p1' },
+        { from: 'p1', to: 'email' },
+        { from: 'p1', to: 'stock' },
+      ],
+    });
+    expect(noQueue.ok).toBe(false);
   });
 });
 

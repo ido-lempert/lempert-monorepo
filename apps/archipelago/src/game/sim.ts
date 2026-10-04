@@ -64,6 +64,8 @@ export function run(level: LevelDef, build: Build): RunResult {
   const warm = new Set<string>();
   let clock = 0;
 
+  const queued = new Map<string, number>();
+
   const route = (flow: Flow): Trip => {
     const good = search(flow.from, flow.to, edges, kinds, fit, load);
     if (!good) {
@@ -83,14 +85,19 @@ export function run(level: LevelDef, build: Build): RunResult {
     const c = good.findIndex((id, n) => n > 0 && kinds.get(id) === 'cache');
     const hit = c > 0 && warm.has(`${good[c]}>${flow.to}`);
     if (hit) path = good.slice(0, c + 1);
-    // A worker that is already full drops the request.
+    // A worker that is already full drops the request, unless a queue in front of it holds it.
+    const q = path.findIndex((id) => kinds.get(id) === 'queue');
     if (level.capacity !== undefined) {
-      const full = path.findIndex((id) => WORKERS.includes(kinds.get(id)!) && (load.get(id) ?? 0) >= level.capacity!);
+      const full = path.findIndex((id, n) => WORKERS.includes(kinds.get(id)!) && (load.get(id) ?? 0) >= level.capacity! && !(q >= 0 && q < n));
       if (full > 0) return { flow, path: path.slice(0, full + 1), ok: false, fail: 'overload' };
     }
     for (const id of path) if (WORKERS.includes(kinds.get(id)!) || kinds.get(id) === 'lb') load.set(id, (load.get(id) ?? 0) + 1);
     if (c > 0 && !hit) warm.add(`${good[c]}>${flow.to}`);
     const trip: Trip = { flow, path, ok: true, hit };
+    if (q > 0) {
+      trip.queued = queued.get(path[q]) ?? 0;
+      queued.set(path[q], trip.queued + 1);
+    }
     if (level.timeLimit !== undefined) {
       trip.cost = hit ? HIT_TIME : kinds.get(flow.to) === 'db' ? DB_TIME : HIT_TIME;
       clock += trip.cost;
@@ -105,6 +112,11 @@ export function run(level: LevelDef, build: Build): RunResult {
 
   const trips: Trip[] = [];
   for (const flow of level.flows) for (let n = 0; n < (flow.count ?? 1); n++) trips.push(route(flow));
+  // Every copy of an event is routed on its own; copies of one event share a group.
+  let group = 0;
+  for (const ev of level.events ?? [])
+    for (let n = 0; n < (ev.count ?? 1); n++, group++)
+      for (const to of ev.to) trips.push({ ...route({ from: ev.from, to }), event: true, group });
 
   // A request that took the forbidden shortcut is caught by the alarm.
   for (const t of trips)
