@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { sfx } from '../audio';
+import { glyph } from '../glyphs';
 import { WRAPPERS, fits, shapeOf } from '../game/pieces';
 import { kindsOf, sameEdge } from '../game/sim';
 import type { Build, Edge, Kind, LevelDef, RunResult, Trip } from '../game/types';
@@ -52,7 +53,36 @@ interface PieceView {
   obj: THREE.Group;
   pos: THREE.Vector3;
   born: number;
+  /** A temporary squash, stretch or hop from what the piece is doing right now. */
+  fx: { sx: number; sy: number; dy: number };
+  busy: boolean;
 }
+
+type Move = 'chew' | 'spin' | 'nod' | 'hop' | 'wobble' | 'squash' | 'gem' | 'write' | 'pop';
+
+/** What each piece visibly does when a request reaches it: a short label in its own jargon, and a move. */
+const BEHAVIOUR: Partial<Record<Kind, { label: string; move: Move; color: string }>> = {
+  server: { label: '⚙️ process()', move: 'squash', color: '#9feaff' },
+  db: { label: '💾 SELECT', move: 'chew', color: '#7fb0ff' },
+  cache: { label: '⚡ HIT', move: 'pop', color: '#ffd24a' },
+  lb: { label: '⚖️ route', move: 'spin', color: '#ffb36b' },
+  guard: { label: '🛡️ auth ✓', move: 'nod', color: '#7ee08a' },
+  adapter: { label: '🔌 adapt', move: 'spin', color: '#ffd24a' },
+  facade: { label: '🎛️ orchestrate', move: 'hop', color: '#ff9ad0' },
+  bank: { label: '🏛️ SOAP', move: 'wobble', color: '#c9b79a' },
+  pay: { label: '💳 charge', move: 'squash', color: '#7ee08a' },
+  stock: { label: '📦 reserve', move: 'squash', color: '#ffb36b' },
+  ship: { label: '🚚 ship', move: 'hop', color: '#7fd8ff' },
+  controller: { label: '🎮 parse', move: 'nod', color: '#7ee08a' },
+  usecase: { label: '📋 execute', move: 'pop', color: '#ffd24a' },
+  entity: { label: '💎 validate', move: 'gem', color: '#ff6f8f' },
+  port: { label: '🔌 interface', move: 'pop', color: '#ffb36b' },
+  logbook: { label: '✍️ log', move: 'write', color: '#c9b79a' },
+  queue: { label: '📥 enqueue', move: 'pop', color: '#7fd8ff' },
+  broker: { label: '📡 route', move: 'spin', color: '#b18cff' },
+  email: { label: '✉️ send', move: 'hop', color: '#ff9ad0' },
+  analytics: { label: '📈 track', move: 'pop', color: '#b18cff' },
+};
 
 interface Pipe {
   edge: Edge;
@@ -143,8 +173,8 @@ export class Board {
 
     const tag = document.createElement('div');
     tag.className = 'tag';
-    tag.innerHTML = `<b></b><small dir="ltr"></small>`;
-    tag.querySelector('b')!.textContent = this.names.name(kind);
+    tag.innerHTML = `<b>${glyph(kind)}<span></span></b><small dir="auto"></small>`;
+    tag.querySelector('b span')!.textContent = this.names.name(kind);
     tag.querySelector('small')!.textContent = this.names.term(kind);
     const label = new CSS2DObject(tag);
     label.position.y = TAG_HEIGHT[kind];
@@ -157,7 +187,7 @@ export class Board {
       obj.add(s);
     }
     this.root.add(obj);
-    this.views.set(id, { kind, obj, pos, born: pop ? this.time : -10 });
+    this.views.set(id, { kind, obj, pos, born: pop ? this.time : -10, fx: { sx: 1, sy: 1, dy: 0 }, busy: false });
   }
 
   private removePiece(id: string) {
@@ -249,8 +279,8 @@ export class Board {
       const s = Math.min(1, age * 4) * pop;
       const sel = id === this.selected;
       const breathe = 1 + Math.sin(t * 2 + v.pos.x) * 0.015;
-      v.obj.scale.set(s, s * breathe * (sel ? 1.08 : 1), s);
-      v.obj.position.y = v.pos.y + (sel ? 0.25 + Math.sin(t * 6) * 0.05 : 0);
+      v.obj.scale.set(s * v.fx.sx, s * breathe * (sel ? 1.08 : 1) * v.fx.sy, s * v.fx.sx);
+      v.obj.position.y = v.pos.y + v.fx.dy + (sel ? 0.25 + Math.sin(t * 6) * 0.05 : 0);
       const face = v.obj.userData.face as THREE.Object3D | undefined;
       const eyes = face?.userData.eyes as THREE.Object3D | undefined;
       if (eyes) eyes.scale.y = (t + v.pos.x * 1.7) % 4 < 0.12 ? 0.1 : 1;
@@ -325,9 +355,9 @@ export class Board {
     }
   }
 
-  private bubble(parent: THREE.Object3D, text: string, y: number): CSS2DObject {
+  private bubble(parent: THREE.Object3D, text: string, y: number, say = false): CSS2DObject {
     const el = document.createElement('div');
-    el.className = 'bubble';
+    el.className = say ? 'bubble say' : 'bubble';
     el.textContent = text;
     const o = new CSS2DObject(el);
     o.position.y = y;
@@ -427,6 +457,7 @@ export class Board {
     } else {
       for (let i = 1; i < path.length; i++) {
         await this.walk(c, path[i - 1], path[i]);
+        if (i < path.length - 1 || trip.fail === 'shape') await this.behave(c, path[i], trip);
         // In line at the queue: each one waits for the ones before it.
         if (kinds.get(path[i]) === 'queue' && trip.queued) {
           const b = this.bubble(c, `${trip.queued + 1}`, 0.6);
@@ -448,6 +479,7 @@ export class Board {
         this.burst(c.position.clone(), '#ffd24a', 14, 2);
         await this.wait(1);
       } else if (trip.ok) {
+        await this.behave(c, last, trip);
         sfx.play('deliver');
         this.react(last, true);
         this.burst(this.port(last).setY(this.port(last).y + 0.5), '#ffd24a', 10, 1.6);
@@ -484,6 +516,7 @@ export class Board {
       for (let i = 1; i < path.length; i++) {
         await this.walk(c, path[i - 1], path[i]);
         if (WRAPPERS.includes(kinds.get(path[i])!)) await this.wrap(c, kinds.get(path[i])!);
+        else if (i < path.length - 1 || trip.fail === 'shape') await this.behave(c, path[i], trip);
       }
       if (trip.fail === 'shape' && trip.edge) {
         await this.walk(c, trip.edge.from, trip.edge.to, 0.85);
@@ -527,6 +560,7 @@ export class Board {
           await this.wait(1);
           this.dropBubble(b);
         } else {
+          await this.behave(c, last, trip);
           sfx.play('deliver');
           this.react(last, true);
           this.burst(this.port(last).setY(this.port(last).y + 0.6), trip.hit ? '#ffd24a' : '#7fd8ff', 12, 2);
@@ -534,7 +568,10 @@ export class Board {
           (c.userData.letter as THREE.Object3D).visible = false;
           (c.userData.prize as THREE.Object3D).visible = true;
           await this.wait(trip.hit ? 0.35 : 0.25);
-          for (let i = path.length - 1; i > 0; i--) await this.walk(c, path[i], path[i - 1]);
+          for (let i = path.length - 1; i > 0; i--) {
+            await this.walk(c, path[i], path[i - 1]);
+            if (kinds.get(path[i - 1]) === 'cache' && !trip.hit) await this.store(c, path[i - 1]);
+          }
           sfx.play('return');
           this.react(trip.flow.from, true);
           this.burst(c.position.clone().setY(c.position.y + 0.5), '#ff8fb1', 10, 1.6);
@@ -547,6 +584,102 @@ export class Board {
     await this.tween(0.25, (k) => c.scale.setScalar((1 - k) * CRITTER_SIZE));
     c.traverse((o) => o instanceof CSS2DObject && o.element.remove());
     this.root.remove(c);
+  }
+
+  /** A piece does its job on the request that reached it: a label in its jargon and a move that fits what it is. */
+  private async behave(c: THREE.Object3D, id: string, trip?: Trip) {
+    const v = this.views.get(id);
+    const b = v && BEHAVIOUR[v.kind];
+    if (!v || !b) return;
+    const miss = v.kind === 'cache' && trip !== undefined && !trip.hit;
+    const label = miss ? '❌ MISS' : b.label;
+    sfx.play('tap');
+    let bubble: CSS2DObject | null = null;
+    if (!v.busy) {
+      v.busy = true;
+      bubble = this.bubble(v.obj, label, TAG_HEIGHT[v.kind] + 0.8, true);
+    }
+    this.burst(this.port(id).setY(this.port(id).y + 0.4), miss ? '#ff8a8a' : b.color, 6, 1.3);
+    const adapt = v.kind === 'adapter';
+    const base = c.scale.x;
+    await this.tween(0.55, (k) => {
+      const w = Math.sin(k * Math.PI);
+      const fx = v.fx;
+      fx.sx = fx.sy = 1;
+      fx.dy = 0;
+      v.obj.rotation.set(0, 0, 0);
+      if (k < 1)
+        switch (b.move) {
+          case 'chew':
+            fx.sy = 1 + Math.sin(k * Math.PI * 6) * 0.12;
+            fx.sx = 1 - Math.sin(k * Math.PI * 6) * 0.06;
+            break;
+          case 'spin':
+            v.obj.rotation.y = (k * k * (3 - 2 * k)) * Math.PI * 2;
+            break;
+          case 'nod':
+            v.obj.rotation.x = w * 0.28;
+            break;
+          case 'hop':
+            fx.dy = Math.abs(Math.sin(k * Math.PI * 3)) * 0.3;
+            break;
+          case 'wobble':
+            v.obj.rotation.z = Math.sin(k * Math.PI * 6) * 0.12 * (1 - k);
+            break;
+          case 'squash':
+            fx.sy = 1 - Math.sin(k * Math.PI * 2) * 0.1;
+            fx.sx = 1 + Math.sin(k * Math.PI * 2) * 0.06;
+            break;
+          case 'gem':
+            v.obj.rotation.y = k * Math.PI * 4;
+            fx.sx = fx.sy = 1 + w * 0.15;
+            break;
+          case 'write':
+            v.obj.rotation.x = Math.sin(k * Math.PI * 4) * 0.1;
+            break;
+          case 'pop':
+            fx.sx = fx.sy = 1 + w * 0.2;
+            break;
+        }
+      // An adapter turns the request itself around: a different plug comes out the other side.
+      if (adapt) {
+        c.rotation.y += 0.4;
+        c.scale.setScalar(base * (1 + w * 0.25));
+      }
+    });
+    v.fx.sx = v.fx.sy = 1;
+    v.fx.dy = 0;
+    v.obj.rotation.set(0, 0, 0);
+    if (adapt) c.scale.setScalar(base);
+    if (bubble) {
+      this.dropBubble(bubble);
+      v.busy = false;
+    }
+  }
+
+  /** On the way back a cache keeps a copy of the answer for the next one. */
+  private async store(c: THREE.Object3D, id: string) {
+    const v = this.views.get(id);
+    if (!v) return;
+    const copy = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8), mat('#ffd24a', { emissive: 1.2 }));
+    const from = c.position.clone().setY(c.position.y + 0.5);
+    const to = this.port(id).setY(this.port(id).y + 0.2);
+    this.root.add(copy);
+    sfx.play('tap');
+    await this.tween(0.45, (k) => {
+      copy.position.lerpVectors(from, to, k).setY(from.y + (to.y - from.y) * k + Math.sin(k * Math.PI) * 0.8);
+      copy.scale.setScalar(1 - k * 0.5);
+    });
+    this.root.remove(copy);
+    copy.geometry.dispose();
+    this.burst(to, '#ffd24a', 8, 1.4);
+    const bubble = v.busy ? null : this.bubble(v.obj, '💾 SET', TAG_HEIGHT[v.kind] + 0.8, true);
+    if (bubble) v.busy = true;
+    await this.wait(0.35);
+    if (bubble) {
+      this.dropBubble(bubble);
+      v.busy = false;
+    }
   }
 
   /** A request passing through a decorator comes out wearing a layer of it: a gold belt or a purple shell. */
@@ -562,7 +695,7 @@ export class Board {
     layer.position.y = 0.22;
     c.add(layer);
     this.burst(c.position.clone().setY(c.position.y + 0.4), lock ? '#ffcf3a' : '#b18cff', 8, 1.4);
-    const b = this.bubble(c, lock ? '🔒' : '📦', 0.9);
+    const b = this.bubble(c, lock ? '🔒 encrypt' : '📦 gzip', 0.9, true);
     await this.wait(0.45);
     this.dropBubble(b);
   }
