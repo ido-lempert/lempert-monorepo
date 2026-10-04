@@ -262,10 +262,136 @@ export const LEVELS: LevelDef[] = [
       ],
     },
   },
+  {
+    // Proxy: payments may only be reached through a guard that checks who is asking.
+    id: 'w1',
+    island: 3,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [-2.4, 3.4] },
+      { id: 'laptop', kind: 'laptop', at: [2.4, 3.4] },
+      { id: 'pay', kind: 'pay', at: [0, -3.4] },
+    ],
+    pads: [{ id: 'p1', at: [0, 0] }],
+    tray: ['guard'],
+    edges: [
+      { from: 'phone', to: 'pay' },
+      { from: 'laptop', to: 'pay' },
+    ],
+    flows: [
+      { from: 'phone', to: 'pay' },
+      { from: 'laptop', to: 'pay' },
+    ],
+    rules: [],
+    gates: [{ target: 'pay', via: 'guard' }],
+    concept: 'proxy',
+    solution: {
+      placed: { p1: 'guard' },
+      edges: [
+        { from: 'phone', to: 'p1' },
+        { from: 'laptop', to: 'p1' },
+        { from: 'p1', to: 'pay' },
+      ],
+    },
+  },
+  {
+    // Decorator: the payment has to be locked and squeezed on its way; wrappers share a plug, the old bank still needs an adapter.
+    id: 'w2',
+    island: 3,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [0, 3.8] },
+      { id: 'bank', kind: 'bank', at: [0, -3.9] },
+    ],
+    pads: [
+      { id: 'p1', at: [-2.3, 1.9] },
+      { id: 'p2', at: [2.3, 0.3] },
+      { id: 'p3', at: [-2.3, -1.4] },
+    ],
+    tray: ['lock', 'zip', 'adapter'],
+    edges: [],
+    flows: [{ from: 'phone', to: 'bank', via: ['lock', 'zip'] }],
+    rules: [],
+    concept: 'decorator',
+    solution: {
+      placed: { p1: 'lock', p2: 'zip', p3: 'adapter' },
+      edges: [
+        { from: 'phone', to: 'p1' },
+        { from: 'p1', to: 'p2' },
+        { from: 'p2', to: 'p3' },
+        { from: 'p3', to: 'bank' },
+      ],
+    },
+  },
+  {
+    // Singleton: everyone writes to the same logbook; three logbooks would scatter the story.
+    id: 'w3',
+    island: 3,
+    pieces: [
+      { id: 'stock', kind: 'stock', at: [-3.7, -3.2] },
+      { id: 'pay', kind: 'pay', at: [0, -3.6] },
+      { id: 'ship', kind: 'ship', at: [3.7, -3.2] },
+    ],
+    pads: [
+      { id: 'p1', at: [-3.7, 0.9] },
+      { id: 'p2', at: [0, 0.9] },
+      { id: 'p3', at: [3.7, 0.9] },
+    ],
+    tray: ['logbook', 'logbook', 'logbook'],
+    edges: [],
+    flows: [
+      { from: 'stock', to: '', toKind: 'logbook' },
+      { from: 'pay', to: '', toKind: 'logbook' },
+      { from: 'ship', to: '', toKind: 'logbook' },
+    ],
+    rules: [],
+    single: ['logbook'],
+    concept: 'singleton',
+    solution: {
+      placed: { p2: 'logbook' },
+      edges: [
+        { from: 'stock', to: 'p2' },
+        { from: 'pay', to: 'p2' },
+        { from: 'ship', to: 'p2' },
+      ],
+    },
+  },
+  {
+    // Middleware: a chain of wrappers, with the guard standing right at the door of payments.
+    id: 'w4',
+    island: 3,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [-2.7, 3.7] },
+      { id: 'laptop', kind: 'laptop', at: [2.7, 3.7] },
+      { id: 'pay', kind: 'pay', at: [0, -4.0] },
+    ],
+    pads: [
+      { id: 'p1', at: [-0.2, -1.6] },
+      { id: 'p2', at: [-2.0, 1.6] },
+      { id: 'p3', at: [2.0, 0.1] },
+    ],
+    tray: ['guard', 'lock', 'zip'],
+    edges: [{ from: 'laptop', to: 'pay' }],
+    flows: [
+      { from: 'phone', to: 'pay', via: ['lock', 'zip'] },
+      { from: 'laptop', to: 'pay', via: ['lock', 'zip'] },
+    ],
+    rules: [],
+    gates: [{ target: 'pay', via: 'guard' }],
+    concept: 'middleware',
+    solution: {
+      placed: { p1: 'guard', p2: 'lock', p3: 'zip' },
+      edges: [
+        { from: 'phone', to: 'p2' },
+        { from: 'laptop', to: 'p2' },
+        { from: 'p2', to: 'p3' },
+        { from: 'p3', to: 'p1' },
+        { from: 'p1', to: 'pay' },
+      ],
+    },
+  },
 ];
 
 export const levelById = (id: string) => LEVELS.find((l) => l.id === id);
 
-export const ISLANDS = [1, 2] as const;
+export const ISLANDS = [1, 2, 3] as const;
 
 export const levelsOf = (island: number) => LEVELS.filter((l) => l.island === island);

@@ -3,7 +3,7 @@
  * between pieces. An edge A→B means "A calls B", so its arrow is also the direction of the dependency.
  */
 
-export type Kind = 'phone' | 'laptop' | 'crowd' | 'server' | 'db' | 'adapter' | 'bank' | 'facade' | 'pay' | 'stock' | 'ship' | 'cache' | 'lb' | 'shop' | 'broker' | 'queue' | 'email' | 'analytics';
+export type Kind = 'phone' | 'laptop' | 'crowd' | 'server' | 'db' | 'adapter' | 'bank' | 'facade' | 'pay' | 'stock' | 'ship' | 'cache' | 'lb' | 'shop' | 'broker' | 'queue' | 'email' | 'analytics' | 'guard' | 'lock' | 'zip' | 'logbook';
 
 /** The plug on a piece. An edge only works when the caller's plug fits the callee's socket. */
 export type Shape = 'round' | 'square';
@@ -29,7 +29,12 @@ export interface Edge {
 /** A request that must travel from a client to a target and come back with an answer. */
 export interface Flow {
   from: string;
+  /** The target piece; ignored (set it to '') when `toKind` is given, and filled in with the piece reached. */
   to: string;
+  /** Any piece of this kind will do as the target (the player decides where it stands). */
+  toKind?: Kind;
+  /** Kinds the request must pass through on its way (wrappers that each add something to it). */
+  via?: Kind[];
   /** How many requests of this kind are sent (default 1). */
   count?: number;
 }
@@ -44,7 +49,26 @@ export interface EventFlow {
 /** noDirectDb: clients never touch the database. singleAddress: a client knows one address only. */
 export type Rule = 'noDirectDb' | 'singleAddress';
 
-export type ConceptId = 'threeTier' | 'noShortcuts' | 'adapter' | 'facade' | 'cache' | 'loadBalancer' | 'pubSub' | 'queue' | 'eventDriven';
+export type ConceptId =
+  | 'threeTier'
+  | 'noShortcuts'
+  | 'adapter'
+  | 'facade'
+  | 'cache'
+  | 'loadBalancer'
+  | 'pubSub'
+  | 'queue'
+  | 'eventDriven'
+  | 'proxy'
+  | 'decorator'
+  | 'singleton'
+  | 'middleware';
+
+/** Every edge into a piece of kind `target` must come from a piece of kind `via` (a guard at the door). */
+export interface Gate {
+  target: Kind;
+  via: Kind;
+}
 
 export interface LevelDef {
   id: string;
@@ -60,6 +84,9 @@ export interface LevelDef {
   /** Events (the events island); a level has flows, events or both. */
   events?: EventFlow[];
   rules: Rule[];
+  gates?: Gate[];
+  /** Kinds of which only one piece may stand on the island. */
+  single?: Kind[];
   concept: ConceptId;
   /** Requests one server can handle in a run (unlimited when missing). */
   capacity?: number;
@@ -75,7 +102,7 @@ export interface Build {
   edges: Edge[];
 }
 
-export type FailReason = 'noPath' | 'reversed' | 'shape' | 'exposedDb' | 'twoAddresses' | 'overload' | 'tooSlow';
+export type FailReason = 'noPath' | 'reversed' | 'shape' | 'exposedDb' | 'twoAddresses' | 'overload' | 'tooSlow' | 'unguarded' | 'duplicate' | 'unwrapped';
 
 export interface Trip {
   flow: Flow;
@@ -99,7 +126,9 @@ export interface Trip {
 
 export interface Problem {
   reason: FailReason;
-  edge: Edge;
+  /** The edge that breaks a rule, or the extra piece (`piece`) of a kind that may stand only once. */
+  edge?: Edge;
+  piece?: string;
 }
 
 export interface RunResult {

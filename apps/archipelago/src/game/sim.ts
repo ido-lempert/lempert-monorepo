@@ -19,7 +19,7 @@ export function kindsOf(level: LevelDef, build: Build): Map<string, Kind> {
  */
 function search(
   from: string,
-  to: string,
+  goal: (id: string) => boolean,
   edges: Edge[],
   kinds: Map<string, Kind>,
   ok: (e: Edge) => boolean,
@@ -29,8 +29,8 @@ function search(
   const queue = [from];
   while (queue.length) {
     const at = queue.shift()!;
-    if (at === to) {
-      const path = [to];
+    if (at !== from && goal(at)) {
+      const path = [at];
       while (path[0] !== from) path.unshift(prev.get(path[0])!);
       return path;
     }
@@ -60,24 +60,33 @@ export function run(level: LevelDef, build: Build): RunResult {
       if (isClient(kind) && out.length > 1) for (const e of out) problems.push({ reason: 'twoAddresses', edge: e });
     }
 
+  for (const g of level.gates ?? [])
+    for (const e of edges) if (kinds.get(e.to) === g.target && kinds.get(e.from) !== g.via) problems.push({ reason: 'unguarded', edge: e });
+
+  for (const kind of level.single ?? [])
+    for (const id of [...kinds].filter(([, k]) => k === kind).map(([id]) => id).slice(1)) problems.push({ reason: 'duplicate', piece: id });
+
   const load = new Map<string, number>();
   const warm = new Set<string>();
   let clock = 0;
 
   const queued = new Map<string, number>();
 
-  const route = (flow: Flow): Trip => {
-    const good = search(flow.from, flow.to, edges, kinds, fit, load);
+  const route = (asked: Flow): Trip => {
+    const goal = asked.toKind ? (id: string) => id !== asked.from && kinds.get(id) === asked.toKind : (id: string) => id === asked.to;
+    const good = search(asked.from, goal, edges, kinds, fit, load);
+    // A flow aimed at "any piece of this kind" is pinned to the one it reached (or the first there is).
+    const flow = asked.toKind ? { ...asked, to: good ? good[good.length - 1] : ([...kinds].find(([id, k]) => k === asked.toKind && id !== asked.from)?.[0] ?? '') } : asked;
     if (!good) {
       // A way exists if the plugs fitted: the request walks up to the first plug that doesn't.
-      const any = search(flow.from, flow.to, edges, kinds, () => true);
+      const any = search(flow.from, goal, edges, kinds, () => true);
       if (any) {
         const i = any.findIndex((id, n) => n > 0 && !fit({ from: any[n - 1], to: id }));
         return { flow, path: any.slice(0, i), ok: false, fail: 'shape', edge: { from: any[i - 1], to: any[i] } };
       }
       // A way exists if the arrows pointed the other way.
       const flipped = edges.map((e) => ({ from: e.to, to: e.from }));
-      const back = search(flow.from, flow.to, [...edges, ...flipped], kinds, () => true);
+      const back = search(flow.from, goal, [...edges, ...flipped], kinds, () => true);
       return { flow, path: [flow.from], ok: false, fail: back ? 'reversed' : 'noPath' };
     }
     // A cache that already holds a copy answers by itself.
@@ -94,6 +103,11 @@ export function run(level: LevelDef, build: Build): RunResult {
     for (const id of path) if (WORKERS.includes(kinds.get(id)!) || kinds.get(id) === 'lb') load.set(id, (load.get(id) ?? 0) + 1);
     if (c > 0 && !hit) warm.add(`${good[c]}>${flow.to}`);
     const trip: Trip = { flow, path, ok: true, hit };
+    // Every wrapper the request was meant to pass through has to be on its way.
+    if (flow.via && !flow.via.every((k) => path.some((id) => kinds.get(id) === k))) {
+      trip.ok = false;
+      trip.fail = 'unwrapped';
+    }
     if (q > 0) {
       trip.queued = queued.get(path[q]) ?? 0;
       queued.set(path[q], trip.queued + 1);
@@ -118,12 +132,14 @@ export function run(level: LevelDef, build: Build): RunResult {
     for (let n = 0; n < (ev.count ?? 1); n++, group++)
       for (const to of ev.to) trips.push({ ...route({ from: ev.from, to }), event: true, group });
 
-  // A request that took the forbidden shortcut is caught by the alarm.
-  for (const t of trips)
-    if (t.ok && problems.some((p) => t.path.some((id, n) => n > 0 && t.path[n - 1] === p.edge.from && id === p.edge.to))) {
+  // A request that took a forbidden edge is caught by the alarm.
+  for (const t of trips) {
+    const p = t.ok && problems.find((p) => p.edge && t.path.some((id, n) => n > 0 && t.path[n - 1] === p.edge!.from && id === p.edge!.to));
+    if (p) {
       t.ok = false;
-      t.fail = 'exposedDb';
+      t.fail = p.reason;
     }
+  }
 
   return { ok: problems.length === 0 && trips.every((t) => t.ok), trips, problems };
 }

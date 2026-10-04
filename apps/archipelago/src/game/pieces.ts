@@ -4,7 +4,10 @@ import type { Kind, Shape } from './types';
 export const CLIENTS: readonly Kind[] = ['phone', 'laptop', 'crowd', 'shop'];
 
 /** Kinds a request can travel through on its way to somewhere else. */
-export const FORWARDS: readonly Kind[] = ['server', 'adapter', 'facade', 'cache', 'lb', 'broker', 'queue'];
+export const FORWARDS: readonly Kind[] = ['server', 'adapter', 'facade', 'cache', 'lb', 'broker', 'queue', 'guard', 'lock', 'zip'];
+
+/** Wrappers (decorators): a request that passes through one comes out wearing a layer of it. */
+export const WRAPPERS: readonly Kind[] = ['lock', 'zip'];
 
 /** Kinds that do the work and so get tired: their load counts against a level's capacity. */
 export const WORKERS: readonly Kind[] = ['server', 'stock'];

@@ -155,7 +155,7 @@ function refresh() {
   const run = $<HTMLButtonElement>('run-btn');
   run.disabled = busy;
   $('run-label').textContent = busy ? t.running : t.run;
-  run.classList.toggle('ready', !busy && trayLeft().length === 0 && build.edges.length >= level.flows.length && (!step || step.text === t.coach.pressRun));
+  run.classList.toggle('ready', !busy && (trayLeft().length === 0 || (level.single !== undefined && Object.keys(build.placed).length > 0)) && build.edges.length >= level.flows.length && (!step || step.text === t.coach.pressRun));
 
   const hasCards = progress.cards.length > 0;
   $('book-btn').classList.toggle('hidden', !hasCards);
@@ -207,6 +207,8 @@ function startLevel(id: string) {
   else if (level.id === 'l4' && firstTime(progress, 'loose')) flash(t.coach.loose, false, 6);
   else if (level.id === 'l5' && firstTime(progress, 'timer')) flash(t.coach.timer, false, 7);
   else if (level.id === 'e1' && firstTime(progress, 'events')) flash(t.coach.events, false, 7);
+  else if (level.id === 'w2' && firstTime(progress, 'wraps')) flash(t.coach.wraps, false, 7);
+  else if (level.id === 'w3' && firstTime(progress, 'single')) flash(t.coach.single, false, 7);
   save();
 }
 
@@ -413,7 +415,7 @@ function showLevels() {
   for (const island of ISLANDS) {
     const head = document.createElement('h3');
     head.className = 'island-head';
-    head.textContent = `${island === 1 ? '🏝️' : '🦋'} ${t.islands[island]}`;
+    head.textContent = `${island === 1 ? '🏝️' : island === 2 ? '🦋' : '🛠️'} ${t.islands[island]}`;
     body.push(head);
     const first = levelsOf(island)[0];
     const prev = LEVELS[LEVELS.indexOf(first) - 1];

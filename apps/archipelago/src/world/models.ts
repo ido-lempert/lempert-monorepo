@@ -28,8 +28,12 @@ export const TERRACES = [
   { z0: -5.4, z1: -1.7, y: 0.9 },
 ];
 
-/** Ground height on an island: the layers island has terraces, the others are flat. */
+/** Height of the wooden deck on the workshop island. */
+const DECK = 0.12;
+
+/** Ground height on an island: the layers island has terraces, the workshop a deck, the others are flat. */
 export function groundAt(z: number, island = 1): number {
+  if (island === 3) return DECK;
   if (island !== 1) return 0;
   return (TERRACES.find((t) => z >= t.z0 && z <= t.z1) ?? TERRACES[0]).y;
 }
@@ -139,7 +143,7 @@ export function island(which: number): THREE.Group {
   ];
   spots.forEach(([x, z, kind], i) => {
     const m = kind === 'tree' ? tree(i) : bush(i);
-    m.position.set(x, groundAt(z, which), z);
+    m.position.set(x, which === 3 ? 0 : groundAt(z, which), z);
     g.add(m);
   });
   if (which === 2) {
@@ -161,7 +165,64 @@ export function island(which: number): THREE.Group {
       g.add(f);
     }
   }
+  if (which === 3) {
+    // The workshop island: a wooden deck with cogs, crates and a toolbox around it.
+    for (let i = 0; i < 9; i++) {
+      const plank = new THREE.Mesh(box(1.12, 0.14, 8.6, 0.03), mat(i % 2 ? '#e0b377' : '#d6a566', { rough: 0.85 }));
+      plank.position.set(-4.64 + i * 1.16, DECK - 0.07, 0);
+      g.add(plank);
+    }
+    const cogs: [number, number, number, string][] = [
+      [-5.6, 1.6, 0.8, '#ff7a5c'],
+      [5.7, 2.4, 0.65, '#5ec8e5'],
+      [5.5, -1.2, 0.9, '#ffb52e'],
+      [-5.5, -3.0, 0.6, '#b18cff'],
+    ];
+    for (const [x, z, r, color] of cogs) {
+      const c = cog(r, color);
+      c.position.set(x, 0.06, z);
+      c.rotation.y = x * 1.3;
+      g.add(c);
+    }
+    for (const [x, z, r] of [
+      [5.3, 3.6, 0.3],
+      [4.6, 3.9, 0.2],
+      [-5.2, 3.6, 0.25],
+    ]) {
+      const crate = new THREE.Mesh(box(0.7, 0.7, 0.7, 0.06), mat('#c98a4b', { rough: 0.8 }));
+      crate.position.set(x, 0.35, z);
+      crate.rotation.y = r;
+      crate.scale.setScalar(r > 0.22 ? 1 : 0.7);
+      g.add(crate);
+    }
+    const toolbox = new THREE.Mesh(box(0.9, 0.4, 0.5, 0.08), mat('#e0507a', { clearcoat: 1, rough: 0.4 }));
+    toolbox.position.set(-5.0, 0.2, -1.2);
+    toolbox.rotation.y = 0.4;
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 8, 16, Math.PI), mat('#d9dde8', { metal: 0.6 }));
+    handle.position.set(-5.0, 0.4, -1.2);
+    handle.rotation.y = 0.4;
+    g.add(toolbox, handle);
+  }
   shadows(g, false);
+  return g;
+}
+
+/** A flat cog lying on the ground: a disc with teeth and a hole. */
+function cog(radius: number, color: string): THREE.Group {
+  const g = new THREE.Group();
+  const m = mat(color, { clearcoat: 0.8, rough: 0.35, metal: 0.2 });
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.16, 24), m);
+  g.add(disc);
+  const teeth = Math.round(radius * 12);
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    const t = new THREE.Mesh(box(radius * 0.32, 0.16, radius * 0.26, 0.02), m);
+    t.position.set(Math.cos(a) * radius * 1.02, 0, Math.sin(a) * radius * 1.02);
+    t.rotation.y = -a;
+    g.add(t);
+  }
+  const hole = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.3, radius * 0.3, 0.18, 16), mat('#3b2f1e'));
+  g.add(hole);
   return g;
 }
 
@@ -651,6 +712,114 @@ function analytics(): THREE.Group {
   return g;
 }
 
+/** The proxy: a guard booth with a barrier arm and a cap. */
+function guard(): THREE.Group {
+  const g = new THREE.Group();
+  const booth = new THREE.Mesh(box(0.95, 0.95, 0.75, 0.2), mat('#ff7a5c', { clearcoat: 1, rough: 0.35 }));
+  booth.position.y = 0.48;
+  const roof = new THREE.Mesh(box(1.1, 0.12, 0.9, 0.05), mat('#3b4a8a', { clearcoat: 0.8 }));
+  roof.position.y = 1.02;
+  const window = new THREE.Mesh(box(0.7, 0.1, 0.04, 0.03), mat('#d9f2ff', { emissive: 0.3 }));
+  window.position.set(0, 0.78, 0.38);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.5, 10), mat('#d9dde8'));
+  post.position.set(0.62, 0.25, 0.1);
+  const arm = new THREE.Group();
+  arm.position.set(0.62, 0.55, 0.1);
+  for (let i = 0; i < 4; i++) {
+    const seg = new THREE.Mesh(box(0.28, 0.1, 0.1, 0.03), mat(i % 2 ? '#ffffff' : '#ff3b4e', { clearcoat: 0.8 }));
+    seg.position.x = 0.14 + i * 0.28;
+    arm.add(seg);
+  }
+  arm.rotation.z = 0.12;
+  const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.04, 6), mat('#ffcf3a', { metal: 0.6, rough: 0.3, emissive: 0.2 }));
+  badge.rotation.x = Math.PI / 2;
+  badge.position.set(0, 1.2, 0.2);
+  const f = face(1);
+  f.position.set(0, 0.5, 0.385);
+  g.add(booth, roof, window, post, arm, badge, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** A decorator that locks: a golden padlock. */
+function lock(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(box(0.95, 0.7, 0.45, 0.16), mat('#ffb52e', { clearcoat: 1, rough: 0.3, metal: 0.25 }));
+  body.position.y = 0.38;
+  const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.07, 10, 24, Math.PI), mat('#d9dde8', { metal: 0.7, rough: 0.25 }));
+  shackle.position.y = 0.72;
+  const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 12), mat('#3b2f1e'));
+  hole.rotation.x = Math.PI / 2;
+  hole.position.set(0, 0.2, 0.23);
+  const slot = new THREE.Mesh(box(0.05, 0.14, 0.04, 0.01), mat('#3b2f1e'));
+  slot.position.set(0, 0.11, 0.23);
+  const f = face(0.95);
+  f.position.set(0, 0.5, 0.235);
+  g.add(body, shackle, hole, slot, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** A decorator that squeezes: a purple press with a zipper across it. */
+function zip(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(box(1.0, 0.75, 0.7, 0.2), mat('#b18cff', { clearcoat: 1, rough: 0.3 }));
+  body.position.y = 0.4;
+  g.add(body);
+  const teeth = mat('#ffffff', { clearcoat: 0.6 });
+  for (let i = 0; i < 9; i++) {
+    const tooth = new THREE.Mesh(box(0.07, 0.05, 0.05, 0.015), teeth);
+    tooth.position.set(-0.4 + i * 0.1, 0.17 + (i % 2) * 0.05, 0.36);
+    g.add(tooth);
+  }
+  const pull = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.025, 8, 16), mat('#ffcf3a', { metal: 0.6, rough: 0.3 }));
+  pull.position.set(0.5, 0.15, 0.38);
+  const squeeze = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.16, 3), mat('#ffffff', { emissive: 0.2 }));
+  squeeze.position.set(0, 0.9, 0);
+  squeeze.rotation.z = Math.PI;
+  const f = face(1);
+  f.position.set(0, 0.52, 0.36);
+  g.add(pull, squeeze, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** The singleton: one big logbook on a lectern, with a bookmark and a quill. */
+function logbook(): THREE.Group {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 0.7, 14), mat('#c98a4b', { rough: 0.7 }));
+  post.position.y = 0.35;
+  const top = new THREE.Mesh(box(1.25, 0.1, 0.85, 0.04), mat('#c98a4b', { rough: 0.7 }));
+  top.position.y = 0.75;
+  top.rotation.x = -0.25;
+  const pages = mat('#fffaf0', { clearcoat: 0.3 });
+  const cover = mat('#e0507a', { clearcoat: 1, rough: 0.35 });
+  for (const side of [-1, 1]) {
+    const c = new THREE.Mesh(box(0.56, 0.06, 0.7, 0.02), cover);
+    c.position.set(side * 0.29, 0.86, 0);
+    c.rotation.set(-0.25, 0, side * -0.08);
+    const p = new THREE.Mesh(box(0.52, 0.05, 0.64, 0.015), pages);
+    p.position.set(side * 0.29, 0.9, 0);
+    p.rotation.set(-0.25, 0, side * -0.08);
+    g.add(c, p);
+  }
+  const ribbon = new THREE.Mesh(box(0.05, 0.015, 0.4, 0.005), mat('#ffcf3a', { emissive: 0.2 }));
+  ribbon.position.set(0.1, 0.94, 0.5);
+  ribbon.rotation.x = -0.25;
+  const quill = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.6, 6), mat('#ffffff'));
+  quill.position.set(0.55, 1.12, -0.1);
+  quill.rotation.z = -0.5;
+  const feather = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat('#5ec8e5', { sheen: 0.6 }));
+  feather.scale.set(0.35, 1.6, 0.2);
+  feather.position.set(0.7, 1.35, -0.1);
+  feather.rotation.z = -0.5;
+  const f = face(1);
+  f.position.set(0, 0.42, 0.2);
+  g.add(post, top, ribbon, quill, feather, f);
+  g.userData.face = f;
+  return g;
+}
+
 /** An event in flight: a paper plane. */
 export function plane(color: string): THREE.Group {
   const g = new THREE.Group();
@@ -706,6 +875,10 @@ const BUILDERS: Record<Kind, () => THREE.Group> = {
   queue,
   email,
   analytics,
+  guard,
+  lock,
+  zip,
+  logbook,
 };
 
 /** Where requests leave and arrive on each kind, above its base. */
@@ -728,6 +901,10 @@ export const PORT_HEIGHT: Record<Kind, number> = {
   queue: 0.5,
   email: 1.0,
   analytics: 0.9,
+  guard: 0.6,
+  lock: 0.5,
+  zip: 0.5,
+  logbook: 0.8,
 };
 
 export function piece(kind: Kind): THREE.Group {
