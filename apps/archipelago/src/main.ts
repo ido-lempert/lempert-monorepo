@@ -129,7 +129,7 @@ function refresh() {
     const b = document.createElement('button');
     b.className = 'tray-item';
     b.ariaPressed = String(holding === kind);
-    b.innerHTML = `<img alt="" /><span></span><small dir="ltr"></small>`;
+    b.innerHTML = `<img alt="" /><span></span><small dir="auto"></small>`;
     b.querySelector('img')!.src = icon(kind);
     b.querySelector('span')!.textContent = t.names[kind];
     b.querySelector('small')!.textContent = t.terms[kind];
@@ -335,7 +335,7 @@ function conceptCard(id: ConceptId, isNew: boolean): HTMLElement {
   const c = t.concepts[id];
   const el = document.createElement('div');
   el.className = 'concept';
-  el.innerHTML = `${isNew ? `<span class="concept-badge"></span>` : ''}<h3></h3><div class="term" dir="ltr"></div><div class="chain"></div>`;
+  el.innerHTML = `${isNew ? `<span class="concept-badge"></span>` : ''}<h3></h3><div class="term" dir="auto"></div><div class="chain"></div>`;
   if (isNew) el.querySelector('.concept-badge')!.textContent = `✨ ${t.newCard}`;
   el.querySelector('h3')!.textContent = c.title;
   el.querySelector('.term')!.textContent = c.term;
