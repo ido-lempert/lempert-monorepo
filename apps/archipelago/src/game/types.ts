@@ -3,7 +3,7 @@
  * between pieces. An edge A→B means "A calls B", so its arrow is also the direction of the dependency.
  */
 
-export type Kind = 'phone' | 'laptop' | 'crowd' | 'server' | 'db' | 'adapter' | 'bank' | 'facade' | 'pay' | 'stock' | 'ship' | 'cache' | 'lb';
+export type Kind = 'phone' | 'laptop' | 'crowd' | 'server' | 'db' | 'adapter' | 'bank' | 'facade' | 'pay' | 'stock' | 'ship' | 'cache' | 'lb' | 'shop' | 'broker' | 'queue' | 'email' | 'analytics';
 
 /** The plug on a piece. An edge only works when the caller's plug fits the callee's socket. */
 export type Shape = 'round' | 'square';
@@ -34,10 +34,17 @@ export interface Flow {
   count?: number;
 }
 
+/** An event: sent once by a publisher, it must reach every subscriber and gets no answer. */
+export interface EventFlow {
+  from: string;
+  to: string[];
+  count?: number;
+}
+
 /** noDirectDb: clients never touch the database. singleAddress: a client knows one address only. */
 export type Rule = 'noDirectDb' | 'singleAddress';
 
-export type ConceptId = 'threeTier' | 'noShortcuts' | 'adapter' | 'facade' | 'cache' | 'loadBalancer';
+export type ConceptId = 'threeTier' | 'noShortcuts' | 'adapter' | 'facade' | 'cache' | 'loadBalancer' | 'pubSub' | 'queue' | 'eventDriven';
 
 export interface LevelDef {
   id: string;
@@ -50,6 +57,8 @@ export interface LevelDef {
   /** Edges that are there at the start (the player may remove them). */
   edges: Edge[];
   flows: Flow[];
+  /** Events (the events island); a level has flows, events or both. */
+  events?: EventFlow[];
   rules: Rule[];
   concept: ConceptId;
   /** Requests one server can handle in a run (unlimited when missing). */
@@ -81,6 +90,11 @@ export interface Trip {
   /** Time units this request took, and the clock when it was answered (levels with a time limit). */
   cost?: number;
   doneAt?: number;
+  /** One copy of an event (no answer comes back); `group` is which event it is a copy of. */
+  event?: boolean;
+  group?: number;
+  /** Place in line at a queue on the way (0 = first). */
+  queued?: number;
 }
 
 export interface Problem {

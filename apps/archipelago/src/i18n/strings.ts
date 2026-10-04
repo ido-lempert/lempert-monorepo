@@ -12,7 +12,7 @@ export const he = {
   next: 'לשלב הבא',
   again: 'לשחק שוב',
   close: 'לסגור',
-  levels: 'שלבים',
+  levels: 'מפת האיים',
   book: 'ספר השרטוטים',
   menu: 'תפריט',
   sound: 'צלילים',
@@ -22,7 +22,9 @@ export const he = {
   reset: 'למחוק את ההתקדמות',
   resetConfirm: 'למחוק את כל הכוכבים והכרטיסים?',
   version: 'גרסה',
-  island1: 'אי השכבות',
+  islands: { 1: 'אי השכבות', 2: 'אי האירועים' } as Record<number, string>,
+  islandLocked: 'נפתח אחרי שמסיימים את {name}',
+  comingNext: 'האי הבא בדרך: סדנת התבניות 🛠️',
   level: 'שלב {n}',
   tray: 'רכיבים להצבה',
   removePiece: 'להחזיר למגש',
@@ -36,12 +38,13 @@ export const he = {
   newCard: 'כרטיס שרטוט חדש',
   bookEmpty: 'כאן ייאספו כרטיסי השרטוט שתרוויחו.',
   bookCount: '{n} מתוך {total}',
-  comingSoon: 'האי הבא בדרך: אי האירועים',
   timeChip: 'זמן: {n}',
-  capacityChip: 'שרת מחזיק: {n}',
+  capacityChip: '{who}: עד {n} בבת אחת',
   clock: 'שעון',
   clockOf: '{n} מתוך {total}',
-  allDone: 'סיימתם את כל מה שיש כרגע! בקרוב: אי האירועים 🦋',
+  allDone: 'סיימתם את כל מה שיש כרגע! בקרוב: סדנת התבניות 🛠️',
+  islandDone: 'סיימתם את {name}! מחכה לכם {next} 🦋',
+  map: 'מפת האיים',
 
   names: {
     phone: 'טלפון',
@@ -57,6 +60,11 @@ export const he = {
     ship: 'משלוחים',
     cache: 'מטמון',
     lb: 'מאזן עומסים',
+    shop: 'חנות',
+    broker: 'ברוקר',
+    queue: 'תור',
+    email: 'מיילים',
+    analytics: 'סטטיסטיקות',
   } satisfies Record<Kind, string>,
   terms: {
     phone: 'Client',
@@ -72,6 +80,11 @@ export const he = {
     ship: 'Shipping',
     cache: 'Cache',
     lb: 'Load balancer',
+    shop: 'Publisher',
+    broker: 'Message broker',
+    queue: 'Queue',
+    email: 'Subscriber',
+    analytics: 'Subscriber',
   } satisfies Record<Kind, string>,
 
   levelTitles: {
@@ -81,6 +94,9 @@ export const he = {
     l4: 'דלפק אחד',
     l5: 'מסד איטי',
     l6: 'שעת עומס',
+    e1: 'הודעה לכולם',
+    e2: 'פקק במחסן',
+    e3: 'הכול ביחד',
   } as Record<string, string>,
   levelGoals: {
     l1: 'הטלפון צריך מידע שנמצא במסד הנתונים',
@@ -89,6 +105,9 @@ export const he = {
     l4: 'האפליקציה מחוברת לבד לשלוש מערכות. ככה זה לא יכול להמשיך',
     l5: 'ארבע בקשות לאותו מידע, והמסד לוקח את הזמן. צריך לעמוד בשעון',
     l6: 'שש בקשות בבת אחת, ושרת אחד מחזיק רק שלוש',
+    e1: 'על כל הזמנה חדשה שלושה צריכים לשמוע. אבל לחנות יש רק יציאה אחת',
+    e2: 'שש הזמנות בבת אחת, והמחסן מטפל רק בשתיים כל פעם',
+    e3: 'שש הזמנות, מיילים מהירים ומחסן איטי. אף הזמנה לא הולכת לאיבוד',
   } as Record<string, string>,
 
   coach: {
@@ -103,6 +122,7 @@ export const he = {
     drag: 'גוררים כדי לסובב את האי, וצובטים כדי להתקרב',
     timer: 'ביקור במסד הנתונים לוקח ⏱4, ותשובה מוכנה לוקחת רק ⏱1',
     loose: 'אפשר להסיר גם צינורות שהיו כאן מההתחלה',
+    events: 'באי הזה שולחים אירועים ✉️: הם עפים בכיוון החץ ולא מחכים לתשובה',
   },
 
   fails: {
@@ -110,8 +130,8 @@ export const he = {
     reversed: 'החץ הפוך! בקשה הולכת בכיוון החץ: ממי ששואל אל מי שעונה',
     shape: 'התקע לא נכנס: עגול לתוך מרובע. מי יכול לתרגם בין השניים?',
     exposedDb: 'אזעקה! לקוח שמדבר ישר עם מסד הנתונים יכול לקרוא (ולמחוק) הכול. רק השרת ניגש לנתונים',
-    twoAddresses: 'לקוח מכיר רק כתובת אחת. צריך מישהו אחד שיקבל ממנו את כל הבקשות',
-    overload: 'השרת קרס מעומס! שרת אחד מחזיק רק {n} בקשות בבת אחת',
+    twoAddresses: 'מי ששולח מכיר רק כתובת אחת. צריך מישהו אחד באמצע שיקבל ממנו הכול',
+    overload: 'עומס יתר! {who} מטפל רק ב־{n} בבת אחת, וכל השאר נזרקו',
     tooSlow: 'איטי מדי! כל הבקשות שואלות את המסד את אותה שאלה, ושוב מחכות',
   } satisfies Record<FailReason, string>,
 
@@ -169,6 +189,33 @@ export const he = {
         'צריך עוד כוח? מוסיפים שרת. שרת נפל? השאר ממשיכים לעבוד.',
       ],
       chain: ['crowd', 'lb', 'server'],
+    },
+    pubSub: {
+      title: 'פרסום והרשמה',
+      term: 'Publish–Subscribe',
+      body: [
+        'החנות מפרסמת אירוע ("הזמנה חדשה!") לברוקר, והוא מעביר עותק לכל מי שנרשם אליו.',
+        'החנות לא מכירה את המנויים, אז מוסיפים מנוי חדש בלי לגעת בה בכלל.',
+      ],
+      chain: ['shop', 'broker', 'email'],
+    },
+    queue: {
+      title: 'תור הודעות',
+      term: 'Message Queue',
+      body: [
+        'כשמגיעות הרבה הודעות בבת אחת, התור שומר אותן ומעביר אותן לעובד בקצב שלו.',
+        'אף הודעה לא הולכת לאיבוד, והשולח לא צריך לחכות שהעובד יתפנה.',
+      ],
+      chain: ['shop', 'queue', 'stock'],
+    },
+    eventDriven: {
+      title: 'ארכיטקטורה מונחית אירועים',
+      term: 'Event-Driven Architecture',
+      body: [
+        'השירותים לא קוראים זה לזה ומחכים. כל אחד מגיב לאירועים בזמן ובקצב שלו.',
+        'ברוקר ותורים נותנים מערכת רופפת: קל להוסיף לה שירותים, והיא לא קורסת בעומס.',
+      ],
+      chain: ['shop', 'broker', 'queue'],
     },
   } satisfies Record<ConceptId, { title: string; term: string; body: string[]; chain: Kind[] }>,
 };

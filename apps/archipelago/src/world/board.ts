@@ -9,7 +9,7 @@ import { fits, shapeOf } from '../game/pieces';
 import { kindsOf, sameEdge } from '../game/sim';
 import type { Build, Edge, Kind, LevelDef, RunResult, Trip } from '../game/types';
 import { mat, sparkleTexture } from './look';
-import { CRITTER_COLORS, PORT_HEIGHT, critter, groundAt, island, pad, piece, pointer, socket } from './models';
+import { CRITTER_COLORS, PORT_HEIGHT, butterfly, critter, groundAt, island, pad, piece, plane, pointer, socket } from './models';
 import type { World } from './world';
 
 /** Height of the name tag above each kind's base. */
@@ -27,6 +27,11 @@ const TAG_HEIGHT: Record<Kind, number> = {
   ship: 1.3,
   cache: 1.2,
   lb: 1.15,
+  shop: 1.6,
+  broker: 1.75,
+  queue: 1.2,
+  email: 1.55,
+  analytics: 1.6,
 };
 
 export interface Names {
@@ -77,6 +82,7 @@ export class Board {
   private build: Build = { placed: {}, edges: [] };
   private running = false;
   private disposed = false;
+  private readonly butterflies: THREE.Group[] = [];
 
   constructor(
     private readonly world: World,
@@ -84,7 +90,7 @@ export class Board {
     private readonly names: Names,
   ) {
     this.showShapes = level.pieces.some((p) => p.kind === 'bank');
-    this.root.add(island(true));
+    this.root.add(island(level.island));
     for (const p of level.pads) {
       const g = pad();
       g.position.copy(this.ground(p.at));
@@ -93,6 +99,13 @@ export class Board {
       this.padViews.set(p.id, g);
     }
     for (const p of level.pieces) this.addPiece(p.id, p.kind, false);
+    if (level.island === 2)
+      for (let i = 0; i < 6; i++) {
+        const b = butterfly(['#ff7aa8', '#ffd24a', '#b18cff', '#7ec8ff'][i % 4]);
+        b.userData.seed = i;
+        this.butterflies.push(b);
+        this.root.add(b);
+      }
     this.arrow.visible = false;
     this.root.add(this.arrow);
     world.stage.add(this.root);
@@ -100,7 +113,7 @@ export class Board {
   }
 
   private ground([x, z]: [number, number]) {
-    return new THREE.Vector3(x, groundAt(z), z);
+    return new THREE.Vector3(x, groundAt(z, this.level.island), z);
   }
 
   private posOf(id: string): THREE.Vector3 {
@@ -238,6 +251,18 @@ export class Board {
       const spinner = v.obj.userData.spinner as THREE.Object3D | undefined;
       if (spinner) spinner.rotation.y += dt * (this.running ? 6 : 0.8);
     }
+    for (const b of this.butterflies) {
+      const i = b.userData.seed as number;
+      const a = t * (0.3 + i * 0.05) + i * 1.7;
+      const x = Math.cos(a) * (4.5 + (i % 3)) * 1.1;
+      const z = Math.sin(a * 1.3) * (3.5 + (i % 2));
+      b.position.set(x, 1.6 + Math.sin(t * 2 + i) * 0.4, z);
+      b.rotation.y = -a;
+      const flap = Math.sin(t * 18 + i) * 0.9;
+      const [l, r] = b.userData.wings as THREE.Mesh[];
+      l.rotation.z = flap;
+      r.rotation.z = -flap;
+    }
     for (const g of this.padViews.values()) {
       const ring = g.userData.ring as THREE.Mesh;
       const k = this.placing ? 1 + Math.sin(t * 6) * 0.12 : 1;
@@ -357,17 +382,79 @@ export class Board {
   private async walk(c: THREE.Group, a: string, b: string, upTo = 1) {
     const { curve, reverse } = this.leg(a, b);
     const len = curve.getLength() * upTo;
-    sfx.play('hop');
-    await this.tween(Math.max(0.45, len / 3.2), (k) => {
+    const flying = c.userData.plane === true;
+    sfx.play(flying ? 'whoosh' : 'hop');
+    await this.tween(Math.max(0.45, len / (flying ? 4 : 3.2)), (k) => {
       const u = k * upTo;
       const p = curve.getPointAt(reverse ? 1 - u : u);
-      c.position.copy(p).setY(p.y - 0.2 + Math.abs(Math.sin(k * Math.PI * 4)) * 0.12);
       const ahead = curve.getPointAt(Math.min(1, Math.max(0, reverse ? 1 - u - 0.02 : u + 0.02)));
-      c.rotation.y = Math.atan2(ahead.x - p.x, ahead.z - p.z);
+      if (flying) {
+        // Glide just above the pipe, nose first.
+        c.position.copy(p).setY(p.y + 0.25 + Math.sin(k * Math.PI * 2) * 0.05);
+        c.lookAt(ahead.x, ahead.y + 0.25, ahead.z);
+      } else {
+        c.position.copy(p).setY(p.y - 0.2 + Math.abs(Math.sin(k * Math.PI * 4)) * 0.12);
+        c.rotation.y = Math.atan2(ahead.x - p.x, ahead.z - p.z);
+      }
     });
   }
 
+  /** One copy of an event: a paper plane that flies to its subscriber, waits in line at a queue, and gets no answer. */
+  private async flight(trip: Trip, kinds: Map<string, Kind>, onDone?: (t: Trip) => void): Promise<void> {
+    await this.wait((trip.group ?? 0) * 0.55);
+    const c = plane(CRITTER_COLORS[(trip.group ?? 0) % CRITTER_COLORS.length]);
+    c.userData.plane = true;
+    const start = this.port(trip.flow.from);
+    c.position.copy(start).setY(start.y + 0.25);
+    this.root.add(c);
+    const size = c.scale.x;
+    await this.tween(0.25, (k) => c.scale.setScalar(k * size));
+    const path = trip.path;
+    const last = path[path.length - 1];
+    if (path.length === 1) {
+      sfx.play('fail');
+      const b = this.bubble(c, trip.fail === 'reversed' ? '🔄' : '❓', 0.6);
+      await this.wait(1.2);
+      this.dropBubble(b);
+    } else {
+      for (let i = 1; i < path.length; i++) {
+        await this.walk(c, path[i - 1], path[i]);
+        // In line at the queue: each one waits for the ones before it.
+        if (kinds.get(path[i]) === 'queue' && trip.queued) {
+          const b = this.bubble(c, `${trip.queued + 1}`, 0.6);
+          b.element.classList.add('ticket');
+          await this.wait(trip.queued * 0.5);
+          this.dropBubble(b);
+        }
+      }
+      if (trip.fail === 'overload') {
+        sfx.play('fail');
+        this.react(last, false);
+        this.burst(this.topOf(last), '#8a93a8', 10, 1.2);
+        const b = this.bubble(c, '😵', 0.6);
+        await this.wait(1);
+        this.dropBubble(b);
+      } else if (trip.fail === 'shape' && trip.edge) {
+        await this.walk(c, trip.edge.from, trip.edge.to, 0.85);
+        sfx.play('zap');
+        this.burst(c.position.clone(), '#ffd24a', 14, 2);
+        await this.wait(1);
+      } else if (trip.ok) {
+        sfx.play('deliver');
+        this.react(last, true);
+        this.burst(this.port(last).setY(this.port(last).y + 0.5), '#ffd24a', 10, 1.6);
+        this.dropBubble(this.bubble(c, '💌', 0.6));
+        await this.wait(0.2);
+      }
+    }
+    onDone?.(trip);
+    await this.tween(0.2, (k) => c.scale.setScalar((1 - k) * size));
+    c.traverse((o) => o instanceof CSS2DObject && o.element.remove());
+    this.root.remove(c);
+  }
+
   private async trip(trip: Trip, index: number, kinds: Map<string, Kind>, delay: number, onDone?: (t: Trip) => void): Promise<void> {
+    if (trip.event) return this.flight(trip, kinds, onDone);
     await this.wait(delay);
     const target = kinds.get(trip.flow.to);
     const c = critter(CRITTER_COLORS[index % CRITTER_COLORS.length], target === 'bank' || target === 'pay' ? 'coin' : 'data');

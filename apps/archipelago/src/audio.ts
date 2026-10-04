@@ -1,6 +1,6 @@
 /** Every sound is synthesised with Web Audio, so there is nothing to download. */
 
-export type Sfx = 'tap' | 'place' | 'remove' | 'connect' | 'disconnect' | 'run' | 'hop' | 'deliver' | 'return' | 'fail' | 'zap' | 'alarm' | 'win' | 'card';
+export type Sfx = 'tap' | 'place' | 'remove' | 'connect' | 'disconnect' | 'run' | 'hop' | 'deliver' | 'return' | 'fail' | 'zap' | 'alarm' | 'win' | 'card' | 'whoosh';
 
 class Sound {
   private ctx: AudioContext | null = null;
@@ -131,6 +131,8 @@ class Sound {
         return;
       case 'win':
         return notes([523, 659, 784, 1047, 1319], 0.09, 0.35, 'triangle', 0.35);
+      case 'whoosh':
+        return this.tone(300 + Math.random() * 100, t, 0.25, 'sine', 0.08, 2.5);
       case 'card':
         return notes([1047, 1319, 1568], 0.06, 0.4, 'sine', 0.25);
     }
