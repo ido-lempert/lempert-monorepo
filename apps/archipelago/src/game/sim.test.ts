@@ -16,6 +16,10 @@ const w1 = levelById('w1')!;
 const w2 = levelById('w2')!;
 const w3 = levelById('w3')!;
 const w4 = levelById('w4')!;
+const o1 = levelById('o1')!;
+const o2 = levelById('o2')!;
+const o3 = levelById('o3')!;
+const o4 = levelById('o4')!;
 
 describe('levels', () => {
   it.each(LEVELS.map((l) => [l.id, l] as const))('%s is solved by its solution', (_, level) => {
@@ -277,5 +281,52 @@ describe('patterns workshop', () => {
       edges: [{ from: 'phone', to: 'p3' }, { from: 'laptop', to: 'p3' }, { from: 'p3', to: 'p2' }, { from: 'p2', to: 'p1' }, { from: 'p1', to: 'pay' }],
     });
     expect(lockLast.problems[0].reason).toBe('unguarded');
+  });
+});
+
+describe('the onion island', () => {
+  it('starts with a dependency that points outward', () => {
+    for (const l of [o1, o3, o4]) {
+      const r = run(l, { placed: {}, edges: l.edges });
+      expect(r.ok).toBe(false);
+      expect(r.problems.some((p) => p.reason === 'outward')).toBe(true);
+    }
+  });
+
+  it('a port turns the arrow around: the database points at it, the request flows to the database', () => {
+    const r = run(o1, o1.solution);
+    expect(r.ok).toBe(true);
+    expect(r.trips[0].path).toEqual(['phone', 'usecase', 'p1', 'db']);
+  });
+
+  it('drawing the port towards the database is an outward dependency again', () => {
+    const r = run(o1, { placed: { p1: 'port' }, edges: [{ from: 'phone', to: 'usecase' }, { from: 'usecase', to: 'p1' }, { from: 'p1', to: 'db' }] });
+    expect(r.problems.map((p) => p.reason)).toEqual(['outward']);
+    expect(r.trips[0].fail).toBe('outward');
+  });
+
+  it('nobody outside may reach a use case, a port or the entity except through the right layer', () => {
+    const r = run(o2, { placed: { p1: 'controller', p2: 'port' }, edges: [...o2.solution.edges, { from: 'laptop', to: 'usecase' }] });
+    expect(r.ok).toBe(false);
+    expect(r.problems.map((p) => p.reason)).toEqual(['skipsLayer']);
+    const viaPort = run(o1, { placed: { p1: 'port' }, edges: [{ from: 'phone', to: 'p1' }, { from: 'db', to: 'p1' }] });
+    expect(viaPort.problems[0].reason).toBe('skipsLayer');
+  });
+
+  it('a piece stands only on a pad of its own ring', () => {
+    const r = run(o2, { placed: { p1: 'port', p2: 'controller' }, edges: o2.solution.edges });
+    expect(r.ok).toBe(false);
+    expect(r.problems.slice(0, 2).map((p) => p.reason)).toEqual(['wrongRing', 'wrongRing']);
+  });
+
+  it('the core entity may not know the database, and a use case reaches it freely', () => {
+    expect(run(o4, o4.solution).ok).toBe(true);
+    const r = run(o4, { ...o4.solution, edges: [...o4.solution.edges, { from: 'entity', to: 'db' }] });
+    expect(r.problems.map((p) => p.reason)).toEqual(['outward']);
+  });
+
+  it('each outside part can plug into a port of its own', () => {
+    const r = run(o3, o3.solution);
+    expect(r.trips.map((t) => t.path[t.path.length - 1])).toEqual(['db', 'email']);
   });
 });

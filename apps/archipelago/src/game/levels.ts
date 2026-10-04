@@ -388,10 +388,161 @@ export const LEVELS: LevelDef[] = [
       ],
     },
   },
+  // --- The onion island: rings, and every dependency arrow points to the centre. ------------------------
+  // Rings (distance from the middle): 0 entities (< 1.4), 1 use cases and ports (1.4–2.7), 2 controllers (2.7–4.0), 3 the outside (4.0–5.3).
+  {
+    // The Dependency Rule: the use case must not reach out to the database; a port turns the arrow around.
+    id: 'o1',
+    island: 4,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [0, 4.65] },
+      { id: 'usecase', kind: 'usecase', at: [0, 2.05] },
+      { id: 'db', kind: 'db', at: [0, -4.65] },
+    ],
+    pads: [{ id: 'p1', at: [0, -2.05], ring: 1 }],
+    tray: ['port'],
+    edges: [
+      { from: 'phone', to: 'usecase' },
+      { from: 'usecase', to: 'db' },
+    ],
+    flows: [{ from: 'phone', to: 'db' }],
+    rules: ['noDirectDb', 'inward'],
+    gates: [{ target: 'port', via: 'usecase', fail: 'skipsLayer' }],
+    concept: 'dependencyRule',
+    solution: {
+      placed: { p1: 'port' },
+      edges: [
+        { from: 'phone', to: 'usecase' },
+        { from: 'usecase', to: 'p1' },
+        { from: 'db', to: 'p1' },
+      ],
+    },
+  },
+  {
+    // Interface adapters: nobody outside walks straight into a use case; the controller stands in the doorway.
+    id: 'o2',
+    island: 4,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [-2.3, 4.0] },
+      { id: 'laptop', kind: 'laptop', at: [2.3, 4.0] },
+      { id: 'usecase', kind: 'usecase', at: [0, 2.05] },
+      { id: 'db', kind: 'db', at: [0, -4.65] },
+    ],
+    pads: [
+      { id: 'p1', at: [0, 3.35], ring: 2 },
+      { id: 'p2', at: [0, -2.05], ring: 1 },
+    ],
+    tray: ['controller', 'port'],
+    edges: [{ from: 'phone', to: 'usecase' }],
+    flows: [
+      { from: 'phone', to: 'db' },
+      { from: 'laptop', to: 'db' },
+    ],
+    rules: ['noDirectDb', 'inward'],
+    gates: [
+      { target: 'usecase', via: 'controller', fail: 'skipsLayer' },
+      { target: 'port', via: 'usecase', fail: 'skipsLayer' },
+    ],
+    concept: 'interfaceAdapters',
+    solution: {
+      placed: { p1: 'controller', p2: 'port' },
+      edges: [
+        { from: 'phone', to: 'p1' },
+        { from: 'laptop', to: 'p1' },
+        { from: 'p1', to: 'usecase' },
+        { from: 'usecase', to: 'p2' },
+        { from: 'db', to: 'p2' },
+      ],
+    },
+  },
+  {
+    // Ports & adapters: two things outside (a database and an e-mail service), each plugged into a port of its own.
+    id: 'o3',
+    island: 4,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [0, 4.65] },
+      { id: 'usecase', kind: 'usecase', at: [0, 2.05] },
+      { id: 'db', kind: 'db', at: [-3.5, -3.1] },
+      { id: 'email', kind: 'email', at: [3.5, -3.1] },
+    ],
+    pads: [
+      { id: 'p1', at: [0, 3.35], ring: 2 },
+      { id: 'p2', at: [-1.45, -1.45], ring: 1 },
+      { id: 'p3', at: [1.45, -1.45], ring: 1 },
+    ],
+    tray: ['controller', 'port', 'port'],
+    edges: [{ from: 'usecase', to: 'email' }],
+    flows: [
+      { from: 'phone', to: 'db' },
+      { from: 'phone', to: 'email' },
+    ],
+    rules: ['noDirectDb', 'inward'],
+    gates: [
+      { target: 'usecase', via: 'controller', fail: 'skipsLayer' },
+      { target: 'port', via: 'usecase', fail: 'skipsLayer' },
+    ],
+    concept: 'portsAdapters',
+    solution: {
+      placed: { p1: 'controller', p2: 'port', p3: 'port' },
+      edges: [
+        { from: 'phone', to: 'p1' },
+        { from: 'p1', to: 'usecase' },
+        { from: 'usecase', to: 'p2' },
+        { from: 'db', to: 'p2' },
+        { from: 'usecase', to: 'p3' },
+        { from: 'email', to: 'p3' },
+      ],
+    },
+  },
+  {
+    // Clean Architecture: the whole onion, with the entity in the core that knows nobody.
+    id: 'o4',
+    island: 4,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [-2.4, 4.0] },
+      { id: 'laptop', kind: 'laptop', at: [2.4, 4.0] },
+      { id: 'usecase', kind: 'usecase', at: [-1.45, 1.45] },
+      { id: 'entity', kind: 'entity', at: [0, 0] },
+      { id: 'db', kind: 'db', at: [-3.5, -3.1] },
+      { id: 'email', kind: 'email', at: [3.5, -3.1] },
+    ],
+    pads: [
+      { id: 'p1', at: [0, 3.35], ring: 2 },
+      { id: 'p2', at: [-1.45, -1.45], ring: 1 },
+      { id: 'p3', at: [1.45, -1.45], ring: 1 },
+    ],
+    tray: ['controller', 'port', 'port'],
+    edges: [{ from: 'entity', to: 'db' }],
+    flows: [
+      { from: 'phone', to: 'entity' },
+      { from: 'laptop', to: 'db' },
+      { from: 'phone', to: 'email' },
+    ],
+    rules: ['noDirectDb', 'inward'],
+    gates: [
+      { target: 'usecase', via: 'controller', fail: 'skipsLayer' },
+      { target: 'port', via: 'usecase', fail: 'skipsLayer' },
+      { target: 'entity', via: 'usecase', fail: 'skipsLayer' },
+    ],
+    concept: 'cleanArchitecture',
+    solution: {
+      placed: { p1: 'controller', p2: 'port', p3: 'port' },
+      edges: [
+        { from: 'phone', to: 'p1' },
+        { from: 'laptop', to: 'p1' },
+        { from: 'p1', to: 'usecase' },
+        { from: 'usecase', to: 'entity' },
+        { from: 'usecase', to: 'p2' },
+        { from: 'db', to: 'p2' },
+        { from: 'usecase', to: 'p3' },
+        { from: 'email', to: 'p3' },
+      ],
+    },
+  },
 ];
 
 export const levelById = (id: string) => LEVELS.find((l) => l.id === id);
 
-export const ISLANDS = [1, 2, 3] as const;
+export const ISLANDS = [1, 2, 3, 4] as const;
 
 export const levelsOf = (island: number) => LEVELS.filter((l) => l.island === island);

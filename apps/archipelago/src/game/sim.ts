@@ -2,7 +2,7 @@
  * Runs a build: sends every flow's request along the edges and reports where it got and why it failed.
  * Pure, so the tests can play every level.
  */
-import { DB_TIME, FORWARDS, HIT_TIME, WORKERS, fits, isClient } from './pieces';
+import { DB_TIME, FORWARDS, HIT_TIME, IMPLEMENTERS, RING, WORKERS, fits, isClient } from './pieces';
 import type { Build, Edge, Flow, Kind, LevelDef, Problem, RunResult, Trip } from './types';
 
 /** Every piece on the board, fixed or placed, by id. */
@@ -47,7 +47,10 @@ function search(
 
 export function run(level: LevelDef, build: Build): RunResult {
   const kinds = kindsOf(level, build);
-  const edges = build.edges.filter((e) => kinds.has(e.from) && kinds.has(e.to));
+  const drawn = build.edges.filter((e) => kinds.has(e.from) && kinds.has(e.to));
+  // An implementation edge (database → port) points inward, but the request it carries goes from the port to the database.
+  const implementing = (e: Edge) => kinds.get(e.to) === 'port' && IMPLEMENTERS.includes(kinds.get(e.from)!);
+  const edges = drawn.map((e) => (implementing(e) ? { from: e.to, to: e.from } : e));
   const fit = (e: Edge) => fits(kinds.get(e.from)!, kinds.get(e.to)!);
 
   const problems: Problem[] = [];
@@ -60,8 +63,22 @@ export function run(level: LevelDef, build: Build): RunResult {
       if (isClient(kind) && out.length > 1) for (const e of out) problems.push({ reason: 'twoAddresses', edge: e });
     }
 
+  // A piece on the wrong ring comes first: every other complaint would only be a symptom of it.
+  for (const pad of level.pads) {
+    const kind = build.placed[pad.id];
+    if (pad.ring !== undefined && kind && RING[kind] !== undefined && RING[kind] !== pad.ring) problems.push({ reason: 'wrongRing', piece: pad.id });
+  }
+
   for (const g of level.gates ?? [])
-    for (const e of edges) if (kinds.get(e.to) === g.target && kinds.get(e.from) !== g.via) problems.push({ reason: 'unguarded', edge: e });
+    for (const e of drawn)
+      if (kinds.get(e.to) === g.target && kinds.get(e.from) !== g.via && !implementing(e)) problems.push({ reason: g.fail ?? 'unguarded', edge: e });
+
+  if (level.rules.includes('inward'))
+    for (const e of drawn) {
+      const a = RING[kinds.get(e.from)!];
+      const b = RING[kinds.get(e.to)!];
+      if (a !== undefined && b !== undefined && a < b) problems.push({ reason: 'outward', edge: e });
+    }
 
   for (const kind of level.single ?? [])
     for (const id of [...kinds].filter(([, k]) => k === kind).map(([id]) => id).slice(1)) problems.push({ reason: 'duplicate', piece: id });

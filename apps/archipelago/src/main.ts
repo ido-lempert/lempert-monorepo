@@ -209,6 +209,8 @@ function startLevel(id: string) {
   else if (level.id === 'e1' && firstTime(progress, 'events')) flash(t.coach.events, false, 7);
   else if (level.id === 'w2' && firstTime(progress, 'wraps')) flash(t.coach.wraps, false, 7);
   else if (level.id === 'w3' && firstTime(progress, 'single')) flash(t.coach.single, false, 7);
+  else if (level.id === 'o1' && firstTime(progress, 'inward')) flash(t.coach.inward, false, 8);
+  else if (level.id === 'o2' && firstTime(progress, 'rings')) flash(t.coach.rings, false, 7);
   save();
 }
 
@@ -415,7 +417,7 @@ function showLevels() {
   for (const island of ISLANDS) {
     const head = document.createElement('h3');
     head.className = 'island-head';
-    head.textContent = `${island === 1 ? '🏝️' : island === 2 ? '🦋' : '🛠️'} ${t.islands[island]}`;
+    head.textContent = `${island === 1 ? '🏝️' : island === 2 ? '🦋' : island === 3 ? '🛠️' : '🧅'} ${t.islands[island]}`;
     body.push(head);
     const first = levelsOf(island)[0];
     const prev = LEVELS[LEVELS.indexOf(first) - 1];

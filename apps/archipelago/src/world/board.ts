@@ -36,6 +36,10 @@ const TAG_HEIGHT: Record<Kind, number> = {
   lock: 1.2,
   zip: 1.15,
   logbook: 1.65,
+  controller: 1.45,
+  usecase: 1.75,
+  entity: 1.6,
+  port: 1.5,
 };
 
 export interface Names {
@@ -489,9 +493,9 @@ export class Board {
         const x = c.position.x;
         await this.tween(1.2, (k) => (c.position.x = x + Math.sin(k * 50) * 0.06));
         this.dropBubble(b);
-      } else if (trip.fail === 'exposedDb' || trip.fail === 'unguarded' || trip.fail === 'twoAddresses') {
+      } else if (trip.fail === 'exposedDb' || trip.fail === 'unguarded' || trip.fail === 'twoAddresses' || trip.fail === 'outward' || trip.fail === 'skipsLayer') {
         sfx.play('alarm');
-        this.alarm(trip.flow.to);
+        if (trip.fail !== 'outward' && trip.fail !== 'skipsLayer') this.alarm(trip.flow.to);
         const b = this.bubble(c, '🚨', 0.9);
         await this.wait(1.4);
         this.dropBubble(b);
@@ -585,6 +589,8 @@ export class Board {
     for (const p of result.problems) {
       const pipe = p.edge && this.pipes.find((x) => sameEdge(x.edge, p.edge!));
       if (pipe) this.burst(pipe.curve.getPointAt(0.5), '#ff5a6e', 10, 1.5);
+      // The inner piece that reaches outward, or the layer that was skipped, is the one that rings.
+      if (p.edge && (p.reason === 'outward' || p.reason === 'skipsLayer')) this.alarm(p.reason === 'outward' ? p.edge.from : p.edge.to);
       if (p.piece) {
         // A second copy of something that may only exist once.
         sfx.play('alarm');
