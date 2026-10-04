@@ -13,7 +13,21 @@ import { CRITTER_COLORS, PORT_HEIGHT, critter, groundAt, island, pad, piece, poi
 import type { World } from './world';
 
 /** Height of the name tag above each kind's base. */
-const TAG_HEIGHT: Record<Kind, number> = { phone: 1.95, laptop: 1.35, server: 2.15, db: 1.75, adapter: 1.25, bank: 1.75 };
+const TAG_HEIGHT: Record<Kind, number> = {
+  phone: 1.95,
+  laptop: 1.35,
+  crowd: 1.35,
+  server: 2.15,
+  db: 1.75,
+  adapter: 1.25,
+  bank: 1.75,
+  facade: 1.7,
+  pay: 1.45,
+  stock: 1.6,
+  ship: 1.3,
+  cache: 1.2,
+  lb: 1.15,
+};
 
 export interface Names {
   name(kind: Kind): string;
@@ -61,6 +75,8 @@ export class Board {
   private readonly offFrame: () => void;
   private time = 0;
   private build: Build = { placed: {}, edges: [] };
+  private running = false;
+  private disposed = false;
 
   constructor(
     private readonly world: World,
@@ -219,6 +235,8 @@ export class Board {
       if (eyes) eyes.scale.y = (t + v.pos.x * 1.7) % 4 < 0.12 ? 0.1 : 1;
       const leds = v.obj.userData.leds as THREE.Mesh[] | undefined;
       leds?.forEach((l, i) => (l.visible = Math.sin(t * (3 + i) + i) > -0.6));
+      const spinner = v.obj.userData.spinner as THREE.Object3D | undefined;
+      if (spinner) spinner.rotation.y += dt * (this.running ? 6 : 0.8);
     }
     for (const g of this.padViews.values()) {
       const ring = g.userData.ring as THREE.Mesh;
@@ -293,6 +311,12 @@ export class Board {
     return new Promise((done) => {
       let t = 0;
       const off = this.world.onFrame((dt) => {
+        // A level that was left mid-run finishes its animations at once.
+        if (this.disposed) {
+          off();
+          done();
+          return;
+        }
         t += dt;
         const k = Math.min(1, t / sec);
         fn(k);
@@ -343,19 +367,21 @@ export class Board {
     });
   }
 
-  private async trip(trip: Trip, index: number, kinds: Map<string, Kind>): Promise<void> {
-    await this.wait(index * 0.7);
+  private async trip(trip: Trip, index: number, kinds: Map<string, Kind>, delay: number, onDone?: (t: Trip) => void): Promise<void> {
+    await this.wait(delay);
     const target = kinds.get(trip.flow.to);
-    const c = critter(CRITTER_COLORS[index % CRITTER_COLORS.length], target === 'bank' ? 'coin' : 'data');
+    const c = critter(CRITTER_COLORS[index % CRITTER_COLORS.length], target === 'bank' || target === 'pay' ? 'coin' : 'data');
     c.position.copy(this.port(trip.flow.from)).setY(this.port(trip.flow.from).y - 0.2);
     this.root.add(c);
     await this.tween(0.3, (k) => c.scale.setScalar(k * CRITTER_SIZE));
 
     const path = trip.path;
-    if (path.length === 1) {
-      // Nowhere to go: a confused little hop.
+    const last = path[path.length - 1];
+    const late = trip.fail === 'tooSlow' && this.level.timeLimit !== undefined && (trip.doneAt ?? 0) - (trip.cost ?? 0) >= this.level.timeLimit;
+    if (path.length === 1 || late) {
+      // Nowhere to go (a confused little hop), or out of time before it even left (asleep).
       sfx.play('fail');
-      const b = this.bubble(c, trip.fail === 'reversed' ? '🔄' : '❓', 0.9);
+      const b = this.bubble(c, late ? '😴' : trip.fail === 'reversed' ? '🔄' : '❓', 0.9);
       const y = c.position.y;
       await this.tween(1.4, (k) => (c.position.y = y + Math.abs(Math.sin(k * Math.PI * 4)) * 0.3));
       this.dropBubble(b);
@@ -375,21 +401,44 @@ export class Board {
         const b = this.bubble(c, '🚨', 0.9);
         await this.wait(1.4);
         this.dropBubble(b);
-      } else if (trip.ok) {
-        sfx.play('deliver');
-        this.react(trip.flow.to, true);
-        this.burst(this.port(trip.flow.to).setY(this.port(trip.flow.to).y + 0.6), '#7fd8ff', 12, 2);
-        (c.userData.letter as THREE.Object3D).visible = false;
-        (c.userData.prize as THREE.Object3D).visible = true;
-        await this.wait(0.25);
-        for (let i = path.length - 1; i > 0; i--) await this.walk(c, path[i], path[i - 1]);
-        sfx.play('return');
-        this.react(trip.flow.from, true);
-        this.burst(c.position.clone().setY(c.position.y + 0.5), '#ff8fb1', 10, 1.6);
-        this.bubble(c, '💖', 0.9);
-        await this.wait(0.6);
+      } else if (trip.fail === 'overload') {
+        // The worker is full: it puffs smoke and the request gives up.
+        sfx.play('fail');
+        this.react(last, false);
+        this.burst(this.topOf(last), '#8a93a8', 12, 1.2);
+        const b = this.bubble(c, '😵', 0.9);
+        await this.wait(1.2);
+        this.dropBubble(b);
+      } else {
+        if (this.level.timeLimit !== undefined && !trip.hit) {
+          // The slow database thinks for a while.
+          const b = this.bubble(c, '⏳', 0.9);
+          await this.wait(1.1);
+          this.dropBubble(b);
+        }
+        if (trip.fail === 'tooSlow') {
+          sfx.play('fail');
+          const b = this.bubble(c, '😴', 0.9);
+          await this.wait(1);
+          this.dropBubble(b);
+        } else {
+          sfx.play('deliver');
+          this.react(last, true);
+          this.burst(this.port(last).setY(this.port(last).y + 0.6), trip.hit ? '#ffd24a' : '#7fd8ff', 12, 2);
+          if (trip.hit) this.dropBubble(this.bubble(c, '⚡', 0.9));
+          (c.userData.letter as THREE.Object3D).visible = false;
+          (c.userData.prize as THREE.Object3D).visible = true;
+          await this.wait(trip.hit ? 0.35 : 0.25);
+          for (let i = path.length - 1; i > 0; i--) await this.walk(c, path[i], path[i - 1]);
+          sfx.play('return');
+          this.react(trip.flow.from, true);
+          this.burst(c.position.clone().setY(c.position.y + 0.5), '#ff8fb1', 10, 1.6);
+          this.bubble(c, '💖', 0.9);
+          await this.wait(0.6);
+        }
       }
     }
+    onDone?.(trip);
     await this.tween(0.25, (k) => c.scale.setScalar((1 - k) * CRITTER_SIZE));
     c.traverse((o) => o instanceof CSS2DObject && o.element.remove());
     this.root.remove(c);
@@ -410,7 +459,7 @@ export class Board {
   }
 
   /** Plays a run; resolves when every critter is done. */
-  async play(result: RunResult): Promise<void> {
+  async play(result: RunResult, onTrip?: (t: Trip) => void): Promise<void> {
     this.pointAt(null);
     sfx.play('run');
     // Glow the edges that break a rule, before anyone walks.
@@ -419,7 +468,15 @@ export class Board {
       if (pipe) this.burst(pipe.curve.getPointAt(0.5), '#ff5a6e', 10, 1.5);
     }
     const kinds = kindsOf(this.level, this.build);
-    await Promise.all(result.trips.map((t, i) => this.trip(t, i, kinds)));
+    this.running = true;
+    if (this.level.timeLimit !== undefined) {
+      // On the clock, requests go one after another, so the time adds up where you can see it.
+      for (const [i, t] of result.trips.entries()) await this.trip(t, i, kinds, 0, onTrip);
+    } else {
+      const crowd = result.trips.length > 3;
+      await Promise.all(result.trips.map((t, i) => this.trip(t, i, kinds, i * (crowd ? 0.45 : 0.7), onTrip)));
+    }
+    this.running = false;
     if (result.ok) {
       sfx.play('win');
       this.confetti();
@@ -435,7 +492,9 @@ export class Board {
   }
 
   dispose() {
+    this.disposed = true;
     this.offFrame();
+    this.world.labels.domElement.replaceChildren();
     this.root.traverse((o) => o instanceof CSS2DObject && o.element.remove());
     this.world.stage.remove(this.root);
   }

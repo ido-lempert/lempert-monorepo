@@ -85,6 +85,101 @@ export const LEVELS: LevelDef[] = [
       ],
     },
   },
+  {
+    // The app is wired to three systems by itself; a facade (an order desk) gives it one door.
+    id: 'l4',
+    island: 1,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [0, 3.3] },
+      { id: 'pay', kind: 'pay', at: [-3.2, -3.3] },
+      { id: 'stock', kind: 'stock', at: [0, -3.4] },
+      { id: 'ship', kind: 'ship', at: [3.2, -3.3] },
+    ],
+    pads: [{ id: 'p1', at: [0, 0] }],
+    tray: ['facade'],
+    edges: [
+      { from: 'phone', to: 'pay' },
+      { from: 'phone', to: 'stock' },
+      { from: 'phone', to: 'ship' },
+    ],
+    flows: [
+      { from: 'phone', to: 'stock' },
+      { from: 'phone', to: 'pay' },
+      { from: 'phone', to: 'ship' },
+    ],
+    rules: ['singleAddress'],
+    concept: 'facade',
+    solution: {
+      placed: { p1: 'facade' },
+      edges: [
+        { from: 'phone', to: 'p1' },
+        { from: 'p1', to: 'pay' },
+        { from: 'p1', to: 'stock' },
+        { from: 'p1', to: 'ship' },
+      ],
+    },
+  },
+  {
+    // The database is slow and everyone asks the same thing: a cache answers all but the first.
+    id: 'l5',
+    island: 1,
+    pieces: [
+      { id: 'phone', kind: 'phone', at: [0, 3.3] },
+      { id: 's', kind: 'server', at: [-1.8, 0] },
+      { id: 'db', kind: 'db', at: [0, -3.3] },
+    ],
+    pads: [{ id: 'p1', at: [2, 0] }],
+    tray: ['cache'],
+    edges: [
+      { from: 'phone', to: 's' },
+      { from: 's', to: 'db' },
+    ],
+    flows: [{ from: 'phone', to: 'db', count: 4 }],
+    rules: ['noDirectDb'],
+    timeLimit: 8,
+    concept: 'cache',
+    solution: {
+      placed: { p1: 'cache' },
+      edges: [
+        { from: 'phone', to: 's' },
+        { from: 's', to: 'p1' },
+        { from: 'p1', to: 'db' },
+      ],
+    },
+  },
+  {
+    // Six requests at once and a server that holds three: a load balancer shares them between two.
+    id: 'l6',
+    island: 1,
+    pieces: [
+      { id: 'crowd', kind: 'crowd', at: [0, 4.1] },
+      { id: 's0', kind: 'server', at: [-2.3, 0] },
+      { id: 'db', kind: 'db', at: [0, -3.3] },
+    ],
+    pads: [
+      { id: 'p1', at: [0, 2.2] },
+      { id: 'p2', at: [2.3, 0] },
+    ],
+    tray: ['lb', 'server'],
+    edges: [
+      { from: 'crowd', to: 's0' },
+      { from: 's0', to: 'db' },
+    ],
+    flows: [{ from: 'crowd', to: 'db', count: 6 }],
+    rules: ['singleAddress', 'noDirectDb'],
+    capacity: 3,
+    concept: 'loadBalancer',
+    solution: {
+      placed: { p1: 'lb', p2: 'server' },
+      edges: [
+        { from: 'crowd', to: 'p1' },
+        { from: 'p1', to: 's0' },
+        { from: 'p1', to: 'p2' },
+        { from: 's0', to: 'db' },
+        { from: 'p2', to: 'db' },
+      ],
+    },
+  },
 ];
 
 export const levelById = (id: string) => LEVELS.find((l) => l.id === id);

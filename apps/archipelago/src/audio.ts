@@ -5,7 +5,12 @@ export type Sfx = 'tap' | 'place' | 'remove' | 'connect' | 'disconnect' | 'run' 
 class Sound {
   private ctx: AudioContext | null = null;
   private out: GainNode | null = null;
+  private musicOut: GainNode | null = null;
+  private musicTimer = 0;
+  private nextBeat = 0;
+  private beat = 0;
   on = true;
+  private musicOn = true;
 
   /** Browsers only allow audio after a gesture, so this is called from the first tap. */
   unlock() {
@@ -14,8 +19,66 @@ class Sound {
       this.out = this.ctx.createGain();
       this.out.gain.value = 0.35;
       this.out.connect(this.ctx.destination);
+      this.musicOut = this.ctx.createGain();
+      this.musicOut.gain.value = 0.16;
+      this.musicOut.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
+    this.setMusic(this.musicOn);
+  }
+
+  get music() {
+    return this.musicOn;
+  }
+
+  /** A calm marimba loop, made up as it plays (a chord a bar, a pentatonic tune on top). */
+  setMusic(on: boolean) {
+    this.musicOn = on;
+    if (!this.ctx) return;
+    clearInterval(this.musicTimer);
+    this.musicTimer = 0;
+    if (!on) return;
+    this.nextBeat = this.ctx.currentTime + 0.1;
+    this.musicTimer = window.setInterval(() => this.schedule(), 100);
+  }
+
+  private schedule() {
+    const c = this.ctx!;
+    const step = 60 / 84 / 2;
+    // C, Am, F, G – roots and a gentle tune from the major pentatonic.
+    const roots = [130.81, 110, 87.31, 98];
+    const scale = [261.63, 293.66, 329.63, 392, 440, 523.25, 587.33];
+    while (this.nextBeat < c.currentTime + 0.3) {
+      const bar = Math.floor(this.beat / 8) % 4;
+      const pos = this.beat % 8;
+      const at = this.nextBeat;
+      if (pos === 0 || pos === 4) this.mallet(roots[bar], at, 1.2, 0.5);
+      if (pos === 2 || pos === 6) this.mallet(roots[bar] * 1.5, at, 0.6, 0.25);
+      // A seeded wander so the tune repeats now and then without looping exactly.
+      const r = Math.sin(this.beat * 12.9898 + bar * 78.233) * 43758.5453;
+      const roll = r - Math.floor(r);
+      if (roll > 0.45) this.mallet(scale[Math.floor(roll * 997) % scale.length], at, 0.5, 0.3);
+      this.beat++;
+      this.nextBeat += step;
+    }
+  }
+
+  private mallet(freq: number, at: number, len: number, vol: number) {
+    const c = this.ctx!;
+    for (const [mul, v] of [
+      [1, vol],
+      [4, vol * 0.12],
+    ]) {
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.frequency.value = freq * mul;
+      g.gain.setValueAtTime(0, at);
+      g.gain.linearRampToValueAtTime(v, at + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.001, at + len / mul);
+      o.connect(g).connect(this.musicOut!);
+      o.start(at);
+      o.stop(at + len + 0.05);
+    }
   }
 
   private tone(freq: number, at: number, len: number, type: OscillatorType = 'sine', vol = 0.5, slide = 0) {

@@ -365,10 +365,185 @@ function bank(): THREE.Group {
   return g;
 }
 
-const BUILDERS: Record<Kind, () => THREE.Group> = { phone, laptop, server, db, adapter, bank };
+/** Many users at once: three small phones on one base. */
+function crowd(): THREE.Group {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.9, 0.16, 32), mat('#ffd0e0', { clearcoat: 0.6 }));
+  base.position.y = 0.08;
+  g.add(base);
+  const colors = ['#ff7aa8', '#7ec8ff', '#ffb547'];
+  [-0.5, 0, 0.5].forEach((x, i) => {
+    const body = new THREE.Mesh(box(0.42, 0.75, 0.12, 0.08), mat(colors[i], { clearcoat: 1, rough: 0.35 }));
+    body.position.set(x, 0.55 + (i === 1 ? 0.15 : 0), i === 1 ? -0.15 : 0.1);
+    const screen = new THREE.Mesh(box(0.34, 0.6, 0.03, 0.04), mat('#e9fbff', { emissive: 0.35, clearcoat: 1, rough: 0.2 }));
+    screen.position.z = 0.06;
+    const f = face(0.6);
+    f.position.set(0, 0.05, 0.085);
+    body.add(screen, f);
+    if (i === 1) g.userData.face = f;
+    g.add(body);
+  });
+  return g;
+}
+
+/** The order desk (facade): a counter with a bell. */
+function facade(): THREE.Group {
+  const g = new THREE.Group();
+  const desk = new THREE.Mesh(box(1.4, 0.75, 0.75, 0.12), mat('#2fc4a4', { clearcoat: 1, rough: 0.35 }));
+  desk.position.y = 0.38;
+  const top = new THREE.Mesh(box(1.55, 0.1, 0.9, 0.04), mat('#f4f1e8', { clearcoat: 0.6 }));
+  top.position.y = 0.8;
+  const sign = new THREE.Mesh(box(0.9, 0.36, 0.06, 0.06), mat('#ffffff', { clearcoat: 0.6 }));
+  sign.position.set(0, 1.25, -0.25);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 6), mat('#d9dde8'));
+  pole.position.set(0, 1.0, -0.25);
+  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat('#ffcf3a', { metal: 0.7, rough: 0.25 }));
+  bell.position.set(0.45, 0.85, 0.15);
+  const f = face(1.1);
+  f.position.set(0, 1.25, -0.21);
+  g.add(desk, top, pole, sign, bell, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** Payments: a card machine with a card sticking out. */
+function pay(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(box(0.8, 1.1, 0.5, 0.16), mat('#ff8a5c', { clearcoat: 1, rough: 0.35 }));
+  body.position.y = 0.55;
+  const screen = new THREE.Mesh(box(0.56, 0.32, 0.04, 0.04), mat('#d9ffe9', { emissive: 0.4, clearcoat: 1 }));
+  screen.position.set(0, 0.82, 0.26);
+  const card = new THREE.Mesh(box(0.55, 0.04, 0.36, 0.03), mat('#5b8cff', { clearcoat: 1 }));
+  card.position.set(0, 1.12, 0);
+  card.rotation.x = 0.2;
+  const f = face(1);
+  f.position.set(0, 0.42, 0.26);
+  g.add(body, screen, card, f);
+  g.userData.face = f;
+  g.userData.screen = screen;
+  return g;
+}
+
+/** Inventory: a little warehouse with a stack of boxes. */
+function stock(): THREE.Group {
+  const g = new THREE.Group();
+  const shed = new THREE.Mesh(box(1.3, 0.85, 0.9, 0.1), mat('#c98bff', { clearcoat: 0.8, rough: 0.4 }));
+  shed.position.y = 0.43;
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.4, 20, 1, false, 0, Math.PI), mat('#8e5ae0', { clearcoat: 0.8 }));
+  roof.rotation.z = Math.PI / 2;
+  roof.rotation.y = Math.PI / 2;
+  roof.position.y = 0.86;
+  roof.scale.set(1, 1, 0.6);
+  g.add(shed, roof);
+  [
+    [0.75, 0.15, 0.3],
+    [0.75, 0.15, -0.05],
+    [0.75, 0.45, 0.12],
+  ].forEach(([x, y, z]) => {
+    const b = new THREE.Mesh(box(0.28, 0.28, 0.28, 0.03), mat('#d9a35f', { rough: 0.8 }));
+    b.position.set(x, y, z);
+    g.add(b);
+  });
+  const f = face(1.1);
+  f.position.set(0, 0.5, 0.46);
+  g.add(f);
+  g.userData.face = f;
+  return g;
+}
+
+/** Shipping: a small delivery truck. */
+function ship(): THREE.Group {
+  const g = new THREE.Group();
+  const cargo = new THREE.Mesh(box(0.9, 0.8, 0.8, 0.1), mat('#ffd24a', { clearcoat: 1, rough: 0.35 }));
+  cargo.position.set(-0.15, 0.6, 0);
+  const cab = new THREE.Mesh(box(0.5, 0.6, 0.78, 0.12), mat('#ff6f91', { clearcoat: 1, rough: 0.35 }));
+  cab.position.set(0.55, 0.5, 0);
+  const glass = new THREE.Mesh(box(0.06, 0.25, 0.6, 0.03), mat('#bff3ff', { emissive: 0.3, clearcoat: 1 }));
+  glass.position.set(0.8, 0.62, 0);
+  g.add(cargo, cab, glass);
+  for (const x of [-0.4, 0.5])
+    for (const z of [-0.4, 0.4]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 16), mat('#3a3550', { rough: 0.6 }));
+      w.rotation.x = Math.PI / 2;
+      w.position.set(x, 0.16, z);
+      g.add(w);
+    }
+  const f = face(1);
+  f.position.set(-0.15, 0.65, 0.41);
+  g.add(f);
+  g.userData.face = f;
+  return g;
+}
+
+/** A cache: a speedy little box with a lightning bolt, holding copies close by. */
+function cache(): THREE.Group {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(box(0.95, 0.85, 0.8, 0.2), mat('#ffcf3a', { clearcoat: 1, rough: 0.3 }));
+  body.position.y = 0.45;
+  g.add(body);
+  const bolt = new THREE.Shape();
+  bolt.moveTo(0.05, 0.3);
+  bolt.lineTo(-0.14, -0.02);
+  bolt.lineTo(0.0, -0.02);
+  bolt.lineTo(-0.06, -0.3);
+  bolt.lineTo(0.15, 0.06);
+  bolt.lineTo(0.01, 0.06);
+  bolt.closePath();
+  const mark = new THREE.Mesh(new THREE.ExtrudeGeometry(bolt, { depth: 0.05, bevelEnabled: false }), mat('#ff7a2f', { emissive: 0.5 }));
+  mark.position.set(0.3, 0.45, 0.39);
+  mark.scale.setScalar(0.8);
+  const f = face(1);
+  f.position.set(-0.12, 0.55, 0.41);
+  g.add(mark, f);
+  g.userData.face = f;
+  return g;
+}
+
+/** A load balancer: a round junction with a spinning arrow on top. */
+function lb(): THREE.Group {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.68, 0.7, 32), mat('#4fd1ff', { clearcoat: 1, rough: 0.3 }));
+  base.position.y = 0.35;
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.04, 8, 40), mat('#ffffff', { clearcoat: 1 }));
+  band.rotation.x = Math.PI / 2;
+  band.position.y = 0.55;
+  const spinner = new THREE.Group();
+  spinner.position.y = 0.78;
+  const m = mat('#ff6f91', { clearcoat: 1, emissive: 0.2 });
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(box(0.42, 0.08, 0.14, 0.03), m);
+    arm.position.x = side * 0.2;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.22, 12), m);
+    tip.rotation.z = -side * (Math.PI / 2);
+    tip.position.x = side * 0.48;
+    spinner.add(arm, tip);
+  }
+  const f = face(1.05);
+  f.position.set(0, 0.32, 0.66);
+  g.add(base, band, spinner, f);
+  g.userData.face = f;
+  g.userData.spinner = spinner;
+  return g;
+}
+
+const BUILDERS: Record<Kind, () => THREE.Group> = { phone, laptop, crowd, server, db, adapter, bank, facade, pay, stock, ship, cache, lb };
 
 /** Where requests leave and arrive on each kind, above its base. */
-export const PORT_HEIGHT: Record<Kind, number> = { phone: 1.0, laptop: 0.7, server: 1.0, db: 0.9, adapter: 0.6, bank: 0.9 };
+export const PORT_HEIGHT: Record<Kind, number> = {
+  phone: 1.0,
+  laptop: 0.7,
+  crowd: 0.7,
+  server: 1.0,
+  db: 0.9,
+  adapter: 0.6,
+  bank: 0.9,
+  facade: 0.8,
+  pay: 0.7,
+  stock: 0.6,
+  ship: 0.7,
+  cache: 0.55,
+  lb: 0.5,
+};
 
 export function piece(kind: Kind): THREE.Group {
   const g = BUILDERS[kind]();
