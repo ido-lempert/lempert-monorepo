@@ -33,11 +33,24 @@ export async function prop(name: Prop): Promise<THREE.Object3D> {
 
 export type Who = 'woman' | 'suit' | 'woman2' | 'worker' | 'business' | 'farmer';
 
+export type Move = 'idle' | 'walk' | 'run' | 'sit' | 'work' | 'wave';
+
+/** Each pack names its clips its own way. */
+const CLIPS: Record<Move, string[]> = {
+  idle: ['idle', 'man_idle', 'idle_neutral'],
+  walk: ['walk', 'walking', 'man_walk'],
+  run: ['run', 'running', 'man_run'],
+  sit: ['sitidle', 'man_sitting', 'sitting'],
+  work: ['interact', 'pickup', 'idle'],
+  wave: ['wave', 'idle'],
+};
+
 export interface Person {
+  who: Who;
   root: THREE.Group;
   mixer: THREE.AnimationMixer;
-  /** Plays the clip whose name ends with `name` (Walk, Idle, Sitting, Interact, Wave...), fading from the last one. */
-  play(name: string): void;
+  /** Plays a move, fading from the last one. */
+  play(move: Move): void;
 }
 
 /** Bounds of a rigged model as posed by its skeleton (its meshes' own bounds ignore the bones' scale). */
@@ -59,7 +72,11 @@ export async function person(who: Who, height = 1.85): Promise<Person> {
   const model = cloneSkinned(g.scene);
   // Skinned meshes keep their bind-pose bounds, which are tiny here, so the camera would cull them.
   model.traverse((o) => {
-    if ((o as THREE.SkinnedMesh).isSkinnedMesh) o.frustumCulled = false;
+    const m = o as THREE.SkinnedMesh;
+    if (!m.isSkinnedMesh) return;
+    m.frustumCulled = false;
+    // Some exports flag fully opaque materials as transparent, which makes people look like ghosts.
+    for (const mat of [m.material].flat()) if (mat.opacity >= 1) mat.transparent = false;
   });
   const root = new THREE.Group();
   root.add(model);
@@ -68,8 +85,9 @@ export async function person(who: Who, height = 1.85): Promise<Person> {
   model.position.y = -box.min.y * model.scale.y;
   const mixer = new THREE.AnimationMixer(model);
   let current: THREE.AnimationAction | null = null;
-  const play = (name: string) => {
-    const clip = g.animations.find((a) => a.name.split('|').pop()!.toLowerCase() === name.toLowerCase()) ?? g.animations.find((a) => a.name.toLowerCase().endsWith(name.toLowerCase()));
+  const named = (n: string) => g.animations.find((a) => a.name.split('|').pop()!.toLowerCase() === n);
+  const play = (move: Move) => {
+    const clip = CLIPS[move].map(named).find(Boolean);
     if (!clip) return;
     const next = mixer.clipAction(clip);
     if (next === current) return;
@@ -77,5 +95,5 @@ export async function person(who: Who, height = 1.85): Promise<Person> {
     current?.fadeOut(0.25);
     current = next;
   };
-  return { root, mixer, play };
+  return { who, root, mixer, play };
 }

@@ -2,14 +2,46 @@
  * The restaurant on its lot, seen from above at an angle like a life-sim: back and left walls stand, the
  * front and right walls are cut down so the room is open to the camera. Kitchen at the back behind the pass,
  * dining room in front, the entrance on the front wall. Units are metres (a KayKit tile is 2 m).
+ * Only scenery lives here; people are placed by `Floor` from the night's state, at the spots in `SPOTS`.
  */
 import * as THREE from 'three';
 import { mat } from './look';
-import { person, prop, type Person, type Prop, type Who } from './assets';
+import { prop, type Prop } from './assets';
 
 const ROOM = { x0: -8, x1: 8, z0: -8, z1: 10 };
-/** KayKit furniture is chunky, so people are drawn tall enough to match it. */
-const PERSON = 2.6;
+const V = (x: number, z: number) => new THREE.Vector3(x, 0, z);
+
+const TABLES: [number, number][] = [
+  [-5.7, 1.6], [-1.9, 1.6], [1.9, 1.6], [5.7, 1.6],
+  [-5.7, 6.4], [-1.9, 6.4], [1.9, 6.4], [5.7, 6.4],
+];
+
+export interface Seat {
+  pos: THREE.Vector3;
+  /** Facing the table. */
+  rot: number;
+}
+
+/** Where people stand, sit and walk. Table i of the night is TABLES[i]. */
+export const SPOTS = {
+  table: (i: number) => V(TABLES[i][0], TABLES[i][1]),
+  seat(i: number, n: number): Seat {
+    const [x, z] = TABLES[i];
+    const a = n === 0 ? -Math.PI / 2 : Math.PI / 2;
+    return { pos: V(x + Math.sin(a) * 1.25, z), rot: a + Math.PI };
+  },
+  /** Where a waiter stands to serve table i. */
+  service: (i: number) => V(TABLES[i][0], TABLES[i][1] - 1.35),
+  door: V(6, 8.8),
+  street: V(16, 12.6),
+  queue: (i: number) => V(4.6 - i * 1.1, 12.2 + (i % 2) * 0.5),
+  pass: (i: number) => V(-1.5 + i * 1.6, -1.55),
+  waiterIdle: (i: number) => V(4.2 + i * 1.3, -1.1),
+  staffDoor: V(6.5, -4.5),
+  cooks: [V(-3, -5.4), V(3, -5.5)],
+  host: V(6.6, 8.3),
+  dish: (i: number) => new THREE.Vector3(-6.2 + i * 1.5, 1, -3),
+};
 
 async function place(parent: THREE.Object3D, name: Prop, x: number, z: number, rotY = 0, y = 0, height = 1) {
   const o = await prop(name);
@@ -49,11 +81,11 @@ function planks(): THREE.CanvasTexture {
 
 function lot(): THREE.Group {
   const g = new THREE.Group();
-  const grass = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), mat('#7fae5a', { rough: 0.95, rim: 0 }));
+  const grass = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), mat('#7fae5a', { rough: 0.95, rim: 0 }));
   grass.rotation.x = -Math.PI / 2;
   grass.position.y = -0.02;
   grass.receiveShadow = true;
-  const walk = new THREE.Mesh(new THREE.PlaneGeometry(26, 4), mat('#d8d2c4', { rough: 0.9, rim: 0 }));
+  const walk = new THREE.Mesh(new THREE.PlaneGeometry(40, 4), mat('#d8d2c4', { rough: 0.9, rim: 0 }));
   walk.rotation.x = -Math.PI / 2;
   walk.position.set(0, -0.01, ROOM.z1 + 2.6);
   walk.receiveShadow = true;
@@ -65,12 +97,7 @@ function lot(): THREE.Group {
   return g;
 }
 
-export interface Restaurant {
-  group: THREE.Group;
-  update(dt: number): void;
-}
-
-export async function restaurant(): Promise<Restaurant> {
+export async function restaurant(): Promise<THREE.Group> {
   const g = new THREE.Group();
   g.add(lot());
   const jobs: Promise<unknown>[] = [];
@@ -99,76 +126,22 @@ export async function restaurant(): Promise<Restaurant> {
   at('oven', 7, -6.9);
   at('extractorhood', -3, ROOM.z0 + 0.25);
 
-  // The pass: a counter between kitchen and dining room, with dishes waiting on it.
+  // The pass: a counter between kitchen and dining room; ready dishes wait on it.
   for (const x of [-6, -4, -2, 0, 2]) at('kitchencounter_straight_B', x, -3, Math.PI);
-  at('food_dinner', -3.6, -3, 0, 1);
-  at('food_stew', -0.4, -3, 0, 1);
-  at('menu', 1.8, -3, Math.PI, 1);
 
-  // Dining room: round tables with four chairs each.
-  const tables: [number, number][] = [[-4.4, 2.6], [2.2, 2.6], [-4.4, 7.3], [2.2, 7.3]];
-  const seats: { x: number; z: number; rot: number; tx: number; tz: number }[] = [];
-  for (const [x, z] of tables) {
-    at('table_round_A', x, z);
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      const cx = x + Math.sin(a) * 2.05;
-      const cz = z + Math.cos(a) * 2.05;
-      at('chair_A', cx, cz, a);
-      seats.push({ x: cx, z: cz, rot: a + Math.PI, tx: x, tz: z });
+  // Dining room: small round tables for two.
+  for (let i = 0; i < TABLES.length; i++) {
+    const [x, z] = TABLES[i];
+    at('table_round_A_small', x, z);
+    for (const n of [0, 1]) {
+      const a = n === 0 ? -Math.PI / 2 : Math.PI / 2;
+      // The chair's front faces the table (its backrest is on its +z side).
+      at('chair_A', x + Math.sin(a) * 1.25, z, a + Math.PI);
     }
   }
   at('crate_tomatoes', 6.6, -5.2, 0.3);
   at('shelf_papertowel_decorated', -7.3, -1, Math.PI / 2);
 
   await Promise.all(jobs);
-
-  // People: guests at some of the seats, a waiter walking the floor, a cook at the stove, a host at the door.
-  const people: Person[] = [];
-  const add = async (who: Who, clip: string, x: number, z: number, rotY: number, y = 0) => {
-    const p = await person(who, PERSON);
-    p.root.position.set(x, y, z);
-    p.root.rotation.y = rotY;
-    p.play(clip);
-    p.mixer.update(Math.random() * 2);
-    g.add(p.root);
-    people.push(p);
-    return p;
-  };
-  const guests: [Who, number][] = [['woman', 0], ['suit', 1], ['suit', 2], ['woman', 5], ['woman', 8], ['suit', 10], ['woman', 13], ['suit', 15]];
-  for (const [who, i] of guests) {
-    const s = seats[i];
-    // The suit's sitting clip leans back from its origin, so he is moved in towards the table.
-    const inward = who === 'suit' ? 0.6 : 0;
-    await add(who, 'Sitting', s.x + (s.tx - s.x) * (inward / 2.05), s.z + (s.tz - s.z) * (inward / 2.05), s.rot, 0.1);
-    // A plate on the table in front of each guest.
-    const px = s.tx + (s.x - s.tx) * 0.45;
-    const pz = s.tz + (s.z - s.tz) * 0.45;
-    const plate = await place(g, i % 2 ? 'food_dinner' : 'food_stew', px, pz, s.rot, 1);
-    plate.scale.setScalar(0.6);
-  }
-  await add('worker', 'Interact', -3, -5.4, Math.PI);
-  await add('worker', 'Interact', 3, -5.5, Math.PI);
-  await add('business', 'Wave', 6.4, ROOM.z1 - 1.4, -2.4);
-
-  const waiter = await add('woman2', 'Walk', 5.6, -0.6, 0);
-  const route = [new THREE.Vector3(5.6, 0, -0.6), new THREE.Vector3(-1.1, 0, -0.6), new THREE.Vector3(-1.1, 0, 5), new THREE.Vector3(5.6, 0, 5)];
-  let leg = 0;
-  const speed = 1.4;
-
-  return {
-    group: g,
-    update(dt) {
-      for (const p of people) p.mixer.update(dt);
-      const target = route[(leg + 1) % route.length];
-      const pos = waiter.root.position;
-      const to = target.clone().sub(pos);
-      const d = to.length();
-      if (d < 0.05) leg = (leg + 1) % route.length;
-      else {
-        pos.addScaledVector(to.normalize(), Math.min(d, speed * dt));
-        waiter.root.rotation.y = Math.atan2(to.x, to.z);
-      }
-    },
-  };
+  return g;
 }

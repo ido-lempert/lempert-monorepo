@@ -57,6 +57,30 @@
       <button class="primary big" id="play"></button>
     </section>
 
+    <header class="hud hidden" id="hud">
+      <div class="pill" id="clock-pill"><span aria-hidden="true">🕗</span> <b id="clock" dir="ltr"></b></div>
+      <div class="pill" id="cash-pill"><span id="cash-label" class="sr"></span><span aria-hidden="true">💰</span> <b id="cash" dir="ltr"></b></div>
+      <div class="pill" id="rep-pill"><span id="rep-label" class="sr"></span><span aria-hidden="true">⭐</span> <b id="rep" dir="ltr"></b></div>
+      <div class="hud-actions">
+        <button class="icon" id="pause-btn"></button>
+        <button class="icon" id="speed-btn" dir="ltr"></button>
+      </div>
+    </header>
+
+    <div class="coach hidden" id="coach" role="status" aria-live="polite"></div>
+
+    <footer class="tray hidden" id="tray" role="toolbar"></footer>
+
+    <div class="overlay hidden" id="summary">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="summary-title">
+        <h2 id="summary-title"></h2>
+        <dl class="rows" id="summary-rows"></dl>
+        <p class="hint" id="summary-hint"></p>
+        <div id="verdict"></div>
+        <button class="primary big" id="replay"></button>
+      </div>
+    </div>
+
     <div class="note hidden" id="note" role="status" aria-live="polite"></div>
     <div class="note hidden" id="update" role="status" aria-live="polite"><span id="update-text"></span> <button class="primary" id="update-btn"></button></div>
 
