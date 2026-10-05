@@ -53,6 +53,16 @@ Nx monorepo (npm, `nx@23.2.1`) hosting multiple separate, unrelated products —
   - deployed as a Render static site (`archipelago` in `render.yaml`), from `main`: work on the `archipelago` branch, merge to `main` to release
   - music (`src/audio.ts`): a generated calm marimba loop with its own menu toggle; effects are synthesised too
   - in dev, `window.__game` (start, place, connect, run, solve, screenOf) lets Playwright drive the game
+- `the-architect` (3D game that teaches software architecture through challenges, Vite + three.js PWA, offline; Hebrew name הארכיטקט):
+  - dev server: `npx nx run the-architect:dev` (http://localhost:5177, also on the LAN)
+  - tests: `npx nx run the-architect:test`; typecheck + build: `npx nx run the-architect:build`
+  - the contract is `_bmad-output/specs/spec-the-architect/SPEC.md` (with `cards.md`, `night-script.md`, `engine.md`); the concept and slice plan live in `_bmad-output/planning-artifacts/the-architect/`; developed in vertical slices
+  - the idea: the player owns a restaurant and watches a night from above; tables = clients, host = load balancer, waiters = API instances, stock board = database, ticket rail = queue, cooks = workers; a night fails (peak load, a race on the last salmon), the player investigates (dive into the tickets, a blueprint lens of the same state) and plays cards that cost service time, reputation and money; the pattern's name comes last, on the verdict card
+  - an independent product, not a new Archipelago island: code may be copied from `apps/archipelago` (the renderer `src/world/world.ts` and materials `src/world/look.ts` were), never shared
+  - game rules are pure and tested in `src/game/`; nights must be deterministic (seeded `rng` in `src/game/rng.ts`, never `Math.random` in game logic), so a night replays exactly
+  - no AI at runtime; UI text is Hebrew with technical terms in English, in `src/i18n/strings.ts`
+  - deployed as a Render static site (`the-architect` in `render.yaml`), from `main`: work on the `the-architect` branch, merge to `main` to release
+  - in dev, `window.__game` (world) lets Playwright drive the game; it is not in production builds
 - `smash-it` (3D slingshot game for kids: throw food at cartoon bugs, Vite + three.js PWA, single-player):
   - dev server: `npx nx run smash-it:dev` (http://localhost:5175, also on the LAN)
   - tests: `npx nx run smash-it:test`; typecheck + build: `npx nx run smash-it:build`
