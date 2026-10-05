@@ -1,0 +1,11 @@
+Characters by Quaternius (https://quaternius.com), downloaded from Poly Pizza (https://poly.pizza/u/Quaternius).
+
+License: Creative Commons Zero (CC0), http://creativecommons.org/publicdomain/zero/1.0/
+Free to use in personal, educational and commercial projects.
+
+woman.glb   = "Animated Woman"  (https://poly.pizza/m/9kF7eTDbhO)
+suit.glb    = "Man in Suit"     (https://poly.pizza/m/mQnGoME1ez)
+woman2.glb  = "Animated Woman"  (https://poly.pizza/m/nIItLV9nxS)
+worker.glb  = "Worker"          (https://poly.pizza/m/Yg2bQZO6Hj)
+business.glb = "Business Man"   (https://poly.pizza/m/JFrLIKqvCH)
+farmer.glb  = "Farmer"          (https://poly.pizza/m/7pn3R6hPvE)

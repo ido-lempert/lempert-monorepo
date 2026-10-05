@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#2a1f1a" />
+    <meta name="description" content="הארכיטקט – משחק שמלמד ארכיטקטורת תוכנה: מנהלים מסעדה בערב לחוץ, מוצאים את הבאג ופותרים אותו עם הפתרונות של התעשייה." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="הארכיטקט · The Architect" />
+    <meta property="og:description" content="ערב לחוץ במסעדה: עומס, race condition, ועלויות. מוצאים מה נשבר ופותרים כמו ארכיטקטים." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="הארכיטקט" />
+    <title>הארכיטקט · The Architect</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #2a1f1a;
+        font-family: 'Rubik Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #2a1f1a;
+        color: #fff6ea;
+        font-weight: 800;
+        transition: opacity 0.4s ease;
+      }
+      #splash img {
+        width: min(34vmin, 170px);
+      }
+      #splash.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash" role="status"><img src="icon.svg" alt="" /><div>טוען…</div></div>
+
+    <main id="stage"></main>
+
+    <section class="title-screen" id="title">
+      <img class="logo" src="icon.svg" alt="" width="120" height="120" />
+      <h1 id="title-name"></h1>
+      <p id="title-tag"></p>
+      <button class="primary big" id="play"></button>
+    </section>
+
+    <header class="hud hidden" id="hud">
+      <div class="pill" id="clock-pill"><span aria-hidden="true">🕗</span> <b id="clock" dir="ltr"></b></div>
+      <div class="pill" id="cash-pill"><span id="cash-label" class="sr"></span><span aria-hidden="true">💰</span> <b id="cash" dir="ltr"></b></div>
+      <div class="pill" id="rep-pill"><span id="rep-label" class="sr"></span><span aria-hidden="true">⭐</span> <b id="rep" dir="ltr"></b></div>
+      <div class="hud-actions">
+        <button class="icon" id="pause-btn"></button>
+        <button class="icon" id="speed-btn" dir="ltr"></button>
+      </div>
+    </header>
+
+    <div class="coach hidden" id="coach" role="status" aria-live="polite"></div>
+
+    <footer class="tray hidden" id="tray" role="toolbar"></footer>
+
+    <div class="overlay hidden" id="summary">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="summary-title">
+        <h2 id="summary-title"></h2>
+        <dl class="rows" id="summary-rows"></dl>
+        <p class="hint" id="summary-hint"></p>
+        <div id="verdict"></div>
+        <button class="primary big" id="replay"></button>
+      </div>
+    </div>
+
+    <div class="note hidden" id="note" role="status" aria-live="polite"></div>
+    <div class="note hidden" id="update" role="status" aria-live="polite"><span id="update-text"></span> <button class="primary" id="update-btn"></button></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

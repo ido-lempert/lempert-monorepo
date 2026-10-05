@@ -101,3 +101,24 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "24"
+  - type: web
+    name: the-architect
+    runtime: static
+    buildCommand: npm install --include=dev --no-audit --no-fund && npm run build -w the-architect
+    staticPublishPath: apps/the-architect/dist
+    headers:
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+    buildFilter:
+      paths:
+        - apps/the-architect/**
+        - package.json
+        - package-lock.json
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
