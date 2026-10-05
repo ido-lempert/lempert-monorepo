@@ -11,7 +11,11 @@ const $ = (id: string) => document.getElementById(id)!;
 const stageEl = $('stage');
 stageEl.setAttribute('aria-label', t.stage);
 const world = new World(stageEl);
-world.stage.add(restaurant());
+restaurant().then((place) => {
+  world.stage.add(place.group);
+  world.onFrame((dt) => place.update(dt));
+  $('splash').classList.add('done');
+});
 world.controls.autoRotate = true;
 world.controls.autoRotateSpeed = 0.6;
 
@@ -37,6 +41,5 @@ const updateSW = registerSW({
   },
 });
 
-requestAnimationFrame(() => $('splash').classList.add('done'));
 
 if (import.meta.env.DEV) (window as unknown as { __game: unknown }).__game = { world };

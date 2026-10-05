@@ -42,8 +42,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Everything is procedural, so precaching the bundle makes the whole game playable offline.
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2}'],
+        // The models are precached with the bundle, so the whole game plays offline.
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff2,glb,gltf,bin}'],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
         skipWaiting: true,

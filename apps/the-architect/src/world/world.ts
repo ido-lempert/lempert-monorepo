@@ -39,12 +39,12 @@ function skipSeeThrough(ao: GTAOPass) {
 }
 
 /** Half the restaurant's width plus a margin: what the camera must fit across the screen. */
-const FIT_RADIUS = 7.4;
+const FIT_RADIUS = 12.5;
 
 export class World {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
+  readonly camera = new THREE.PerspectiveCamera(30, 1, 0.1, 400);
   readonly controls: OrbitControls;
   readonly labels = new CSS2DRenderer();
   /** Everything that belongs to the current night. */
@@ -61,34 +61,35 @@ export class World {
     this.renderer = new THREE.WebGLRenderer({ antialias: this.quality === 'high', powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
     host.appendChild(this.renderer.domElement);
     this.labels.domElement.className = 'labels';
     host.appendChild(this.labels.domElement);
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = 0.7;
     this.scene.add(skyDome(), this.stage);
-    this.scene.fog = new THREE.Fog('#f3dcc0', 40, 110);
-    this.scene.add(new THREE.HemisphereLight('#fff1dc', '#8a6a52', 1.1));
-    this.sun.position.set(6, 14, 8);
+    this.scene.fog = new THREE.Fog('#cfe3c2', 70, 160);
+    this.scene.add(new THREE.HemisphereLight('#fff4e2', '#7d6a55', 1.25));
+    this.sun.position.set(9, 20, 13);
     this.sun.castShadow = true;
-    this.sun.shadow.camera.left = this.sun.shadow.camera.bottom = -9;
-    this.sun.shadow.camera.right = this.sun.shadow.camera.top = 9;
+    this.sun.shadow.camera.left = this.sun.shadow.camera.bottom = -15;
+    this.sun.shadow.camera.right = this.sun.shadow.camera.top = 15;
+    this.sun.shadow.camera.far = 60;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.02;
     this.sun.shadow.radius = 4;
     this.scene.add(this.sun);
 
-    this.camera.position.set(0, 11, 13.5);
+    this.camera.position.set(17, 22, 19);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.set(0, 0.4, 0);
+    this.controls.target.set(0, 0.5, 1.2);
     this.controls.enableDamping = true;
     this.controls.enablePan = false;
-    this.controls.minPolarAngle = 0.35;
-    this.controls.maxPolarAngle = 1.2;
+    this.controls.minPolarAngle = 0.5;
+    this.controls.maxPolarAngle = 1.1;
     this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };
 
     this.applyQuality();
@@ -129,13 +130,14 @@ export class World {
     const h = this.host.clientHeight;
     this.camera.aspect = w / h;
     // Portrait phones need to stand further back to see the whole restaurant.
-    this.camera.fov = w < h ? 50 : 42;
+    this.camera.fov = w < h ? 40 : 30;
     this.camera.updateProjectionMatrix();
     // Stand far enough back that the whole restaurant fits across the screen.
     const half = Math.atan(Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect);
-    const fit = Math.max(17, FIT_RADIUS / Math.sin(half));
+    // In portrait the room is wider than the screen; players turn the camera or pinch to see the sides.
+    const fit = Math.max(30, ((w < h ? 0.6 : 1) * FIT_RADIUS) / Math.sin(half));
     this.controls.maxDistance = fit * 1.5;
-    this.controls.minDistance = Math.min(8, fit * 0.5);
+    this.controls.minDistance = Math.min(12, fit * 0.4);
     const dir = this.camera.position.clone().sub(this.controls.target).normalize();
     this.camera.position.copy(this.controls.target).addScaledVector(dir, fit);
     this.renderer.setSize(w, h);
