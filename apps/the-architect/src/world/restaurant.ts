@@ -41,6 +41,9 @@ export const SPOTS = {
   cooks: [V(-3, -5.4), V(3, -5.5)],
   host: V(6.6, 8.3),
   dish: (i: number) => new THREE.Vector3(-6.2 + i * 1.5, 1, -3),
+  /** The stock board stands at the end of the pass; waiters waiting for the marker queue beside it. */
+  board: V(3.9, -2.4),
+  boardQueue: (i: number) => V(4.6 + i * 0.9, -1.4),
 };
 
 async function place(parent: THREE.Object3D, name: Prop, x: number, z: number, rotY = 0, y = 0, height = 1) {
