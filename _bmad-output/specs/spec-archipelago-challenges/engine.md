@@ -4,7 +4,7 @@ How, not what: guidance for the implementing agent, grounded in the current code
 
 ## Why a new engine
 
-`src/game/sim.ts` solves a static graph (one pass of routes, no clock, no concurrency, no shared state). The night needs time, parallel staff and a shared stock, so it gets its own pure module (`src/game/night.ts`). The islands, `sim.ts`, `levels.ts` and the pipe-drawing UI are removed (they stay in git history).
+`src/game/sim.ts` solves a static graph (one pass of routes, no clock, no concurrency, no shared state). The night needs time, parallel staff and a shared stock, so it gets its own pure module beside it (`src/game/night.ts`); `sim.ts` and the islands stay untouched.
 
 ## Model
 
@@ -19,7 +19,7 @@ How, not what: guidance for the implementing agent, grounded in the current code
 
 The 3D restaurant and the blueprint lens both read the same per-tick state. The lens is an SVG overlay built with `glyphs.ts` symbols (database cylinder for the stock board, queue for the ticket rail, and so on); it never owns state.
 
-## Reuse (only where it serves the new design)
+## Reuse
 
 `World` (renderer, camera, picking, quality tiers), `look.ts` materials, procedural `models.ts`, `glyphs.ts`, `progress.ts` (add fields with a migration in `parseProgress`), `audio.ts`, `i18n/strings.ts` (Hebrew, English terms), `firstTime` tips, `window.__game` hooks for Playwright.
 

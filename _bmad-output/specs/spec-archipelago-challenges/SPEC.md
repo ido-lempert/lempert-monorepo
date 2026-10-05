@@ -21,7 +21,7 @@ A vision to realize and a pain to solve. Archipelago (`apps/archipelago`, a 3D g
 ## Capabilities
 
 - **CAP-1**
-  - **intent:** The owner watches a restaurant night as an episode from a top-down, board-game view.
+  - **intent:** The owner watches a restaurant night as an episode from a top-down, board-game view, on the existing archipelago simulation and 3D world.
   - **success:** A night runs start to finish on the board and ends with a profit-and-loss and reputation summary.
 
 - **CAP-2**
@@ -58,8 +58,6 @@ A vision to realize and a pain to solve. Archipelago (`apps/archipelago`, a 3D g
 
 ## Constraints
 
-- The game is designed around the restaurant, not around the existing islands: the islands, their levels and the pipe-drawing mechanic are replaced in `apps/archipelago`; only infrastructure that serves the new design (renderer, PWA, saves, audio) is kept.
-
 - No dependency on AI at runtime; all content is authored or scripted in advance.
 - No up-front instructions: a card's meaning is learned while playing.
 - UI text is Hebrew with technical terms in English; game rules stay pure and unit-tested, as elsewhere in the app.
@@ -72,7 +70,7 @@ A vision to realize and a pain to solve. Archipelago (`apps/archipelago`, a 3D g
 - AI-powered features at runtime.
 - Team mode and organisation reports or dashboards.
 - All four C4 zoom levels; v1 has the top view and one dive level.
-- Keeping or adapting the existing islands; further scenarios (DDD, microservices) and patterns beyond what v1's cards need.
+- Other islands (DDD, microservices) and other patterns beyond what v1's cards need.
 - Moving people or equipment on the board.
 - Surprise peaks, a live SimCity-style world and other items listed as Should or Could in `scope-tiers.md`.
 
@@ -82,7 +80,7 @@ A stranger with no architecture background, after ten minutes, explains aloud wh
 
 ## Assumptions
 
-- The night runs on a new pure, seeded, time-stepped engine (`engine.md`); the old path solver (`src/game/sim.ts`) has no clock, concurrency or shared stock and is not reused.
+- The current simulation (`src/game/sim.ts`) is a static path solver with no clock, concurrency or shared stock; the night runs on a new pure, seeded, time-stepped engine (`engine.md`).
 - v1 is one authored night with a fixed seed, played as short replayable nights (about 60 to 90 seconds, pause and x1/x2/x4 speed).
 - Audience v1: Hebrew speakers aged about 14 and up, in Israel.
 
@@ -90,6 +88,7 @@ Calls made under the user's delegation, pending their review:
 
 - The three v1 cards are Extra waiter, Check stock first (wrong) and Lock (`cards.md`).
 - The night chain: the peak is fixed by scaling, which exposes the race (`night-script.md`).
+- The restaurant ships as a new entry beside the existing islands; nothing is removed before playtest feedback.
 - Cards can also be played while paused mid-night, so the owner is not a passive viewer.
 - A card shows its restaurant action and costs; its professional name is first shown on the verdict card, then on the card.
 
