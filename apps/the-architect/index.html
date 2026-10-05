@@ -57,11 +57,14 @@
       <button class="primary big" id="play"></button>
     </section>
 
+    <div class="blueprint hidden" id="blueprint"></div>
+
     <header class="hud hidden" id="hud">
       <div class="pill" id="clock-pill"><span aria-hidden="true">🕗</span> <b id="clock" dir="ltr"></b></div>
       <div class="pill" id="cash-pill"><span id="cash-label" class="sr"></span><span aria-hidden="true">💰</span> <b id="cash" dir="ltr"></b></div>
       <div class="pill" id="rep-pill"><span id="rep-label" class="sr"></span><span aria-hidden="true">⭐</span> <b id="rep" dir="ltr"></b></div>
       <div class="hud-actions">
+        <button class="icon" id="lens-btn" aria-pressed="false"><span aria-hidden="true" id="lens-icon">📐</span> <span id="lens-label"></span></button>
         <button class="icon hidden" id="log-btn"><span aria-hidden="true">🔎</span> <span id="log-btn-label"></span></button>
         <button class="icon" id="pause-btn"></button>
         <button class="icon" id="speed-btn" dir="ltr"></button>

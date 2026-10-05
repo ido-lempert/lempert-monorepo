@@ -3,6 +3,7 @@ import '@fontsource-variable/rubik';
 import { registerSW } from 'virtual:pwa-register';
 import { FIRST_NIGHT, Night, clock, type CardId, type NightEvent } from './game/night';
 import { firstTime, parseProgress, type Progress } from './game/progress';
+import { drawBlueprint } from './blueprint';
 import { fill, t } from './i18n/strings';
 import './style.css';
 import { Floor } from './world/floor';
@@ -52,6 +53,22 @@ $('log-btn-label').textContent = t.log;
 $('log-title').textContent = t.log;
 $('log-close').textContent = '✕';
 $('log-close').title = $('log-close').ariaLabel = t.logClose;
+
+// --- The blueprint lens: the same night as an architecture diagram ------------------------------------
+
+let lens = false;
+function renderLens() {
+  $('lens-icon').textContent = lens ? '🍽️' : '📐';
+  $('lens-label').textContent = lens ? t.lensOff : t.lensOn;
+  $('lens-btn').setAttribute('aria-pressed', String(lens));
+  $('blueprint').classList.toggle('hidden', !lens);
+  if (lens && night) drawBlueprint($('blueprint'), night);
+}
+$('lens-btn').onclick = () => {
+  lens = !lens;
+  $('lens-btn').classList.remove('fresh');
+  renderLens();
+};
 
 let floor: Floor | null = null;
 let night: Night | null = null;
@@ -337,6 +354,7 @@ async function startNight() {
   $('hud').classList.remove('hidden');
   renderHud();
   renderTray();
+  renderLens();
   coach(t.coachStart);
 }
 
@@ -424,6 +442,10 @@ function endNight(n: Night) {
   if (n.has('extraWaiter') && s.walkedOut === 0) verdict.append(verdictCard('horizontalScaling'));
   if (n.has('extraWaiter') && n.has('lock') && s.alerts === 0) verdict.append(verdictCard('raceLock'));
   if (n.has('checkFirst') && s.alerts > 0) verdict.append(verdictCard('toctou'));
+  if (verdict.children.length && firstTime(progress, 'lensTip')) {
+    $('summary-hint').textContent = [$('summary-hint').textContent, t.lensTip].filter(Boolean).join(' ');
+    $('lens-btn').classList.add('fresh');
+  }
   save();
   $('summary').classList.remove('hidden');
   ($('replay') as HTMLButtonElement).focus();
@@ -440,6 +462,7 @@ world.onFrame((dt) => {
       night.step();
       void floor.sync(night);
       afterMinute(night);
+      if (lens) drawBlueprint($('blueprint'), night);
     }
     renderHud();
     if (night.done && !ended) {

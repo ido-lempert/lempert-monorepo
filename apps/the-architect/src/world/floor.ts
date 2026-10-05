@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Group, Night } from '../game/night';
+import { glyph, type Glyph } from '../glyphs';
 import { person, prop, type Move, type Person, type Who } from './assets';
 import { SPOTS } from './restaurant';
 
@@ -36,6 +37,16 @@ class Actor {
 
   get pos() {
     return this.p.root.position;
+  }
+
+  /** An industry symbol worn on the chest, so the role reads as its architecture part. */
+  wear(kind: Glyph) {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.innerHTML = glyph(kind, 20);
+    const tag = new CSS2DObject(el);
+    tag.position.y = 1.7;
+    this.p.root.add(tag);
   }
 
   /** Walks through `points`, then plays `rest` facing `face`. */
@@ -178,10 +189,12 @@ export class Floor {
     for (const [i, at] of SPOTS.cooks.entries()) {
       const c = await add('worker');
       c.put(at, Math.PI);
+      c.wear('worker');
       f.cooks[i] = c;
     }
     f.host = await add('farmer');
     f.host.put(SPOTS.host, 0);
+    f.host.wear('lb');
     for (let i = 0; i < 6; i++) f.passDishes.push(await f.dish(SPOTS.dish(i), i % 2 ? 'food_stew' : 'food_dinner'));
     for (let i = 0; i < 8; i++) {
       const t = SPOTS.table(i);
@@ -231,6 +244,7 @@ export class Floor {
         a = new Actor(await person(WAITERS[w.id % WAITERS.length], 2.6));
         this.stage.add(a.p.root);
         a.put(w.id === 0 ? SPOTS.waiterIdle(0) : SPOTS.staffDoor, Math.PI);
+        a.wear('server');
         this.waiters[w.id] = a;
       }
       const job = w.job;
