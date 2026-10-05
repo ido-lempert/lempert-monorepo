@@ -1,6 +1,6 @@
 # ארכיפלגו (Archipelago) – קונספט
 
-> **כיוון חדש (2026-10):** המשחק עובר לאתגרים במסעדה (עומס, race condition, FinOps) במקום חיבור צינורות. החוזה: [SPEC](../../specs/spec-archipelago-challenges/SPEC.md); הפרוסות: [vertical-slices.md](vertical-slices.md). המסמך הזה מתאר את האיים הקיימים.
+> **כיוון חדש (2026-10):** המשחק עובר לאתגרים במסעדה (עומס, race condition, FinOps) במקום חיבור צינורות. החוזה: [SPEC](../../specs/spec-archipelago-challenges/SPEC.md); הפרוסות: [vertical-slices.md](vertical-slices.md). המסעדה מחליפה את האיים; המסמך הזה מתאר את המשחק הקודם, לתיעוד בלבד.
 
 משחק פאזל תלת־ממדי בדפדפן שמלמד ארכיטקטורת תוכנה לנוער ולמבוגרים. השם הוא משחק מילים: **Arch**ipelago – קבוצת איים, וכל אי הוא נושא אחר בארכיטקטורה.
 

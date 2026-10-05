@@ -19,4 +19,4 @@ MoSCoW agreed in the brainstorm. Must items are CAP-1 to CAP-8 in SPEC.md; this 
 
 ## Won't (v1)
 
-Runtime AI, team mode and organisation reports, all four C4 levels, other islands.
+Runtime AI, team mode and organisation reports, all four C4 levels, the old islands.
