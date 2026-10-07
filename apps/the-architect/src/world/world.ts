@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { useSteelReflections } from './kitchen/kit';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -70,6 +71,7 @@ export class World {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.7;
+    useSteelReflections(this.renderer);
     this.scene.add(skyDome(), this.stage);
     this.scene.fog = new THREE.Fog('#cfe3c2', 70, 160);
     this.scene.add(new THREE.HemisphereLight('#fff4e2', '#7d6a55', 1.25));
