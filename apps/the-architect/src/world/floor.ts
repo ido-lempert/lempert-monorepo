@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Group, Night } from '../game/night';
+import { glyph, type Glyph } from '../glyphs';
 import { person, prop, type Move, type Person, type Who } from './assets';
 import { SPOTS } from './restaurant';
 
@@ -36,6 +37,16 @@ class Actor {
 
   get pos() {
     return this.p.root.position;
+  }
+
+  /** An industry symbol worn on the chest, so the role reads as its architecture part. */
+  wear(kind: Glyph) {
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.innerHTML = glyph(kind, 20);
+    const tag = new CSS2DObject(el);
+    tag.position.y = 1.7;
+    this.p.root.add(tag);
   }
 
   /** Walks through `points`, then plays `rest` facing `face`. */
@@ -96,6 +107,48 @@ function turn(o: THREE.Object3D, to: number, k: number) {
   o.rotation.y += d * Math.min(1, k);
 }
 
+/** The stock board on its stand at the end of the pass: a chalkboard with the salmon count. */
+class StockBoard {
+  readonly group = new THREE.Group();
+  private readonly canvas = document.createElement('canvas');
+  private readonly texture: THREE.CanvasTexture;
+  private shown = -1;
+
+  constructor(private readonly label: string) {
+    this.canvas.width = 256;
+    this.canvas.height = 160;
+    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.3, 0.12), new THREE.MeshStandardMaterial({ color: '#8a5a36', roughness: 0.7 }));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.1), new THREE.MeshStandardMaterial({ map: this.texture, roughness: 0.9 }));
+    face.position.z = 0.065;
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.12), new THREE.MeshStandardMaterial({ color: '#6b4428' }));
+    leg.position.y = -1.2;
+    const board = new THREE.Group();
+    board.add(frame, face, leg);
+    board.position.y = 1.85;
+    board.traverse((o) => (o.castShadow = true));
+    this.group.add(board);
+  }
+
+  show(n: number) {
+    if (n === this.shown) return;
+    this.shown = n;
+    const g = this.canvas.getContext('2d')!;
+    g.fillStyle = '#1f3b2d';
+    g.fillRect(0, 0, 256, 160);
+    g.fillStyle = '#f4f1e8';
+    g.textAlign = 'center';
+    g.direction = 'rtl';
+    g.font = '700 40px Rubik Variable, system-ui, sans-serif';
+    g.fillText(`🐟 ${this.label}`, 128, 58);
+    g.font = '900 72px Rubik Variable, system-ui, sans-serif';
+    g.fillStyle = n <= 1 ? '#ffb4a2' : '#f4f1e8';
+    g.fillText(String(n), 128, 136);
+    this.texture.needsUpdate = true;
+  }
+}
+
 const GUESTS: Who[] = ['woman', 'suit'];
 const WAITERS: Who[] = ['woman2', 'business'];
 
@@ -109,11 +162,20 @@ export class Floor {
   private host!: Actor;
   private readonly passDishes: THREE.Object3D[] = [];
   private readonly tablePlates: THREE.Object3D[] = [];
+  private readonly board: StockBoard;
 
-  private constructor(private readonly stage: THREE.Object3D) {}
+  private constructor(
+    private readonly stage: THREE.Object3D,
+    boardLabel: string,
+  ) {
+    this.board = new StockBoard(boardLabel);
+    this.board.group.position.copy(SPOTS.board);
+    this.board.group.rotation.y = 0.5;
+    stage.add(this.board.group);
+  }
 
-  static async create(stage: THREE.Object3D): Promise<Floor> {
-    const f = new Floor(stage);
+  static async create(stage: THREE.Object3D, boardLabel: string): Promise<Floor> {
+    const f = new Floor(stage, boardLabel);
     const add = async (who: Who) => {
       const a = new Actor(await person(who, 2.6));
       stage.add(a.p.root);
@@ -127,10 +189,12 @@ export class Floor {
     for (const [i, at] of SPOTS.cooks.entries()) {
       const c = await add('worker');
       c.put(at, Math.PI);
+      c.wear('worker');
       f.cooks[i] = c;
     }
     f.host = await add('farmer');
     f.host.put(SPOTS.host, 0);
+    f.host.wear('lb');
     for (let i = 0; i < 6; i++) f.passDishes.push(await f.dish(SPOTS.dish(i), i % 2 ? 'food_stew' : 'food_dinner'));
     for (let i = 0; i < 8; i++) {
       const t = SPOTS.table(i);
@@ -180,17 +244,22 @@ export class Floor {
         a = new Actor(await person(WAITERS[w.id % WAITERS.length], 2.6));
         this.stage.add(a.p.root);
         a.put(w.id === 0 ? SPOTS.waiterIdle(0) : SPOTS.staffDoor, Math.PI);
+        a.wear('server');
         this.waiters[w.id] = a;
       }
       const job = w.job;
       if (!job) a.send('idle', [SPOTS.waiterIdle(w.id)], 'idle', Math.PI);
+      else if (job.kind === 'takeOrder' && job.read === null) a.send(`wait:${job.group}`, [SPOTS.boardQueue(w.id)], 'idle', 0.5 + Math.PI);
       else {
         const table = n.groups[job.group].table!;
         const plan = `${job.kind}:${job.group}:${job.from}`;
         if (job.kind === 'serve') a.send(plan, [SPOTS.pass(w.id), SPOTS.service(table)], 'work', 0);
         else a.send(plan, [SPOTS.service(table)], 'work', 0);
       }
+      a.say(n.marker === w.id ? '🖊️' : job?.read === null ? '⏳' : '');
     }
+    this.board.show(n.board);
+    SPOTS.cooks.forEach((_, c) => this.cooks[c].say(n.log.some((e) => e.kind === 'noStock' && e.cook === c && n.t - e.t < 8) ? '🚨' : ''));
 
     SPOTS.cooks.forEach((_, c) => {
       const busy = n.tickets.some((k) => k.cook === c && k.cooking !== null && k.ready === null);

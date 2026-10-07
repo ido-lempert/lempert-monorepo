@@ -28,10 +28,9 @@ describe('the first night', () => {
     const none = playNight(FIRST_NIGHT).summary();
     for (const at of [0, 90, 125]) {
       const s = playNight(FIRST_NIGHT, [{ card: 'extraWaiter', at }]).summary();
-      expect(s.leftAngry).toBe(0);
-      expect(s.reputation).toBeGreaterThan(0);
+      expect(s.walkedOut).toBe(0);
       expect(s.cards).toBe(300);
-      expect(s.profit).toBeGreaterThan(none.profit);
+      expect(s.avgWait).toBeLessThan(none.avgWait);
     }
   });
 
@@ -48,6 +47,46 @@ describe('the first night', () => {
     const n = playNight(FIRST_NIGHT);
     expect(n.groups.every((g) => g.state === 'gone' && g.mood !== null)).toBe(true);
     expect(n.tables.every((t) => t === null)).toBe(true);
+  });
+
+  it('never races with one waiter: one order at a time keeps the board right', () => {
+    const n = playNight(FIRST_NIGHT);
+    expect(n.summary().alerts).toBe(0);
+    expect(n.board).toBe(n.fridge);
+  });
+
+  it('races on the last salmon once a second waiter works in parallel', () => {
+    const n = playNight(FIRST_NIGHT, [{ card: 'extraWaiter', at: 0 }]);
+    const s = n.summary();
+    expect(s.alerts).toBeGreaterThanOrEqual(1);
+    expect(s.compensation).toBe(s.alerts * FIRST_NIGHT.compensation);
+    // Two waiters read the same count while neither had written it back: one of the writes is lost.
+    const reads = n.log.filter((e) => e.kind === 'read' && e.dish === 'salmon');
+    const twins = reads.filter((a) => reads.some((b) => b !== a && b.waiter !== a.waiter && b.value === a.value && Math.abs(b.t - a.t) < FIRST_NIGHT.takeOrder));
+    expect(twins.length).toBeGreaterThanOrEqual(2);
+    // So more salmon was promised than there ever was.
+    expect(n.log.filter((e) => e.kind === 'order' && e.dish === 'salmon').length).toBeGreaterThan(FIRST_NIGHT.salmon);
+  });
+
+  it('still races when waiters check the fridge first (check-then-act)', () => {
+    const s = playNight(FIRST_NIGHT, [{ card: 'extraWaiter', at: 0 }, { card: 'checkFirst', at: 0 }]).summary();
+    expect(s.alerts).toBeGreaterThanOrEqual(1);
+  });
+
+  it('stops the race with one marker for the board, and holds the rush', () => {
+    const n = playNight(FIRST_NIGHT, [{ card: 'extraWaiter', at: 0 }, { card: 'lock', at: 0 }]);
+    const s = n.summary();
+    expect(s.alerts).toBe(0);
+    expect(s.leftAngry).toBe(0);
+    expect(s.reputation).toBeGreaterThan(0);
+    expect(n.log.some((e) => e.kind === 'lockWait')).toBe(true);
+    expect(n.board).toBe(n.fridge);
+  });
+
+  it('a lock alone is wasted: one waiter never races, and the rush still breaks him', () => {
+    const s = playNight(FIRST_NIGHT, [{ card: 'lock', at: 0 }]).summary();
+    expect(s.alerts).toBe(0);
+    expect(s.walkedOut).toBeGreaterThanOrEqual(3);
   });
 
   it('shows the clock from 18:00', () => {

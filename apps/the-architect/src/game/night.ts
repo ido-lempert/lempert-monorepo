@@ -4,11 +4,15 @@
  *
  * The restaurant is the system: groups of guests are clients, the host seats them (load balancer), waiters
  * take orders, serve and bring the bill (API instances), tickets wait on the rail for the cooks (a queue in
- * front of workers).
+ * front of workers), and the salmon count on the stock board is a database row the waiters read and write.
+ *
+ * The race: a waiter reads the board when a guest asks for salmon, promises it if the board says there is
+ * some, and writes the new count only when the order is done (read-modify-write with a gap). One waiter works
+ * one order at a time, so the board is always right; two waiters can both read "1" in the gap.
  */
 import { between, rng } from './rng';
 
-export type CardId = 'extraWaiter';
+export type CardId = 'extraWaiter' | 'checkFirst' | 'lock';
 
 export interface CardDef {
   /** What the card costs for the night, in shekels. */
@@ -17,6 +21,8 @@ export interface CardDef {
 
 export const CARDS: Record<CardId, CardDef> = {
   extraWaiter: { money: 300 },
+  checkFirst: { money: 0 },
+  lock: { money: 50 },
 };
 
 export interface NightDef {
@@ -43,9 +49,16 @@ export interface NightDef {
   /** Minutes a group waits at the door, or seated for its order to be taken, before walking out. */
   doorPatience: number;
   patience: number;
+  /** Salmon portions in the fridge (and on the board) at opening, and the share of groups that ask for it. */
+  salmon: number;
+  salmonShare: number;
+  /** What a table that was promised a dish the kitchen doesn't have costs in vouchers. */
+  compensation: number;
+  /** Extra minutes per salmon order when waiters check the fridge first. */
+  checkTime: number;
 }
 
-/** The first night: a calm evening, then a tour bus at 20:00. */
+/** The first night: a calm evening, then a tour bus at 20:00. Salmon is the house dish and runs out. */
 export const FIRST_NIGHT: NightDef = {
   seed: 20260,
   tables: 8,
@@ -63,18 +76,26 @@ export const FIRST_NIGHT: NightDef = {
   eat: [18, 26],
   doorPatience: 32,
   patience: 15,
+  salmon: 8,
+  salmonShare: 0.25,
+  compensation: 120,
+  checkTime: 1,
 };
 
 export const OPENS_AT = 18 * 60;
 
 export type GroupState = 'door' | 'seated' | 'ordered' | 'eating' | 'bill' | 'gone';
 export type Mood = 'happy' | 'ok' | 'unhappy' | 'angry';
+export type Dish = 'salmon' | 'other';
 
 export interface Group {
   id: number;
   size: number;
   arrives: number;
   eats: number;
+  /** What the group asks for first; it takes the other dish when the board says salmon is gone. */
+  wantsSalmon: boolean;
+  dish: Dish | null;
   state: GroupState;
   table: number | null;
   /** When the group started waiting for whatever it waits for now. */
@@ -93,6 +114,8 @@ export interface Job {
   since: number;
   from: number;
   until: number;
+  /** For a salmon order: the count this waiter read on the board (null while waiting for the marker). */
+  read?: number | null;
 }
 
 export interface Waiter {
@@ -104,6 +127,7 @@ export interface Waiter {
 
 export interface Ticket {
   group: number;
+  dish: Dish;
   /** Minute it reached the rail, started cooking (or null) and was ready at the pass (or null). */
   placed: number;
   cooking: number | null;
@@ -111,7 +135,21 @@ export interface Ticket {
   cook: number | null;
 }
 
-export type EventKind = 'arrive' | 'seat' | 'order' | 'cooked' | 'served' | 'paid' | 'leftDoor' | 'leftTable' | 'card';
+export type EventKind =
+  | 'arrive'
+  | 'seat'
+  | 'order'
+  | 'read'
+  | 'write'
+  | 'lockWait'
+  | 'cooking'
+  | 'cooked'
+  | 'noStock'
+  | 'served'
+  | 'paid'
+  | 'leftDoor'
+  | 'leftTable'
+  | 'card';
 
 export interface NightEvent {
   t: number;
@@ -119,18 +157,28 @@ export interface NightEvent {
   group?: number;
   table?: number;
   waiter?: number;
+  cook?: number;
   card?: CardId;
+  /** The salmon count read or written on the board. */
+  value?: number;
+  dish?: Dish;
 }
 
 export interface Summary {
   revenue: number;
   wages: number;
   cards: number;
+  compensation: number;
   profit: number;
   served: number;
   happy: number;
   unhappy: number;
+  /** Groups that walked out, for any reason. */
   leftAngry: number;
+  /** Of those, walked out because nobody came (at the door or at the table). */
+  walkedOut: number;
+  /** Kitchen alerts: a dish was promised that the kitchen didn't have. */
+  alerts: number;
   /** Change in reputation stars over the night. */
   reputation: number;
   /** Average minutes a served group waited for staff. */
@@ -154,37 +202,58 @@ export class Night {
   readonly plays: CardPlay[] = [];
   revenue = 0;
   repPoints = 0;
+  compensation = 0;
+  /** The salmon count written on the board, and the portions really in the fridge. */
+  board: number;
+  fridge: number;
+  /** Who holds the board's marker (with the Lock card). */
+  marker: number | null = null;
   done = false;
+  /** Card plays to make when `finish` reaches their minute (for replays and tests). */
+  pending: CardPlay[] = [];
   private readonly cooksBusy: (number | null)[];
 
   constructor(readonly def: NightDef) {
     this.tables = Array.from({ length: def.tables }, () => null);
     this.cooksBusy = Array.from({ length: def.cooks }, () => null);
+    this.board = this.fridge = def.salmon;
     for (let i = 0; i < def.waiters; i++) this.waiters.push({ id: i, joined: 0, job: null });
     const next = rng(def.seed);
-    const arrivals: number[] = [];
-    for (let t = between(next, 2, 6); t <= def.lastArrival; t += between(next, Math.ceil(def.every / 2), Math.floor(def.every * 1.5))) arrivals.push(t);
-    for (let i = 0; i < def.peak.groups; i++) arrivals.push(def.peak.at + Math.floor((i * def.peak.over) / def.peak.groups));
-    arrivals.sort((a, b) => a - b);
-    arrivals.forEach((at, id) => {
-      this.groups.push({ id, size: between(next, 1, 2), arrives: at, eats: between(next, def.eat[0], def.eat[1]), state: 'gone', table: null, since: at, waited: 0, mood: null });
+    // Wishes have their own stream, so tuning the menu never moves the arrivals.
+    const wish = rng(def.seed + 1);
+    const arrivals: { at: number; bus: boolean }[] = [];
+    for (let t = between(next, 2, 6); t <= def.lastArrival; t += between(next, Math.ceil(def.every / 2), Math.floor(def.every * 1.5))) arrivals.push({ at: t, bus: false });
+    for (let i = 0; i < def.peak.groups; i++) arrivals.push({ at: def.peak.at + Math.floor((i * def.peak.over) / def.peak.groups), bus: true });
+    arrivals.sort((a, b) => a.at - b.at || Number(a.bus) - Number(b.bus));
+    arrivals.forEach(({ at, bus }, id) => {
+      this.groups.push({
+        id,
+        size: between(next, 1, 2),
+        arrives: at,
+        eats: between(next, def.eat[0], def.eat[1]),
+        // The tour bus came for the house salmon.
+        wantsSalmon: wish() < def.salmonShare || bus,
+        dish: null,
+        state: 'gone',
+        table: null,
+        since: at,
+        waited: 0,
+        mood: null,
+      });
     });
-    // Nobody is in yet: groups become real when they arrive.
-    for (const g of this.groups) g.state = 'gone';
+  }
+
+  has(card: CardId): boolean {
+    return this.plays.some((p) => p.card === card);
   }
 
   /** Plays a card from this minute on. Each card once per night. */
   play(card: CardId): boolean {
-    if (this.done || this.plays.some((p) => p.card === card)) return false;
+    if (this.done || this.has(card)) return false;
     this.plays.push({ card, at: this.t });
     this.log.push({ t: this.t, kind: 'card', card });
     if (card === 'extraWaiter') this.waiters.push({ id: this.waiters.length, joined: this.t, job: null });
     return true;
-  }
-
-  /** Groups that have come in and not left. */
-  present(): Group[] {
-    return this.groups.filter((g) => g.state !== 'gone' && g.arrives <= this.t);
   }
 
   /** Advances one minute. */
@@ -193,10 +262,21 @@ export class Night {
     const t = ++this.t;
     const d = this.def;
 
-    for (const g of this.groups) if (g.arrives === t) {
-      g.state = 'door';
-      g.since = t;
-      this.log.push({ t, kind: 'arrive', group: g.id });
+    for (const g of this.groups)
+      if (g.arrives === t) {
+        g.state = 'door';
+        g.since = t;
+        this.log.push({ t, kind: 'arrive', group: g.id });
+      }
+
+    // A waiter waiting for the marker takes it as soon as it is free, then reads the board.
+    for (const w of this.waiters) {
+      const job = w.job;
+      if (job?.read !== null || job.kind !== 'takeOrder') continue;
+      if (this.marker !== null) continue;
+      this.marker = w.id;
+      this.readBoard(w, job, t);
+      job.until = t + this.orderTime(this.groups[job.group]);
     }
 
     // Finished jobs.
@@ -206,13 +286,22 @@ export class Night {
       w.job = null;
       const g = this.groups[job.group];
       if (job.kind === 'takeOrder') {
+        if (g.dish === 'salmon') {
+          // The count written back is the one read, minus one: another waiter's write in between is lost.
+          this.board = Math.max(0, job.read! - 1);
+          this.log.push({ t, kind: 'write', group: g.id, waiter: w.id, value: this.board });
+        }
+        if (this.marker === w.id) this.marker = null;
         g.state = 'ordered';
-        this.tickets.push({ group: g.id, placed: t, cooking: null, ready: null, cook: null });
-        this.log.push({ t, kind: 'order', group: g.id, waiter: w.id });
+        this.tickets.push({ group: g.id, dish: g.dish ?? 'other', placed: t, cooking: null, ready: null, cook: null });
+        this.log.push({ t, kind: 'order', group: g.id, waiter: w.id, dish: g.dish ?? 'other' });
       } else if (job.kind === 'serve') {
         g.state = 'eating';
         g.since = t;
-        this.tickets.splice(this.tickets.findIndex((k) => k.group === g.id), 1);
+        this.tickets.splice(
+          this.tickets.findIndex((k) => k.group === g.id),
+          1,
+        );
         this.log.push({ t, kind: 'served', group: g.id, waiter: w.id });
       } else {
         this.revenue += g.size * d.price;
@@ -222,28 +311,45 @@ export class Night {
       }
     }
 
-    for (const g of this.groups) if (g.state === 'eating' && t - g.since >= g.eats) {
-      g.state = 'bill';
-      g.since = t;
-    }
+    for (const g of this.groups)
+      if (g.state === 'eating' && t - g.since >= g.eats) {
+        g.state = 'bill';
+        g.since = t;
+      }
 
-    // Cooks finish dishes and start the next ticket on the rail.
+    // Cooks finish dishes and start the next ticket on the rail; salmon comes out of the fridge then.
     this.cooksBusy.forEach((ticket, c) => {
       if (ticket === null) return;
       const k = this.tickets.find((x) => x.group === ticket)!;
       if (t - k.cooking! >= d.cook) {
         k.ready = t;
         this.cooksBusy[c] = null;
-        this.log.push({ t, kind: 'cooked', group: k.group });
+        this.log.push({ t, kind: 'cooked', group: k.group, cook: c });
       }
     });
     this.cooksBusy.forEach((ticket, c) => {
       if (ticket !== null) return;
-      const k = this.tickets.find((x) => x.cooking === null);
-      if (!k) return;
-      k.cooking = t;
-      k.cook = c;
-      this.cooksBusy[c] = k.group;
+      for (;;) {
+        const k = this.tickets.find((x) => x.cooking === null);
+        if (!k) return;
+        if (k.dish === 'salmon') {
+          if (this.fridge === 0) {
+            // Promised, but there is none: the kitchen raises the alarm and the table is let down.
+            this.tickets.splice(this.tickets.indexOf(k), 1);
+            const g = this.groups[k.group];
+            this.log.push({ t, kind: 'noStock', group: g.id, cook: c, table: g.table ?? undefined });
+            this.compensation += d.compensation;
+            this.walkOut(g, 'noStock');
+            continue;
+          }
+          this.fridge--;
+        }
+        k.cooking = t;
+        k.cook = c;
+        this.cooksBusy[c] = k.group;
+        this.log.push({ t, kind: 'cooking', group: k.group, cook: c, dish: k.dish });
+        return;
+      }
     });
 
     // The host seats waiting groups at free tables, first come first served.
@@ -271,8 +377,20 @@ export class Night {
       if (!job) break;
       const g = this.groups[job.group];
       g.waited += t - job.since;
-      const length = job.kind === 'takeOrder' ? d.takeOrder : job.kind === 'serve' ? d.serve : d.bill;
-      w.job = { ...job, from: t, until: t + length };
+      const length = job.kind === 'takeOrder' ? this.orderTime(g) : job.kind === 'serve' ? d.serve : d.bill;
+      const started: Job = { ...job, from: t, until: t + length };
+      w.job = started;
+      if (job.kind === 'takeOrder' && g.wantsSalmon) {
+        if (this.has('lock') && this.marker !== null && this.marker !== w.id) {
+          // Someone else holds the marker: wait at the board until it is handed back.
+          started.read = null;
+          started.until = Infinity;
+          this.log.push({ t, kind: 'lockWait', group: g.id, waiter: w.id });
+        } else {
+          if (this.has('lock')) this.marker = w.id;
+          this.readBoard(w, started, t);
+        }
+      } else if (job.kind === 'takeOrder') g.dish = 'other';
     }
 
     this.done = t > d.lastArrival && this.groups.every((g) => g.state === 'gone');
@@ -287,22 +405,24 @@ export class Night {
     return this;
   }
 
-  /** Card plays to make when `finish` reaches their minute (for replays and tests). */
-  pending: CardPlay[] = [];
-
   summary(): Summary {
     const served = this.groups.filter((g) => g.mood !== null && g.mood !== 'angry');
     const cards = this.plays.reduce((sum, p) => sum + CARDS[p.card].money, 0);
     const wages = this.def.wages;
+    const alerts = this.log.filter((e) => e.kind === 'noStock').length;
+    const walkedOut = this.log.filter((e) => e.kind === 'leftDoor' || e.kind === 'leftTable').length;
     return {
       revenue: this.revenue,
       wages,
       cards,
-      profit: this.revenue - wages - cards,
+      compensation: this.compensation,
+      profit: this.revenue - wages - cards - this.compensation,
       served: served.length,
       happy: served.filter((g) => g.mood === 'happy').length,
       unhappy: served.filter((g) => g.mood === 'unhappy').length,
       leftAngry: this.groups.filter((g) => g.mood === 'angry').length,
+      walkedOut,
+      alerts,
       reputation: Math.round(this.repPoints * REP_PER_POINT * 100) / 100,
       avgWait: served.length ? Math.round(served.reduce((s, g) => s + g.waited, 0) / served.length) : 0,
     };
@@ -311,6 +431,22 @@ export class Night {
   /** The waiter (if any) working for a group right now. */
   busyWith(group: number): Waiter | undefined {
     return this.waiters.find((w) => w.job?.group === group);
+  }
+
+  /** Everything that happened to one order, in time order: its trace. */
+  trace(group: number): NightEvent[] {
+    return this.log.filter((e) => e.group === group);
+  }
+
+  private orderTime(g: Group): number {
+    return this.def.takeOrder + (g.wantsSalmon && this.has('checkFirst') ? this.def.checkTime : 0);
+  }
+
+  private readBoard(w: Waiter, job: Job, t: number) {
+    const g = this.groups[job.group];
+    job.read = this.board;
+    g.dish = this.board > 0 ? 'salmon' : 'other';
+    this.log.push({ t, kind: 'read', group: g.id, waiter: w.id, value: this.board, dish: g.dish });
   }
 
   private nextJob(): Omit<Job, 'from' | 'until'> | null {
@@ -325,9 +461,14 @@ export class Night {
     return free[0] ?? null;
   }
 
-  private walkOut(g: Group, kind: 'leftDoor' | 'leftTable') {
+  private walkOut(g: Group, kind: 'leftDoor' | 'leftTable' | 'noStock') {
     g.mood = 'angry';
     this.repPoints -= 3;
+    if (kind === 'noStock') {
+      if (g.table !== null) this.tables[g.table] = null;
+      g.state = 'gone';
+      return;
+    }
     this.leave(g, kind);
   }
 
